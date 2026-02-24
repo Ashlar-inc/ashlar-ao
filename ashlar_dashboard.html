@@ -136,6 +136,18 @@ body {
 }
 .project-selector:focus { border-color: var(--accent); }
 .project-selector option { background: #0D1520; color: var(--text-primary); }
+.project-metrics-badge {
+    font-size: 11px;
+    color: var(--text-dimmed);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 3px 8px;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+}
+.project-metrics-badge .pm-count { color: var(--accent); font-weight: 600; }
+.project-metrics-badge .pm-cost { color: var(--success); }
 
 .top-spacer { flex: 1; }
 
@@ -2603,6 +2615,7 @@ body {
     <select class="project-selector" id="projectSelector" onchange="filterByProject(this.value)" aria-label="Filter by project">
         <option value="">All Projects</option>
     </select>
+    <span class="project-metrics-badge" id="projectMetricsBadge" style="display:none"></span>
     <div class="top-spacer"></div>
     <div class="metrics-bar" id="metricsBar" style="cursor:pointer" onclick="toggleMetricsDropdown()">
         <div class="metric">
@@ -3736,7 +3749,7 @@ let renderScheduled = false;
 function scheduleRender() {
     if (!renderScheduled) {
         renderScheduled = true;
-        requestAnimationFrame(() => { renderScheduled = false; renderAgentGrid(); });
+        requestAnimationFrame(() => { renderScheduled = false; renderAgentGrid(); updateProjectMetricsBadge(); });
     }
 }
 
@@ -5104,6 +5117,21 @@ function renderProjectSelector() {
 function filterByProject(projectId) {
     state.selectedProjectId = projectId || null;
     renderAgentGrid();
+    updateProjectMetricsBadge();
+}
+
+function updateProjectMetricsBadge() {
+    const badge = document.getElementById('projectMetricsBadge');
+    const pid = state.selectedProjectId;
+    if (!pid) { badge.style.display = 'none'; return; }
+
+    const agents = [...state.agents.values()].filter(a => a.project_id === pid);
+    const count = agents.length;
+    const cost = agents.reduce((sum, a) => sum + (a.estimated_cost_usd || 0), 0);
+    const active = agents.filter(a => !['idle', 'error', 'paused'].includes(a.status)).length;
+
+    badge.style.display = '';
+    badge.innerHTML = `<span class="pm-count">${count}</span> agent${count !== 1 ? 's' : ''}${active > 0 ? ` (${active} active)` : ''}${cost > 0 ? ` · <span class="pm-cost">$${cost.toFixed(3)}</span>` : ''}`;
 }
 
 // ── Agent History ──

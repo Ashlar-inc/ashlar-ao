@@ -3342,6 +3342,10 @@ async def spawn_agent(request: web.Request) -> web.Response:
         return web.json_response({"error": "system_prompt_extra must be a string"}, status=400)
     resume_session = data.get("resume_session")
 
+    project_id = data.get("project_id")
+    if project_id is not None and not isinstance(project_id, str):
+        return web.json_response({"error": "project_id must be a string"}, status=400)
+
     try:
         agent = await manager.spawn(
             role=role,
@@ -3355,6 +3359,10 @@ async def spawn_agent(request: web.Request) -> web.Response:
             system_prompt_extra=system_prompt_extra,
             resume_session=resume_session,
         )
+
+        # Assign project after spawn
+        if project_id:
+            agent.project_id = project_id
 
         # Broadcast to WebSocket clients
         hub: WebSocketHub = request.app["ws_hub"]
