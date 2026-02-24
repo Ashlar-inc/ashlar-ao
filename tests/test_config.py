@@ -11,7 +11,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 with patch("psutil.cpu_percent", return_value=0.0):
-    from ashlar_server import Config, load_config, deep_merge, DEFAULT_CONFIG, ASHLAR_DIR
+    from ashlar_server import Config, load_config, deep_merge, DEFAULT_CONFIG, ASHLAR_DIR, KNOWN_BACKENDS, BackendConfig, BUILTIN_ROLES
 
 
 # ─────────────────────────────────────────────
@@ -145,3 +145,53 @@ class TestAgentToDict:
         d = agent.to_dict_full()
         assert "output_lines" in d
         assert len(d["output_lines"]) == 3
+
+
+# ─────────────────────────────────────────────
+# KNOWN_BACKENDS
+# ─────────────────────────────────────────────
+
+class TestKnownBackends:
+    def test_claude_code_exists(self):
+        assert "claude-code" in KNOWN_BACKENDS
+
+    def test_codex_exists(self):
+        assert "codex" in KNOWN_BACKENDS
+
+    def test_all_backends_have_command(self):
+        for name, bc in KNOWN_BACKENDS.items():
+            assert isinstance(bc.command, str) and len(bc.command) > 0, f"{name} missing command"
+
+    def test_all_backends_are_backend_config(self):
+        for name, bc in KNOWN_BACKENDS.items():
+            assert isinstance(bc, BackendConfig), f"{name} is not a BackendConfig"
+
+    def test_claude_code_supports_key_features(self):
+        bc = KNOWN_BACKENDS["claude-code"]
+        assert bc.supports_system_prompt is True
+        assert bc.supports_model_select is True
+        assert bc.supports_tool_restriction is True
+
+    def test_backend_cost_rates_non_negative(self):
+        for name, bc in KNOWN_BACKENDS.items():
+            assert bc.cost_input_per_1k >= 0, f"{name} has negative input cost"
+            assert bc.cost_output_per_1k >= 0, f"{name} has negative output cost"
+
+
+# ─────────────────────────────────────────────
+# BUILTIN_ROLES
+# ─────────────────────────────────────────────
+
+class TestBuiltinRoles:
+    def test_general_role_exists(self):
+        assert "general" in BUILTIN_ROLES
+
+    def test_all_roles_have_icon_and_color(self):
+        for key, role in BUILTIN_ROLES.items():
+            assert hasattr(role, 'icon') and role.icon, f"{key} missing icon"
+            assert hasattr(role, 'color') and role.color, f"{key} missing color"
+            assert hasattr(role, 'name') and role.name, f"{key} missing name"
+
+    def test_expected_roles_present(self):
+        expected = {"frontend", "backend", "devops", "tester", "reviewer", "security", "architect", "docs", "general"}
+        assert expected.issubset(set(BUILTIN_ROLES.keys()))
