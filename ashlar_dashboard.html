@@ -2157,9 +2157,106 @@ body {
 }
 .edit-agent-dialog .form-label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
 .edit-agent-dialog .settings-input { width: 100%; margin-bottom: 12px; }
+
+/* ── Auth Login ── */
+.auth-login { position: fixed; inset: 0; z-index: 10000; background: var(--bg-primary); display: flex; align-items: center; justify-content: center; }
+.auth-card { background: var(--bg-card); padding: 32px; border-radius: 16px; width: 360px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+.auth-title { font-size: 24px; font-weight: 800; letter-spacing: -0.04em; margin-bottom: 8px; }
+
+/* ── Grid Toolbar ── */
+.grid-toolbar { display: flex; align-items: center; gap: 8px; padding: 0 16px 8px; }
+.grid-search { flex: 1; max-width: 320px; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); padding: 6px 12px; border-radius: 8px; font-size: 13px; font-family: inherit; outline: none; transition: border-color 0.2s; }
+.grid-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.15); }
+.grid-search-count { font-size: 12px; color: var(--text-secondary); min-width: 60px; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+
+/* ── Activity Timeline ── */
+.timeline-panel { background: var(--bg-card); width: 560px; max-height: 80vh; border-radius: 16px; display: flex; flex-direction: column; box-shadow: 0 32px 80px rgba(0,0,0,0.6); animation: modalScaleIn 0.2s cubic-bezier(0.22, 1, 0.36, 1); }
+.timeline-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.timeline-list { overflow-y: auto; flex: 1; padding: 8px 0; }
+.timeline-event { display: flex; gap: 10px; padding: 8px 20px; border-bottom: 1px solid rgba(255,255,255,0.04); align-items: flex-start; cursor: pointer; transition: background 0.15s; }
+.timeline-event:hover { background: rgba(255,255,255,0.03); }
+.timeline-event-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
+.timeline-event-badge.spawned { background: rgba(34,197,94,0.15); color: #22c55e; }
+.timeline-event-badge.killed { background: rgba(239,68,68,0.15); color: #ef4444; }
+.timeline-event-badge.error { background: rgba(239,68,68,0.15); color: #ef4444; }
+.timeline-event-badge.restarted { background: rgba(234,179,8,0.15); color: #eab308; }
+.timeline-event-badge.workflow { background: rgba(99,102,241,0.15); color: #6366f1; }
+.timeline-event-badge.conflict { background: rgba(249,115,22,0.15); color: #f97316; }
+.timeline-event-badge.handoff { background: rgba(6,182,212,0.15); color: #06b6d4; }
+.timeline-event-badge.default { background: rgba(100,116,139,0.15); color: #94a3b8; }
+.timeline-event-time { font-size: 11px; color: var(--text-secondary); min-width: 50px; }
+.timeline-event-msg { font-size: 13px; color: var(--text-primary); flex: 1; }
+
+/* ── Pipeline Graph ── */
+.pipeline-panel { background: var(--bg-card); width: 700px; max-height: 80vh; border-radius: 16px; display: flex; flex-direction: column; box-shadow: 0 32px 80px rgba(0,0,0,0.6); animation: modalScaleIn 0.2s cubic-bezier(0.22, 1, 0.36, 1); }
+.pipeline-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.pipeline-status { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.pipeline-graph { overflow: auto; flex: 1; padding: 24px; }
+.pipeline-row { display: flex; justify-content: center; gap: 16px; margin-bottom: 24px; position: relative; }
+.pipeline-node { background: var(--bg-secondary); border: 2px solid var(--border); border-radius: 12px; padding: 12px 16px; min-width: 140px; text-align: center; cursor: pointer; transition: all 0.2s; }
+.pipeline-node:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+.pipeline-node.pending { border-color: var(--text-secondary); opacity: 0.5; }
+.pipeline-node.running { border-color: var(--accent); box-shadow: 0 0 12px rgba(99,102,241,0.3); }
+.pipeline-node.completed { border-color: #22c55e; }
+.pipeline-node.failed { border-color: #ef4444; }
+.pipeline-node-icon { font-size: 20px; margin-bottom: 4px; }
+.pipeline-node-name { font-size: 13px; font-weight: 600; }
+.pipeline-node-status { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+.pipeline-connector { width: 2px; height: 20px; background: var(--border); margin: 0 auto; }
+
+/* ── Keyboard Focus ── */
+.agent-card.keyboard-focused { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── Deep Search: Regex Toggle + Log Filter ── */
+.deep-search-toggle { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); border-radius: 4px; padding: 2px 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px; cursor: pointer; transition: all 0.15s; margin-right: 4px; }
+.deep-search-toggle.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.deep-log-filter { background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; padding: 2px 6px; font-size: 12px; margin-right: 4px; outline: none; }
+.deep-log-filter:focus { border-color: var(--accent); }
+
+/* ── Conflict Badge on Cards ── */
+.card-conflict-badge { display: none; position: absolute; top: 8px; right: 40px; background: rgba(239,68,68,0.2); color: #ef4444; font-size: 11px; padding: 1px 6px; border-radius: 6px; font-weight: 600; animation: conflict-pulse 2s ease-in-out infinite; }
+.card-conflict-badge.active { display: inline-block; }
+@keyframes conflict-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+/* ── Pipeline Position Badge on Cards ── */
+.card-pipeline-badge { display: none; font-family: 'JetBrains Mono', monospace; font-size: 10px; background: rgba(6,182,212,0.15); color: #06b6d4; padding: 1px 6px; border-radius: 8px; white-space: nowrap; }
+.card-pipeline-badge.active { display: inline-block; }
+
+/* ── Workflow Picker Running Badge ── */
+.wf-picker-running-badge { display: inline-block; background: rgba(34,197,94,0.15); color: #22c55e; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 8px; margin-left: 8px; animation: running-pulse 1.5s ease-in-out infinite; }
+@keyframes running-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+/* ── Workflow Editor depends_on ── */
+.wf-deps-wrap { margin-top: 6px; }
+.wf-deps-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 2px; }
+.wf-deps-checks { display: flex; flex-wrap: wrap; gap: 6px; }
+.wf-dep-check { display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-secondary); cursor: pointer; }
+.wf-dep-check input { margin: 0; cursor: pointer; accent-color: var(--accent); }
+
+/* ── Handoff Modal ── */
+.handoff-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1200; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
+.handoff-overlay.active { display: flex; }
+.handoff-modal { background: var(--bg-secondary); border-radius: 16px; border: 1px solid var(--border); width: 460px; max-width: 95vw; padding: 24px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+.handoff-modal h3 { margin: 0 0 16px; font-size: 16px; }
+.handoff-modal label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; margin-top: 12px; }
+.handoff-modal select, .handoff-modal textarea, .handoff-modal input[type="text"] { width: 100%; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; color: var(--text-primary); font-size: 13px; font-family: inherit; resize: vertical; box-sizing: border-box; }
+.handoff-modal select:focus, .handoff-modal textarea:focus, .handoff-modal input:focus { border-color: var(--accent); outline: none; }
+.handoff-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 </style>
 </head>
 <body>
+
+<!-- ── Auth Login Screen ── -->
+<div class="auth-login" id="authLogin" style="display:none">
+    <div class="auth-card">
+        <div class="auth-title">Ashlar AO</div>
+        <p style="color:var(--text-secondary);margin-bottom:16px">Authentication required</p>
+        <input type="password" class="form-input" id="authTokenInput" placeholder="Enter auth token" autofocus>
+        <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="submitAuth()">Login</button>
+        <div class="auth-error" id="authError" style="display:none;color:#f87171;margin-top:8px;font-size:13px"></div>
+    </div>
+</div>
 
 <!-- ── Top Bar ── -->
 <div class="top-bar">
@@ -2184,6 +2281,10 @@ body {
         <div class="metric">
             <span class="metric-label">Agents</span>
             <span class="metric-value" id="metricAgents">0/0</span>
+        </div>
+        <div class="metric" title="Estimated cost across all active agents">
+            <span class="metric-label">Cost</span>
+            <span class="metric-value" id="metricCost">$0.00</span>
         </div>
     </div>
     <div class="attention-badge" id="attentionBadge" onclick="focusFirstWaiting()" role="button" tabindex="0" aria-label="Agents needing attention" onkeydown="if(event.key==='Enter')focusFirstWaiting()">0</div>
@@ -2210,6 +2311,11 @@ body {
 
 <!-- ── Main Content ── -->
 <div class="main-content" id="mainContent">
+    <div class="grid-toolbar">
+        <input class="grid-search" id="gridSearch" placeholder="Filter agents..." oninput="filterAgentGrid(this.value)" aria-label="Filter agents">
+        <span class="grid-search-count" id="gridSearchCount"></span>
+        <button class="btn btn-secondary btn-sm" onclick="openTimeline()" title="Activity Timeline (Cmd+T)">📋 Timeline</button>
+    </div>
     <div class="agent-grid" id="agentGrid">
         <div class="empty-state" id="emptyState">
             <div class="empty-illustration">
@@ -2269,6 +2375,22 @@ body {
             </div>
         </div>
 
+        <div class="form-row" style="display:flex;gap:12px">
+            <div class="form-group" style="flex:1">
+                <label class="form-label">Model (optional)</label>
+                <select class="form-input" id="spawnModel" style="cursor:pointer">
+                    <option value="">Default</option>
+                    <option value="opus">Opus</option>
+                    <option value="sonnet">Sonnet</option>
+                    <option value="haiku">Haiku</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex:1">
+                <label class="form-label">Tools (optional)</label>
+                <input class="form-input" id="spawnTools" placeholder="e.g. Bash,Read,Edit">
+            </div>
+        </div>
+
         <div class="toggle-row">
             <span class="form-label" style="margin:0">Plan Mode</span>
             <div class="toggle" id="planModeToggle" onclick="this.classList.toggle('active')"></div>
@@ -2297,6 +2419,8 @@ body {
             <div><span class="metric-label">Memory </span><span class="deep-stat-value" id="deepMemory"></span></div>
             <div><span class="metric-label">Health </span><span class="deep-stat-value" id="deepHealth"></span></div>
             <div><span class="metric-label">Time </span><span class="deep-stat-value" id="deepTime"></span></div>
+            <div><span class="metric-label">Tokens </span><span class="deep-stat-value" id="deepTokens" title="">-</span></div>
+            <div><span class="metric-label">Cost </span><span class="deep-stat-value" id="deepCost">-</span></div>
         </div>
         <div class="deep-actions">
             <button class="deep-action-btn" id="deepPauseBtn" onclick="deepPauseResume()">⏸ Pause</button>
@@ -2304,6 +2428,7 @@ body {
             <button class="deep-action-btn" onclick="deepRegenSummary()" title="AI Summary">🤖 AI</button>
             <button class="deep-action-btn" onclick="openDeepMessaging()" title="Send to another agent">💬 Msg</button>
             <button class="deep-action-btn" onclick="deepRestart()" title="Restart agent">🔄 Restart</button>
+            <button class="deep-action-btn" onclick="openHandoff()" title="Handoff to another agent">🤝 Handoff</button>
             <button class="deep-action-btn danger" onclick="deepKill()">Kill</button>
         </div>
     </div>
@@ -2318,6 +2443,13 @@ body {
     <div class="deep-terminal-wrap">
         <div class="deep-terminal" id="deepTerminal"></div>
         <div class="deep-search-bar" id="deepSearchBar">
+            <button class="deep-search-toggle" id="deepRegexToggle" onclick="toggleDeepRegex()" title="Toggle regex mode">.*</button>
+            <select class="deep-log-filter" id="deepLogFilter" onchange="applyLogFilter()">
+                <option value="all">All</option>
+                <option value="errors">Errors</option>
+                <option value="warnings">Warnings</option>
+                <option value="info">Info</option>
+            </select>
             <input class="deep-search-input" id="deepSearchInput" placeholder="Search..." oninput="deepSearch()" onkeydown="handleDeepSearchKey(event)">
             <span class="deep-search-count" id="deepSearchCount"></span>
             <button class="deep-search-btn" onclick="deepSearchPrev()">↑</button>
@@ -2521,6 +2653,63 @@ body {
     </div>
 </div>
 
+<!-- ── Activity Timeline ── -->
+<div class="overlay" id="timelineOverlay" onclick="if(event.target===this)closeTimeline()" style="display:none">
+    <div class="timeline-panel">
+        <div class="timeline-header">
+            <h3 style="margin:0;font-weight:700;letter-spacing:-0.02em">Activity Timeline</h3>
+            <div style="display:flex;gap:8px;align-items:center">
+                <select class="form-input" id="timelineAgentFilter" style="width:140px;padding:4px 8px;font-size:12px" onchange="refreshTimeline()">
+                    <option value="">All Agents</option>
+                </select>
+                <select class="form-input" id="timelineTypeFilter" style="width:140px;padding:4px 8px;font-size:12px" onchange="refreshTimeline()">
+                    <option value="">All Types</option>
+                    <option value="agent_spawned">Spawned</option>
+                    <option value="agent_killed">Killed</option>
+                    <option value="agent_error">Error</option>
+                    <option value="agent_restarted">Restarted</option>
+                    <option value="workflow_started">Workflow</option>
+                    <option value="file_conflict">Conflict</option>
+                    <option value="agent_handoff">Handoff</option>
+                </select>
+                <button class="btn btn-secondary btn-sm" onclick="closeTimeline()">Close</button>
+            </div>
+        </div>
+        <div class="timeline-list" id="timelineList"></div>
+    </div>
+</div>
+
+<!-- ── Pipeline Graph View ── -->
+<div class="overlay" id="pipelineOverlay" onclick="if(event.target===this)closePipeline()" style="display:none">
+    <div class="pipeline-panel">
+        <div class="pipeline-header">
+            <h3 style="margin:0;font-weight:700;letter-spacing:-0.02em" id="pipelineName">Pipeline</h3>
+            <div style="display:flex;gap:8px;align-items:center">
+                <span class="pipeline-status" id="pipelineStatus"></span>
+                <button class="btn btn-secondary btn-sm" onclick="closePipeline()">Close</button>
+            </div>
+        </div>
+        <div class="pipeline-graph" id="pipelineGraph"></div>
+    </div>
+</div>
+
+<!-- ── Handoff Modal ── -->
+<div class="handoff-overlay" id="handoffOverlay" onclick="if(event.target===this)closeHandoff()">
+    <div class="handoff-modal">
+        <h3>🤝 Agent Handoff</h3>
+        <label>Target Agent</label>
+        <select id="handoffTarget"></select>
+        <label>Key Findings</label>
+        <textarea id="handoffFindings" rows="4" placeholder="Summarize key findings, decisions, or context..."></textarea>
+        <label>Files Modified (comma-separated)</label>
+        <input type="text" id="handoffFiles" placeholder="e.g., src/api.ts, lib/auth.py">
+        <div class="handoff-actions">
+            <button class="btn btn-secondary" onclick="closeHandoff()">Cancel</button>
+            <button class="btn btn-primary" id="handoffSendBtn" onclick="sendHandoff()">Send Handoff</button>
+        </div>
+    </div>
+</div>
+
 <!-- ── Bulk Action Bar ── -->
 <div class="bulk-bar" id="bulkBar">
     <span class="bulk-bar-count" id="bulkCount">0 selected</span>
@@ -2555,6 +2744,8 @@ const state = {
     cpuHistory: [],
     notifications: [],
     unreadCount: 0,
+    workflowRuns: new Map(),
+    conflicts: new Map(),
 };
 
 const ROLE_INFO = {
@@ -2580,6 +2771,79 @@ const TASK_PLACEHOLDERS = {
     docs: 'e.g., Write API documentation for the v2 endpoints...',
     general: 'What should this agent work on?',
 };
+
+// ── Auth + API Wrapper ──
+
+let authToken = localStorage.getItem('ashlar_auth_token') || '';
+
+async function apiFetch(url, options = {}) {
+    if (authToken) {
+        options.headers = options.headers || {};
+        if (typeof options.headers === 'object' && !(options.headers instanceof Headers)) {
+            options.headers['Authorization'] = `Bearer ${authToken}`;
+        }
+    }
+    const resp = await fetch(url, options);
+    if (resp.status === 401) {
+        showAuthLogin();
+        throw new Error('Unauthorized');
+    }
+    return resp;
+}
+
+function showAuthLogin() {
+    document.getElementById('authLogin').style.display = '';
+    document.getElementById('mainContent').style.opacity = '0.2';
+    document.getElementById('mainContent').style.pointerEvents = 'none';
+    document.getElementById('authTokenInput').focus();
+}
+
+function hideAuthLogin() {
+    document.getElementById('authLogin').style.display = 'none';
+    document.getElementById('mainContent').style.opacity = '';
+    document.getElementById('mainContent').style.pointerEvents = '';
+}
+
+async function submitAuth() {
+    const token = document.getElementById('authTokenInput').value.trim();
+    if (!token) return;
+    const errEl = document.getElementById('authError');
+    errEl.style.display = 'none';
+    try {
+        const resp = await fetch('/api/auth/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        });
+        if (resp.ok) {
+            authToken = token;
+            localStorage.setItem('ashlar_auth_token', token);
+            hideAuthLogin();
+            // Reconnect WebSocket with token
+            if (socket.ws) { socket.ws.close(); }
+            socket.connect();
+            showToast('Authenticated', 'success');
+        } else {
+            errEl.textContent = 'Invalid token';
+            errEl.style.display = '';
+        }
+    } catch (e) {
+        errEl.textContent = 'Connection failed';
+        errEl.style.display = '';
+    }
+}
+
+// Enter key on auth input
+document.getElementById('authTokenInput')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submitAuth();
+});
+
+// Check auth on startup
+(async () => {
+    try {
+        const resp = await fetch('/api/health');
+        if (resp.status === 401) showAuthLogin();
+    } catch (e) {}
+})();
 
 // ── Confirmation Modal ──
 
@@ -2763,7 +3027,8 @@ class AshlarSocket {
 
     connect() {
         const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        this.ws = new WebSocket(`${proto}//${location.host}/ws`);
+        const tokenParam = authToken ? `?token=${encodeURIComponent(authToken)}` : '';
+        this.ws = new WebSocket(`${proto}//${location.host}/ws${tokenParam}`);
 
         this.ws.onopen = () => {
             state.connected = true;
@@ -2813,7 +3078,7 @@ const socket = new AshlarSocket();
 
 // ── Message Handlers ──
 
-function handleSync(data) {
+async function handleSync(data) {
     state.agents.clear();
     (data.agents || []).forEach(a => state.agents.set(a.id, a));
     state.config = data.config || {};
@@ -2824,6 +3089,15 @@ function handleSync(data) {
     renderProjectSelector();
     renderAgentGrid();
     updateTabTitle();
+    // Fetch active workflow runs
+    try {
+        const res = await apiFetch('/api/workflow-runs');
+        if (res.ok) {
+            const runs = await res.json();
+            state.workflowRuns.clear();
+            (Array.isArray(runs) ? runs : runs.data || []).forEach(r => state.workflowRuns.set(r.id, r));
+        }
+    } catch (e) { /* workflow-runs endpoint may not exist yet */ }
 }
 
 function handleAgentUpdate(agent) {
@@ -2864,6 +3138,7 @@ function handleAgentRemoved(agentId) {
         }, 300);
     }
     state.agents.delete(agentId);
+    state.conflicts.delete(agentId);
     if (state.view === 'deep' && state.focusedAgentId === agentId) closeDeepView();
     setTimeout(() => { scheduleRender(); updateTabTitle(); updateAttentionBadge(); }, 350);
 }
@@ -2885,6 +3160,10 @@ function handleMetrics(data) {
 
     // Agents
     document.getElementById('metricAgents').textContent = `${data.agents_active || 0}/${data.agents_total || 0}`;
+
+    // Cost — aggregate from active agents
+    const totalCost = [...state.agents.values()].reduce((sum, a) => sum + (a.estimated_cost_usd || 0), 0);
+    document.getElementById('metricCost').textContent = totalCost < 1 ? `$${totalCost.toFixed(2)}` : `$${totalCost.toFixed(1)}`;
 
     // CPU sparkline
     state.cpuHistory.push(cpu);
@@ -2939,6 +3218,36 @@ function handleEvent(data) {
         case 'agent_reaped':
             showToast(msg || 'Idle agent removed', 'info');
             playTone([330, 220], 0.1);
+            break;
+        case 'workflow_started':
+            showToast(msg || 'Workflow started', 'success');
+            playTone([440, 550, 660], 0.08);
+            fetchWorkflowRun(data.metadata?.workflow_run_id);
+            break;
+        case 'workflow_completed':
+            showToast(msg || 'Workflow completed', 'success');
+            playTone([660, 880], 0.1);
+            updateWorkflowRunStatus(data.metadata?.workflow_run_id, 'completed');
+            break;
+        case 'workflow_failed':
+            showToast(msg || 'Workflow failed', 'error');
+            playTone([220, 165], 0.2);
+            sendBrowserNotification('Workflow failed', msg);
+            updateWorkflowRunStatus(data.metadata?.workflow_run_id, 'failed');
+            break;
+        case 'workflow_agent_spawned':
+            showToast(msg || 'Pipeline agent started', 'info');
+            fetchWorkflowRun(data.metadata?.workflow_run_id);
+            break;
+        case 'file_conflict':
+            showToast(msg || 'File conflict detected', 'warning');
+            playTone([440, 330], 0.15);
+            sendBrowserNotification('File conflict', msg);
+            trackConflict(data);
+            break;
+        case 'agent_handoff':
+            showToast(msg || 'Agent handoff', 'info');
+            playTone([550, 660], 0.08);
             break;
     }
 }
@@ -3030,12 +3339,14 @@ function createAgentCard(agent) {
             <span class="card-name"></span>
             <span class="card-health" title="Health" role="img" aria-label="Agent health"></span>
             <span class="card-message-badge" id="msgBadge-${agent.id}" aria-label="Unread messages"></span>
+            <span class="card-conflict-badge"></span>
             <button class="card-menu-btn" onclick="event.stopPropagation();toggleCardMenu('${agent.id}')">⋯</button>
         </div>
         <div class="card-info-row">
             <span class="card-project-badge" style="display:none"></span>
             <span class="card-backend-label"></span>
             <span class="card-workflow-dot" style="display:none" title="Workflow group"></span>
+            <span class="card-pipeline-badge"></span>
         </div>
         <div class="card-dir"></div>
         <div class="card-summary"></div>
@@ -3147,6 +3458,37 @@ function updateAgentCard(card, agent) {
             msgBadge.classList.add('active');
         } else {
             msgBadge.classList.remove('active');
+        }
+    }
+
+    // Conflict badge
+    const conflictBadge = card.querySelector('.card-conflict-badge');
+    if (conflictBadge) {
+        const agentConflicts = state.conflicts.get(agent.id);
+        if (agentConflicts && agentConflicts.size > 0) {
+            conflictBadge.textContent = `⚠ ${agentConflicts.size}`;
+            conflictBadge.title = `File conflicts: ${[...agentConflicts].join(', ')}`;
+            conflictBadge.classList.add('active');
+        } else {
+            conflictBadge.classList.remove('active');
+        }
+    }
+
+    // Pipeline position badge
+    const pipelineBadge = card.querySelector('.card-pipeline-badge');
+    if (pipelineBadge) {
+        if (agent.workflow_run_id) {
+            const run = state.workflowRuns.get(agent.workflow_run_id);
+            if (run && run.agent_ids) {
+                const pos = run.agent_ids.indexOf(agent.id) + 1;
+                const total = run.agent_ids.length;
+                pipelineBadge.textContent = `🔀 ${pos}/${total}`;
+                pipelineBadge.classList.add('active');
+            } else {
+                pipelineBadge.classList.remove('active');
+            }
+        } else {
+            pipelineBadge.classList.remove('active');
         }
     }
 
@@ -3290,7 +3632,11 @@ async function spawnAgent() {
     document.querySelector('.spawn-dialog .spawn-error')?.remove();
 
     try {
-        const resp = await fetch('/api/agents', {
+        const model = document.getElementById('spawnModel')?.value || undefined;
+        const toolsRaw = document.getElementById('spawnTools')?.value?.trim();
+        const tools = toolsRaw ? toolsRaw.split(',').map(t => t.trim()).filter(Boolean) : undefined;
+
+        const resp = await apiFetch('/api/agents', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -3301,6 +3647,8 @@ async function spawnAgent() {
                 plan_mode: planMode,
                 project_id: projectId,
                 backend,
+                model,
+                tools,
             }),
         });
         const data = await resp.json();
@@ -3420,6 +3768,17 @@ function updateDeepViewHeader(agent) {
         document.getElementById('deepTime').textContent = `${m}m ${s}s`;
     }
 
+    // Tokens + Cost
+    const tokIn = agent.tokens_input || 0;
+    const tokOut = agent.tokens_output || 0;
+    const tokTotal = tokIn + tokOut;
+    const tokEl = document.getElementById('deepTokens');
+    tokEl.textContent = tokTotal > 1000 ? `${(tokTotal / 1000).toFixed(1)}K` : `${tokTotal}`;
+    tokEl.title = `In: ${tokIn.toLocaleString()} · Out: ${tokOut.toLocaleString()}`;
+    const costEl = document.getElementById('deepCost');
+    const cost = agent.estimated_cost_usd || 0;
+    costEl.textContent = cost > 0 ? `$${cost.toFixed(4)}` : '-';
+
     const pauseBtn = document.getElementById('deepPauseBtn');
     pauseBtn.textContent = agent.status === 'paused' ? '▶ Resume' : '⏸ Pause';
 }
@@ -3497,7 +3856,7 @@ async function restartAgent(id) {
     const ok = await confirmAction('Restart Agent', `Restart "${state.agents.get(id)?.name || id}"?`, 'Restart', { icon: '🔄', danger: false });
     if (!ok) return;
     try {
-        const res = await fetch(`/api/agents/${id}/restart`, { method: 'POST' });
+        const res = await apiFetch(`/api/agents/${id}/restart`, { method: 'POST' });
         const data = await res.json();
         if (res.ok) {
             showToast(`Agent restarted (attempt ${data.restart_count || '?'})`, 'success');
@@ -3516,6 +3875,31 @@ function deepRestart() {
 
 // ── Deep View Search ──
 
+let deepRegexMode = false;
+
+function toggleDeepRegex() {
+    deepRegexMode = !deepRegexMode;
+    document.getElementById('deepRegexToggle').classList.toggle('active', deepRegexMode);
+    deepSearch();
+}
+
+function applyLogFilter() {
+    const filter = document.getElementById('deepLogFilter').value;
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const lines = terminal.querySelectorAll('.terminal-line');
+    const errorRe = /\b(error|exception|traceback|fatal|fail(ed)?)\b/i;
+    const warnRe = /\b(warn(ing)?|deprecat(ed|ion))\b/i;
+    const infoRe = /\b(info|notice|debug|log)\b/i;
+    lines.forEach(line => {
+        const text = line.textContent;
+        if (filter === 'all') { line.style.display = ''; return; }
+        if (filter === 'errors') { line.style.display = errorRe.test(text) ? '' : 'none'; return; }
+        if (filter === 'warnings') { line.style.display = warnRe.test(text) ? '' : 'none'; return; }
+        if (filter === 'info') { line.style.display = infoRe.test(text) ? '' : 'none'; return; }
+    });
+}
+
 function openDeepSearch() {
     document.getElementById('deepSearchBar').classList.add('active');
     setTimeout(() => document.getElementById('deepSearchInput').focus(), 50);
@@ -3527,6 +3911,9 @@ function closeDeepSearch() {
     clearSearchHighlights();
     deepSearchMatches = [];
     deepSearchIdx = -1;
+    // Reset log filter
+    document.getElementById('deepLogFilter').value = 'all';
+    applyLogFilter();
 }
 
 function deepSearch() {
@@ -3535,8 +3922,18 @@ function deepSearch() {
     if (!query) { document.getElementById('deepSearchCount').textContent = ''; return; }
 
     const terminal = document.getElementById('deepTerminal');
-    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(escaped, 'gi');
+    let regex;
+    if (deepRegexMode) {
+        try { regex = new RegExp(query, 'gi'); }
+        catch (e) {
+            document.getElementById('deepSearchCount').textContent = 'Invalid regex';
+            document.getElementById('deepSearchCount').style.color = 'var(--danger)';
+            return;
+        }
+    } else {
+        const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        regex = new RegExp(escaped, 'gi');
+    }
 
     // TreeWalker to find text nodes only — preserves ANSI <span> tags
     const walker = document.createTreeWalker(terminal, NodeFilter.SHOW_TEXT, null);
@@ -3650,6 +4047,109 @@ function sendCustomInteraction() {
     closeInteraction();
 }
 
+// ── Workflow Run Tracking ──
+
+async function fetchWorkflowRun(runId) {
+    if (!runId) return;
+    try {
+        const res = await apiFetch(`/api/workflow-runs/${runId}`);
+        if (res.ok) {
+            const run = await res.json();
+            state.workflowRuns.set(run.id, run);
+            scheduleRender();
+        }
+    } catch (e) { /* ignore */ }
+}
+
+function updateWorkflowRunStatus(runId, status) {
+    if (!runId) return;
+    const run = state.workflowRuns.get(runId);
+    if (run) {
+        run.status = status;
+        scheduleRender();
+    }
+}
+
+// ── Conflict Tracking ──
+
+function trackConflict(data) {
+    const meta = data.metadata || {};
+    const agentId = meta.agent_id || data.agent_id;
+    const otherId = meta.other_agent_id;
+    const filePath = meta.file_path;
+    if (!filePath) return;
+    if (agentId) {
+        if (!state.conflicts.has(agentId)) state.conflicts.set(agentId, new Set());
+        state.conflicts.get(agentId).add(filePath);
+    }
+    if (otherId) {
+        if (!state.conflicts.has(otherId)) state.conflicts.set(otherId, new Set());
+        state.conflicts.get(otherId).add(filePath);
+    }
+    scheduleRender();
+}
+
+function showConflictSummary() {
+    if (state.conflicts.size === 0) { showToast('No active file conflicts', 'info'); return; }
+    const lines = [];
+    state.conflicts.forEach((files, agentId) => {
+        const agent = state.agents.get(agentId);
+        const name = agent?.name || agentId;
+        lines.push(`${name}: ${[...files].join(', ')}`);
+    });
+    showToast(`Conflicts:\n${lines.join('\n')}`, 'warning');
+}
+
+// ── Handoff UI ──
+
+function openHandoff() {
+    const agentId = state.focusedAgentId;
+    if (!agentId) return;
+    const select = document.getElementById('handoffTarget');
+    select.innerHTML = '';
+    state.agents.forEach((a, id) => {
+        if (id === agentId) return;
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = `${ROLE_INFO[a.role]?.icon || '🤖'} ${a.name} (${a.status})`;
+        select.appendChild(opt);
+    });
+    if (select.options.length === 0) { showToast('No other agents to hand off to', 'info'); return; }
+    document.getElementById('handoffFindings').value = '';
+    document.getElementById('handoffFiles').value = '';
+    document.getElementById('handoffOverlay').classList.add('active');
+}
+
+function closeHandoff() {
+    document.getElementById('handoffOverlay').classList.remove('active');
+}
+
+async function sendHandoff() {
+    const agentId = state.focusedAgentId;
+    const targetId = document.getElementById('handoffTarget').value;
+    const findings = document.getElementById('handoffFindings').value.trim();
+    const filesStr = document.getElementById('handoffFiles').value.trim();
+    const files = filesStr ? filesStr.split(',').map(f => f.trim()).filter(Boolean) : [];
+    if (!findings) { showToast('Key findings required', 'warning'); return; }
+    const btn = document.getElementById('handoffSendBtn');
+    await withLoading(btn, async () => {
+        try {
+            const res = await apiFetch(`/api/agents/${agentId}/handoff`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_agent_id: targetId, key_findings: findings, files_modified: files }),
+            });
+            if (res.ok) {
+                showToast('Handoff sent successfully', 'success');
+                closeHandoff();
+            } else {
+                const err = await res.json();
+                showToast(err.error || 'Handoff failed', 'error');
+            }
+        } catch (e) { showToast('Handoff failed: ' + e.message, 'error'); }
+    });
+}
+
 // ── Command Palette ──
 
 const PALETTE_ACTIONS = [
@@ -3663,6 +4163,7 @@ const PALETTE_ACTIONS = [
     { icon: '▶', label: 'Resume all agents', shortcut: '', action: () => { closePalette(); resumeAll(); } },
     { icon: '🔄', label: 'Refresh state', shortcut: '', action: () => { closePalette(); socket.send({ type: 'sync_request' }); } },
     { icon: '☑', label: 'Bulk select mode', shortcut: '', action: () => { closePalette(); toggleBulkMode(); } },
+    { icon: '⚠', label: 'Show conflicts', shortcut: '', action: () => { closePalette(); showConflictSummary(); } },
 ];
 
 function openPalette() {
@@ -3817,6 +4318,9 @@ document.addEventListener('keydown', (e) => {
         if (document.getElementById('wfPickerOverlay').classList.contains('active')) { closeWfPicker(); return; }
         if (document.getElementById('msgPanelOverlay').classList.contains('active')) { closeMsgPanel(); return; }
         if (document.getElementById('interactionOverlay').classList.contains('active')) { closeInteraction(); return; }
+        if (document.getElementById('timelineOverlay').style.display !== 'none') { closeTimeline(); return; }
+        if (document.getElementById('pipelineOverlay').style.display !== 'none') { closePipeline(); return; }
+        if (document.getElementById('handoffOverlay').classList.contains('active')) { closeHandoff(); return; }
         return;
     }
 
@@ -3869,10 +4373,55 @@ document.addEventListener('keydown', (e) => {
     // Cmd+Enter — send command bar
     if (e.metaKey && e.key === 'Enter' && state.view === 'grid') { e.preventDefault(); sendCommand(); return; }
 
+    // Cmd+T — activity timeline
+    if (e.metaKey && e.key === 't' && !e.shiftKey) {
+        e.preventDefault();
+        const overlay = document.getElementById('timelineOverlay');
+        overlay.style.display === 'none' ? openTimeline() : closeTimeline();
+        return;
+    }
+
+    // Cmd+F in grid view — focus grid search
+    if (e.metaKey && e.key === 'f' && state.view === 'grid') {
+        e.preventDefault();
+        document.getElementById('gridSearch').focus();
+        return;
+    }
+
     if (isInput) return;
 
     // ? — cheatsheet
     if (e.key === '?' && !e.metaKey) { openCheatsheet(); return; }
+
+    // Arrow keys + hjkl — keyboard grid navigation
+    if (state.view === 'grid') {
+        const navKeys = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', h: 'left', j: 'down', k: 'up', l: 'right' };
+        const dir = navKeys[e.key];
+        if (dir) {
+            e.preventDefault();
+            const cards = getVisibleCards();
+            if (!cards.length) return;
+            const cols = getGridColumns();
+            if (keyboardFocusIdx < 0) { setKeyboardFocus(0); return; }
+            let newIdx = keyboardFocusIdx;
+            if (dir === 'left') newIdx = Math.max(0, keyboardFocusIdx - 1);
+            else if (dir === 'right') newIdx = Math.min(cards.length - 1, keyboardFocusIdx + 1);
+            else if (dir === 'up') newIdx = Math.max(0, keyboardFocusIdx - cols);
+            else if (dir === 'down') newIdx = Math.min(cards.length - 1, keyboardFocusIdx + cols);
+            setKeyboardFocus(newIdx);
+            return;
+        }
+        // Enter — open focused card
+        if (e.key === 'Enter' && keyboardFocusIdx >= 0) {
+            e.preventDefault();
+            const cards = getVisibleCards();
+            if (cards[keyboardFocusIdx]) {
+                const agentId = cards[keyboardFocusIdx].dataset.agentId;
+                if (agentId) openDeepView(agentId);
+            }
+            return;
+        }
+    }
 
     // 1-9 — focus agent
     if (e.key >= '1' && e.key <= '9') {
@@ -3915,7 +4464,7 @@ async function openHistory() {
     const list = document.getElementById('historyList');
     list.innerHTML = '<div class="history-empty">Loading...</div>';
     try {
-        const res = await fetch('/api/history?limit=50');
+        const res = await apiFetch('/api/history?limit=50');
         const result = await res.json();
         const items = result.data || result;
         if (!items.length) {
@@ -3991,7 +4540,11 @@ function openWorkflowRunner() {
         card.innerHTML = `
             <div class="wf-picker-card-icon">${roleIcons.split(' ')[0] || '⚡'}</div>
             <div class="wf-picker-card-info">
-                <div class="wf-picker-card-name">${wf.name}</div>
+                <div class="wf-picker-card-name">${wf.name}${(() => {
+                    let running = false;
+                    state.workflowRuns.forEach(r => { if (r.workflow_id === wf.id && r.status === 'running') running = true; });
+                    return running ? '<span class="wf-picker-running-badge">Running</span>' : '';
+                })()}</div>
                 <div class="wf-picker-card-desc">${wf.description || 'No description'}</div>
                 <div class="wf-picker-card-meta">
                     <span class="agent-count">${agents.length} agent${agents.length !== 1 ? 's' : ''}</span>
@@ -4023,7 +4576,7 @@ async function runWorkflowFromPicker(wfId) {
     const btn = document.querySelector(`.wf-picker-card[data-wfid="${wfId}"] .wf-picker-run-btn`) || document.querySelector('.wf-picker-run-btn');
     await withLoading(btn, async () => {
     try {
-        const res = await fetch(`/api/workflows/${wfId}/run`, {
+        const res = await apiFetch(`/api/workflows/${wfId}/run`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ working_dir: dir || undefined }),
@@ -4544,7 +5097,7 @@ async function saveSettings() {
     }
 
     try {
-        const res = await fetch('/api/config', {
+        const res = await apiFetch('/api/config', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -4629,7 +5182,7 @@ function editWorkflow(wfId) {
         <div id="wfAgentsList">`;
 
     agents.forEach((a, i) => {
-        html += buildWfAgentRow(i, a.role, a.task);
+        html += buildWfAgentRow(i, a.role, a.task, a.depends_on || []);
     });
 
     html += `</div>
@@ -4641,17 +5194,59 @@ function editWorkflow(wfId) {
     content.innerHTML = html;
 }
 
-function buildWfAgentRow(idx, role, task) {
+function buildWfAgentRow(idx, role, task, dependsOn) {
+    dependsOn = dependsOn || [];
     const roleInfo = ROLE_INFO[role] || ROLE_INFO.general;
     const roleOpts = Object.entries(ROLE_INFO).map(([k, v]) =>
         `<option value="${k}" ${k === role ? 'selected' : ''}>${v.icon} ${v.name.split(' ')[0]}</option>`
     ).join('');
-    return `<div class="wf-agent-row" data-idx="${idx}">
+    // Build dependency checkboxes for preceding agents
+    let depsHtml = '';
+    if (idx > 0) {
+        const checks = [];
+        for (let i = 0; i < idx; i++) {
+            const checked = dependsOn.includes(i) ? 'checked' : '';
+            checks.push(`<label class="wf-dep-check"><input type="checkbox" data-dep-idx="${i}" ${checked}> Step ${i + 1}</label>`);
+        }
+        depsHtml = `<div class="wf-deps-wrap"><span class="wf-deps-label">Depends on:</span><div class="wf-deps-checks">${checks.join('')}</div></div>`;
+    }
+    return `<div class="wf-agent-row" data-idx="${idx}" style="flex-wrap:wrap">
         <span class="wf-agent-row-icon" id="wfRowIcon-${idx}">${roleInfo.icon}</span>
         <select onchange="this.parentElement.dataset.role=this.value;document.getElementById('wfRowIcon-${idx}').textContent=this.options[this.selectedIndex].text.split(' ')[0]">${roleOpts}</select>
         <input type="text" value="${(task || '').replace(/"/g, '&quot;')}" placeholder="Task description..." onchange="this.parentElement.dataset.task=this.value">
-        <button class="wf-remove-btn" onclick="this.parentElement.remove()">✕</button>
+        <button class="wf-remove-btn" onclick="removeWfAgent(this)">✕</button>
+        ${depsHtml}
     </div>`;
+}
+
+function removeWfAgent(btn) {
+    btn.parentElement.remove();
+    rebuildWfIndices();
+}
+
+function rebuildWfIndices() {
+    const list = document.getElementById('wfAgentsList');
+    if (!list) return;
+    const rows = list.querySelectorAll('.wf-agent-row');
+    // Collect current data
+    const agents = [];
+    rows.forEach(row => {
+        const role = row.querySelector('select')?.value || 'general';
+        const task = row.querySelector('input[type="text"]')?.value || '';
+        const deps = [];
+        row.querySelectorAll('.wf-dep-check input:checked').forEach(cb => deps.push(parseInt(cb.dataset.depIdx)));
+        agents.push({ role, task, depends_on: deps });
+    });
+    // Re-render with corrected indices
+    list.innerHTML = '';
+    agents.forEach((a, i) => {
+        // Filter out deps that reference removed/invalid indices
+        const validDeps = (a.depends_on || []).filter(d => d < i);
+        list.insertAdjacentHTML('beforeend', buildWfAgentRow(i, a.role, a.task, validDeps));
+        // Re-set the input value (dataset bindings)
+        const newRow = list.children[i];
+        newRow.querySelector('input[type="text"]').value = a.task;
+    });
 }
 
 function duplicateWorkflow(wfId) {
@@ -4674,7 +5269,7 @@ function duplicateWorkflow(wfId) {
         </div>
         <label class="form-label">Agents</label>
         <div id="wfAgentsList">`;
-    agents.forEach((a, i) => { html += buildWfAgentRow(i, a.role, a.task); });
+    agents.forEach((a, i) => { html += buildWfAgentRow(i, a.role, a.task, a.depends_on || []); });
     html += `</div>
         <div class="wf-add-btn" onclick="addWfAgent()">+ Add Agent</div>
         <div class="settings-actions">
@@ -4700,8 +5295,12 @@ async function saveWorkflow() {
     const agents = [];
     rows.forEach(row => {
         const role = row.querySelector('select').value;
-        const task = row.querySelector('input').value.trim();
-        agents.push({ role, task });
+        const task = row.querySelector('input[type="text"]').value.trim();
+        const deps = [];
+        row.querySelectorAll('.wf-dep-check input:checked').forEach(cb => deps.push(parseInt(cb.dataset.depIdx)));
+        const entry = { role, task };
+        if (deps.length > 0) entry.depends_on = deps;
+        agents.push(entry);
     });
 
     if (agents.length === 0) { showToast('Add at least one agent', 'warning'); return; }
@@ -4711,7 +5310,7 @@ async function saveWorkflow() {
 
     await withLoading(btn, async () => {
     try {
-        const res = await fetch(url, {
+        const res = await apiFetch(url, {
             method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, description, agents }),
@@ -4719,7 +5318,7 @@ async function saveWorkflow() {
         if (res.ok) {
             showToast(`Workflow "${name}" saved`, 'success');
             // Refresh workflows
-            const wfRes = await fetch('/api/workflows');
+            const wfRes = await apiFetch('/api/workflows');
             state.workflows = await wfRes.json();
             renderWfList();
         } else {
@@ -4737,10 +5336,10 @@ async function deleteWorkflow(wfId) {
     const ok = await confirmAction('Delete Workflow', `Delete "${wf?.name || wfId}"? This cannot be undone.`, 'Delete', { icon: '🗑️' });
     if (!ok) return;
     try {
-        const res = await fetch(`/api/workflows/${wfId}`, { method: 'DELETE' });
+        const res = await apiFetch(`/api/workflows/${wfId}`, { method: 'DELETE' });
         if (res.ok) {
             showToast('Workflow deleted', 'info');
-            const wfRes = await fetch('/api/workflows');
+            const wfRes = await apiFetch('/api/workflows');
             state.workflows = await wfRes.json();
             renderWfList();
         } else {
@@ -4858,7 +5457,7 @@ async function selectMsgTarget(agentId) {
     const body = document.getElementById('msgPanelBody');
     body.innerHTML = '<div class="msg-panel-empty">Loading...</div>';
     try {
-        const res = await fetch(`/api/agents/${state.focusedAgentId}/messages`);
+        const res = await apiFetch(`/api/agents/${state.focusedAgentId}/messages`);
         const result = await res.json();
         const msgs = result.data || result;
         if (!msgs.length) {
@@ -4913,7 +5512,7 @@ async function deepRegenSummary() {
     if (!state.focusedAgentId) return;
     showToast('Generating AI summary...', 'info');
     try {
-        const res = await fetch(`/api/agents/${state.focusedAgentId}/summarize`, { method: 'POST' });
+        const res = await apiFetch(`/api/agents/${state.focusedAgentId}/summarize`, { method: 'POST' });
         const data = await res.json();
         if (res.ok && data.summary) {
             showToast(`AI: ${data.summary}`, 'success');
@@ -4965,7 +5564,7 @@ async function bulkAction(action) {
     const ok = await confirmAction(`${actionLabel} ${ids.length} Agents`, `${actionLabel} ${ids.length} selected agents?`, actionLabel, { icon: action === 'kill' ? '💀' : '⚡', danger: action === 'kill' });
     if (!ok) return;
     try {
-        const res = await fetch('/api/agents/bulk', {
+        const res = await apiFetch('/api/agents/bulk', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action, agent_ids: ids }),
@@ -5025,7 +5624,7 @@ async function saveEditAgent() {
     const btn = document.getElementById('editAgentSaveBtn');
     await withLoading(btn, async () => {
         try {
-            const res = await fetch(`/api/agents/${editingAgentId}`, {
+            const res = await apiFetch(`/api/agents/${editingAgentId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, task, project_id }),
@@ -5043,7 +5642,291 @@ async function saveEditAgent() {
     }, 'Saving...');
 }
 
+// ── Agent Grid Search/Filter ──
+
+let gridSearchQuery = '';
+
+function filterAgentGrid(query) {
+    gridSearchQuery = (query || '').toLowerCase().trim();
+    const grid = document.getElementById('agentGrid');
+    let visible = 0, total = 0;
+
+    for (const [id, agent] of state.agents) {
+        const card = cardElements.get(id);
+        if (!card) continue;
+        total++;
+
+        if (!gridSearchQuery) {
+            card.style.display = '';
+            visible++;
+            continue;
+        }
+
+        const searchable = [
+            agent.name, agent.role, agent.status, agent.task, agent.summary,
+            agent.backend, agent.project_id,
+        ].filter(Boolean).join(' ').toLowerCase();
+
+        if (searchable.includes(gridSearchQuery)) {
+            card.style.display = '';
+            visible++;
+        } else {
+            card.style.display = 'none';
+        }
+    }
+
+    const countEl = document.getElementById('gridSearchCount');
+    if (gridSearchQuery) {
+        countEl.textContent = `${visible}/${total}`;
+        countEl.style.display = '';
+    } else {
+        countEl.style.display = 'none';
+    }
+}
+
+// ── Activity Timeline ──
+
+let timelineRefreshTimer = null;
+
+function openTimeline() {
+    const overlay = document.getElementById('timelineOverlay');
+    overlay.style.display = '';
+    // Populate agent filter
+    const agentFilter = document.getElementById('timelineAgentFilter');
+    const currentVal = agentFilter.value;
+    agentFilter.innerHTML = '<option value="">All Agents</option>';
+    for (const [id, agent] of state.agents) {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = `${agent.role_icon || '🤖'} ${agent.name}`;
+        agentFilter.appendChild(opt);
+    }
+    agentFilter.value = currentVal;
+    refreshTimeline();
+    // Auto-refresh every 5s
+    timelineRefreshTimer = setInterval(refreshTimeline, 5000);
+}
+
+function closeTimeline() {
+    document.getElementById('timelineOverlay').style.display = 'none';
+    if (timelineRefreshTimer) { clearInterval(timelineRefreshTimer); timelineRefreshTimer = null; }
+}
+
+async function refreshTimeline() {
+    const list = document.getElementById('timelineList');
+    const agentId = document.getElementById('timelineAgentFilter').value;
+    const eventType = document.getElementById('timelineTypeFilter').value;
+
+    let url = '/api/events?limit=100';
+    if (agentId) url += `&agent_id=${encodeURIComponent(agentId)}`;
+    if (eventType) url += `&event_type=${encodeURIComponent(eventType)}`;
+
+    try {
+        const res = await apiFetch(url);
+        const result = await res.json();
+        const events = result.data || result;
+
+        if (!events.length) {
+            list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-dimmed)">No events yet</div>';
+            return;
+        }
+
+        list.innerHTML = '';
+        const badgeColors = {
+            agent_spawned: 'spawned', agent_killed: 'killed', agent_error: 'error',
+            agent_restarted: 'restarted', workflow_started: 'workflow', workflow_completed: 'workflow',
+            workflow_failed: 'error', file_conflict: 'conflict', agent_handoff: 'handoff',
+        };
+
+        events.forEach(evt => {
+            const el = document.createElement('div');
+            el.className = 'timeline-event';
+            const badgeClass = badgeColors[evt.event_type] || '';
+            const relTime = timeAgo(evt.created_at);
+            const agentName = evt.agent_name || '';
+            el.innerHTML = `
+                <span class="timeline-event-badge ${badgeClass}">${evt.event_type.replace('agent_', '').replace('workflow_', 'wf:')}</span>
+                ${agentName ? `<span style="font-weight:600;flex-shrink:0">${agentName}</span>` : ''}
+                <span style="flex:1;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${evt.message || ''}</span>
+                <span style="color:var(--text-dimmed);font-size:11px;flex-shrink:0">${relTime}</span>
+            `;
+            if (evt.agent_id && state.agents.has(evt.agent_id)) {
+                el.style.cursor = 'pointer';
+                el.onclick = () => { closeTimeline(); openDeepView(evt.agent_id); };
+            }
+            list.appendChild(el);
+        });
+    } catch (e) {
+        list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-dimmed)">Failed to load events</div>';
+    }
+}
+
+// ── Pipeline Graph View ──
+
+let pipelineRefreshTimer = null;
+let currentPipelineRunId = null;
+
+function openPipeline(runId) {
+    currentPipelineRunId = runId || null;
+    const overlay = document.getElementById('pipelineOverlay');
+    overlay.style.display = '';
+    if (runId) {
+        refreshPipelineGraph(runId);
+        pipelineRefreshTimer = setInterval(() => refreshPipelineGraph(runId), 3000);
+    } else {
+        // Show all active workflow runs
+        loadWorkflowRuns();
+    }
+}
+
+function closePipeline() {
+    document.getElementById('pipelineOverlay').style.display = 'none';
+    if (pipelineRefreshTimer) { clearInterval(pipelineRefreshTimer); pipelineRefreshTimer = null; }
+    currentPipelineRunId = null;
+}
+
+async function loadWorkflowRuns() {
+    const graph = document.getElementById('pipelineGraph');
+    try {
+        const res = await apiFetch('/api/workflow-runs');
+        const runs = await res.json();
+        if (!runs.length) {
+            graph.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dimmed)">No active pipeline runs</div>';
+            return;
+        }
+        graph.innerHTML = '';
+        runs.forEach(run => {
+            const card = document.createElement('div');
+            card.style.cssText = 'padding:12px;background:var(--bg-card);border-radius:12px;margin-bottom:8px;cursor:pointer;border:1px solid var(--border)';
+            const statusColor = run.status === 'completed' ? 'var(--success)' : run.status === 'failed' ? 'var(--danger)' : 'var(--accent)';
+            card.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <span style="font-weight:600">${run.workflow_name || run.id}</span>
+                    <span style="color:${statusColor};font-size:12px;font-weight:600">${run.status}</span>
+                </div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">${Object.keys(run.agent_map || {}).length} agents</div>
+            `;
+            card.onclick = () => {
+                currentPipelineRunId = run.id;
+                refreshPipelineGraph(run.id);
+                if (pipelineRefreshTimer) clearInterval(pipelineRefreshTimer);
+                pipelineRefreshTimer = setInterval(() => refreshPipelineGraph(run.id), 3000);
+            };
+            graph.appendChild(card);
+        });
+    } catch (e) {
+        graph.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dimmed)">Failed to load pipeline runs</div>';
+    }
+}
+
+async function refreshPipelineGraph(runId) {
+    const graph = document.getElementById('pipelineGraph');
+    try {
+        const res = await apiFetch(`/api/workflow-runs/${runId}`);
+        if (!res.ok) { graph.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dimmed)">Run not found</div>'; return; }
+        const run = await res.json();
+
+        document.getElementById('pipelineName').textContent = run.workflow_name || 'Pipeline';
+        const statusEl = document.getElementById('pipelineStatus');
+        statusEl.textContent = run.status;
+        statusEl.style.color = run.status === 'completed' ? 'var(--success)' : run.status === 'failed' ? 'var(--danger)' : 'var(--accent)';
+
+        renderPipelineDAG(graph, run);
+
+        // Stop refresh if run is done
+        if (run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') {
+            if (pipelineRefreshTimer) { clearInterval(pipelineRefreshTimer); pipelineRefreshTimer = null; }
+        }
+    } catch (e) {
+        graph.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dimmed)">Failed to load pipeline</div>';
+    }
+}
+
+function renderPipelineDAG(container, run) {
+    const specs = run.agent_specs || [];
+    const agentMap = run.agent_map || {};
+    const completedIds = new Set(run.completed_ids || []);
+    const failedIds = new Set(run.failed_ids || []);
+    const runningIds = new Set(run.running_ids || []);
+
+    // Build depth levels via topological sort
+    const depths = new Array(specs.length).fill(0);
+    for (let i = 0; i < specs.length; i++) {
+        const deps = specs[i].depends_on || [];
+        for (const d of deps) {
+            depths[i] = Math.max(depths[i], depths[d] + 1);
+        }
+    }
+    const maxDepth = Math.max(0, ...depths);
+
+    container.innerHTML = '';
+    for (let d = 0; d <= maxDepth; d++) {
+        if (d > 0) {
+            const connector = document.createElement('div');
+            connector.className = 'pipeline-connector';
+            container.appendChild(connector);
+        }
+        const row = document.createElement('div');
+        row.className = 'pipeline-row';
+        specs.forEach((spec, idx) => {
+            if (depths[idx] !== d) return;
+            const agentId = agentMap[String(idx)];
+            let nodeState = 'pending';
+            if (agentId) {
+                if (completedIds.has(agentId)) nodeState = 'completed';
+                else if (failedIds.has(agentId)) nodeState = 'failed';
+                else if (runningIds.has(agentId)) nodeState = 'running';
+            }
+            const info = ROLE_INFO[spec.role] || ROLE_INFO.general;
+            const node = document.createElement('div');
+            node.className = `pipeline-node ${nodeState}`;
+            node.innerHTML = `
+                <div class="pipeline-node-icon">${info.icon}</div>
+                <div class="pipeline-node-name">${spec.name || info.name.split(' ')[0]}</div>
+                <div class="pipeline-node-status">${nodeState}</div>
+            `;
+            if (agentId && state.agents.has(agentId)) {
+                node.style.cursor = 'pointer';
+                node.onclick = () => { closePipeline(); openDeepView(agentId); };
+            }
+            row.appendChild(node);
+        });
+        container.appendChild(row);
+    }
+}
+
+// ── Keyboard Grid Navigation ──
+
+let keyboardFocusIdx = -1;
+
+function getVisibleCards() {
+    return [...document.querySelectorAll('.agent-card:not([style*="display: none"]):not(.exiting)')];
+}
+
+function setKeyboardFocus(idx) {
+    const cards = getVisibleCards();
+    // Remove previous focus
+    document.querySelectorAll('.agent-card.keyboard-focused').forEach(c => c.classList.remove('keyboard-focused'));
+    if (idx < 0 || idx >= cards.length) { keyboardFocusIdx = -1; return; }
+    keyboardFocusIdx = idx;
+    cards[idx].classList.add('keyboard-focused');
+    cards[idx].scrollIntoView({ block: 'nearest' });
+}
+
+function getGridColumns() {
+    const grid = document.getElementById('agentGrid');
+    const style = getComputedStyle(grid);
+    const columns = style.gridTemplateColumns;
+    return columns ? columns.split(' ').length : 4;
+}
+
 // ── Init ──
+
+// Add timeline + pipeline to command palette
+PALETTE_ACTIONS.push(
+    { icon: '📋', label: 'Activity Timeline', shortcut: '⌘T', action: () => { closePalette(); openTimeline(); } },
+    { icon: '🔀', label: 'Pipeline Graph', shortcut: '', action: () => { closePalette(); openPipeline(); } },
+);
 
 socket.connect();
 renderAgentGrid();

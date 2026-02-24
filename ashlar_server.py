@@ -84,6 +84,27 @@ def _strip_ansi(text: str) -> str:
     return _ANSI_ESCAPE_RE.sub('', text)
 
 
+# ── Secret Redaction ──
+
+_SECRET_PATTERNS = [
+    re.compile(r'\b(sk-[a-zA-Z0-9]{20,})'),           # OpenAI/Anthropic API keys
+    re.compile(r'\b(ghp_[a-zA-Z0-9]{36,})'),           # GitHub PATs
+    re.compile(r'\b(xai-[a-zA-Z0-9]{20,})'),           # xAI API keys
+    re.compile(r'\b(AKIA[A-Z0-9]{16})'),               # AWS access keys
+    re.compile(r'\b(Bearer\s+[a-zA-Z0-9\-._~+/]{20,})'),  # Bearer tokens
+    re.compile(r'(?i)\bpassword\s*[=:]\s*\S+'),        # password= fields
+    re.compile(r'\beyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}'),  # JWT tokens
+]
+
+
+def redact_secrets(text: str) -> str:
+    """Replace secret patterns with redacted placeholders."""
+    result = text
+    for pattern in _SECRET_PATTERNS:
+        result = pattern.sub('****[REDACTED]', result)
+    return result
+
+
 def print_banner() -> None:
     print("\n\033[36m", end="")
     print("  ╔═══════════════════════════════════╗")
@@ -117,7 +138,7 @@ def check_dependencies() -> bool:
 # ─────────────────────────────────────────────
 
 DEFAULT_CONFIG = {
-    "server": {"host": "127.0.0.1", "port": 5000, "log_level": "INFO"},
+    "server": {"host": "127.0.0.1", "port": 5000, "log_level": "INFO", "require_auth": False, "auth_token": ""},
     "agents": {
         "max_concurrent": 16,
         "default_role": "general",
@@ -167,6 +188,9 @@ class Config:
     claude_command: str = "claude"
     claude_args: list = field(default_factory=lambda: ["--dangerously-skip-permissions"])
     demo_mode: bool = False
+    # Auth
+    require_auth: bool = False
+    auth_token: str = ""
     # Multi-backend support
     backends: dict = field(default_factory=lambda: {
         "claude-code": {"command": "claude", "args": ["--dangerously-skip-permissions"]},
@@ -195,7 +219,7 @@ class Config:
             "memory_limit_mb": self.memory_limit_mb,
             "demo_mode": self.demo_mode,
             "default_backend": self.default_backend,
-            "backends": {k: {"command": v.get("command", ""), "available": bool(shutil.which(v.get("command", "")))} for k, v in self.backends.items()},
+            "backends": {k: {"command": v.get("command", ""), "available": bool(shutil.which(v.get("command", "")))} for k, v in self.backends.items() if isinstance(v, dict)},
             "llm_enabled": self.llm_enabled,
             "llm_provider": self.llm_provider,
             "llm_model": self.llm_model,
@@ -252,6 +276,27 @@ def load_config(has_claude: bool = True) -> Config:
     api_key_env = llm.get("api_key_env", "XAI_API_KEY")
     llm_api_key = os.environ.get(api_key_env, "")
 
+    # Auth config
+    require_auth = server.get("require_auth", False)
+    auth_token = server.get("auth_token", "")
+    if require_auth and not auth_token:
+        # Auto-generate a 24-char token
+        import secrets as _secrets
+        auth_token = _secrets.token_urlsafe(18)
+        log.info(f"Auto-generated auth token: {auth_token}")
+        # Save it back to config
+        try:
+            if config_path.exists():
+                with open(config_path) as f:
+                    raw_yaml = yaml.safe_load(f) or {}
+            else:
+                raw_yaml = {}
+            raw_yaml.setdefault("server", {})["auth_token"] = auth_token
+            with open(config_path, "w") as f:
+                yaml.dump(raw_yaml, f, default_flow_style=False, sort_keys=False)
+        except Exception:
+            pass
+
     return Config(
         host=server.get("host", "127.0.0.1"),
         port=server.get("port", 5000),
@@ -264,6 +309,8 @@ def load_config(has_claude: bool = True) -> Config:
         claude_command=claude_backend.get("command", "claude"),
         claude_args=claude_backend.get("args", ["--dangerously-skip-permissions"]),
         demo_mode=not has_claude,
+        require_auth=require_auth,
+        auth_token=auth_token,
         backends=backends or DEFAULT_CONFIG["agents"]["backends"],
         default_backend=agents.get("default_backend", "claude-code"),
         llm_enabled=llm.get("enabled", False) and bool(llm_api_key),
@@ -279,6 +326,82 @@ def load_config(has_claude: bool = True) -> Config:
 # ─────────────────────────────────────────────
 # Section 3: Data Models
 # ─────────────────────────────────────────────
+
+@dataclass
+class BackendConfig:
+    """Rich configuration for an agent backend CLI tool."""
+    command: str
+    args: list[str] = field(default_factory=list)
+    available: bool = False
+    # Orchestration capabilities
+    supports_json_output: bool = False
+    supports_system_prompt: bool = False
+    supports_tool_restriction: bool = False
+    supports_session_resume: bool = False
+    supports_model_select: bool = False
+    # Automation
+    auto_approve_flag: str = ""
+    # Status detection overrides (merge with defaults)
+    status_patterns: dict[str, list[str]] = field(default_factory=dict)
+    # Cost rates (per 1K tokens)
+    cost_input_per_1k: float = 0.003
+    cost_output_per_1k: float = 0.015
+
+    def to_dict(self) -> dict:
+        return {
+            "command": self.command,
+            "args": self.args,
+            "available": self.available,
+            "supports_json_output": self.supports_json_output,
+            "supports_system_prompt": self.supports_system_prompt,
+            "supports_tool_restriction": self.supports_tool_restriction,
+            "supports_session_resume": self.supports_session_resume,
+            "supports_model_select": self.supports_model_select,
+            "auto_approve_flag": self.auto_approve_flag,
+            "cost_input_per_1k": self.cost_input_per_1k,
+            "cost_output_per_1k": self.cost_output_per_1k,
+        }
+
+
+KNOWN_BACKENDS: dict[str, BackendConfig] = {
+    "claude-code": BackendConfig(
+        command="claude",
+        args=["--dangerously-skip-permissions"],
+        supports_json_output=True,
+        supports_system_prompt=True,
+        supports_tool_restriction=True,
+        supports_session_resume=True,
+        supports_model_select=True,
+        auto_approve_flag="--dangerously-skip-permissions",
+        cost_input_per_1k=0.003,
+        cost_output_per_1k=0.015,
+    ),
+    "codex": BackendConfig(
+        command="codex",
+        args=[],
+        supports_json_output=True,
+        auto_approve_flag="--full-auto",
+        cost_input_per_1k=0.003,
+        cost_output_per_1k=0.012,
+    ),
+    "aider": BackendConfig(
+        command="aider",
+        args=[],
+        supports_model_select=True,
+        auto_approve_flag="-y",
+        cost_input_per_1k=0.003,
+        cost_output_per_1k=0.015,
+    ),
+    "goose": BackendConfig(
+        command="goose",
+        args=[],
+        supports_session_resume=True,
+        auto_approve_flag="-y",
+        cost_input_per_1k=0.003,
+        cost_output_per_1k=0.015,
+    ),
+}
+
 
 @dataclass
 class Role:
@@ -396,6 +519,15 @@ class Agent:
     _last_needs_input_event: float = field(default=0.0, repr=False)
     _last_llm_summary_time: float = field(default=0.0, repr=False)
     _llm_summary: str = field(default="", repr=False)
+    # Orchestration fields
+    model: str | None = None
+    tools_allowed: list[str] | None = None
+    session_id: str | None = None
+    system_prompt: str | None = None
+    workflow_run_id: str | None = None
+    tokens_input: int = 0
+    tokens_output: int = 0
+    estimated_cost_usd: float = 0.0
     unread_messages: int = field(default=0, repr=False)
     _first_output_received: bool = field(default=False, repr=False)
     _output_line_timestamps: collections.deque = field(
@@ -437,6 +569,12 @@ class Agent:
             "time_to_first_output": round(self.time_to_first_output, 2),
             "total_output_lines": self.total_output_lines,
             "output_rate": round(self.output_rate, 1),
+            "model": self.model,
+            "tools_allowed": self.tools_allowed,
+            "workflow_run_id": self.workflow_run_id,
+            "tokens_input": self.tokens_input,
+            "tokens_output": self.tokens_output,
+            "estimated_cost_usd": round(self.estimated_cost_usd, 4),
         }
 
     def to_dict_full(self) -> dict:
@@ -485,12 +623,84 @@ class SystemMetrics:
 # Section 4: AgentManager — THE CORE
 # ─────────────────────────────────────────────
 
+@dataclass
+class WorkflowRun:
+    """Tracks a running workflow pipeline with dependency management."""
+    id: str
+    workflow_id: str
+    workflow_name: str
+    agent_specs: list[dict]
+    agent_map: dict[int, str] = field(default_factory=dict)  # spec_index → agent_id
+    pending_indices: set[int] = field(default_factory=set)
+    running_ids: set[str] = field(default_factory=set)
+    completed_ids: set[str] = field(default_factory=set)
+    failed_ids: set[str] = field(default_factory=set)
+    status: str = "running"  # running|completed|failed|cancelled
+    working_dir: str = ""
+    created_at: str = ""
+    completed_at: str | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "workflow_id": self.workflow_id,
+            "workflow_name": self.workflow_name,
+            "agent_specs": self.agent_specs,
+            "agent_map": {str(k): v for k, v in self.agent_map.items()},
+            "pending_indices": list(self.pending_indices),
+            "running_ids": list(self.running_ids),
+            "completed_ids": list(self.completed_ids),
+            "failed_ids": list(self.failed_ids),
+            "status": self.status,
+            "working_dir": self.working_dir,
+            "created_at": self.created_at,
+            "completed_at": self.completed_at,
+        }
+
+
 class AgentManager:
     def __init__(self, config: Config):
         self.config = config
         self.agents: dict[str, Agent] = {}
         self.tmux_prefix = "ashlar"
         self._loop: asyncio.AbstractEventLoop | None = None
+        # Rich backend configs
+        self.backend_configs: dict[str, BackendConfig] = self._build_backend_configs()
+        # Workflow run tracking
+        self.workflow_runs: dict[str, WorkflowRun] = {}
+        # File activity tracking for conflict detection
+        self.file_activity: dict[str, set[str]] = {}  # file_path → set of agent_ids
+
+    def _build_backend_configs(self) -> dict[str, BackendConfig]:
+        """Build BackendConfig objects from known defaults + user config."""
+        configs: dict[str, BackendConfig] = {}
+        # Start with known defaults
+        for name, bc in KNOWN_BACKENDS.items():
+            configs[name] = BackendConfig(
+                command=bc.command, args=list(bc.args), available=False,
+                supports_json_output=bc.supports_json_output,
+                supports_system_prompt=bc.supports_system_prompt,
+                supports_tool_restriction=bc.supports_tool_restriction,
+                supports_session_resume=bc.supports_session_resume,
+                supports_model_select=bc.supports_model_select,
+                auto_approve_flag=bc.auto_approve_flag,
+                cost_input_per_1k=bc.cost_input_per_1k,
+                cost_output_per_1k=bc.cost_output_per_1k,
+            )
+        # Override with user config
+        for name, cfg in self.config.backends.items():
+            if name in configs:
+                configs[name].command = cfg.get("command", configs[name].command)
+                configs[name].args = cfg.get("args", configs[name].args)
+            else:
+                configs[name] = BackendConfig(
+                    command=cfg.get("command", name),
+                    args=cfg.get("args", []),
+                )
+        # Detect availability
+        for name, bc in configs.items():
+            bc.available = bool(shutil.which(bc.command))
+        return configs
 
     @property
     def loop(self) -> asyncio.AbstractEventLoop:
@@ -583,6 +793,10 @@ class AgentManager:
         task: str = "",
         plan_mode: bool = False,
         backend: str = "claude-code",
+        model: str | None = None,
+        tools: list[str] | None = None,
+        system_prompt_extra: str | None = None,
+        resume_session: str | None = None,
     ) -> Agent:
         """Spawn a new agent. Returns the Agent object."""
         if len(self.agents) >= self.config.max_agents:
@@ -648,6 +862,9 @@ class AgentManager:
             tmux_session=session_name,
             created_at=now,
             updated_at=now,
+            model=model,
+            tools_allowed=tools,
+            system_prompt=system_prompt_extra,
             _spawn_time=time.monotonic(),
         )
         agent.last_output_time = time.monotonic()
@@ -678,34 +895,71 @@ class AgentManager:
             demo_script = self._build_demo_script(role, task, agent)
             await self._tmux_send_keys(session_name, demo_script)
         else:
-            # Real mode: launch backend CLI (claude, codex, or custom)
-            try:
-                cmd_bin, cmd_args = self._resolve_backend_command(backend)
-            except ValueError as e:
-                agent.status = "error"
-                agent.error_message = str(e)
-                log.error(f"Backend resolution failed for {backend}: {e}")
-                return agent
+            # Real mode: launch backend CLI using BackendConfig capabilities
+            bc = self.backend_configs.get(backend)
+            if not bc or not bc.available:
+                try:
+                    cmd_bin, cmd_args = self._resolve_backend_command(backend)
+                    bc = BackendConfig(command=cmd_bin, args=cmd_args, available=True)
+                except ValueError as e:
+                    agent.status = "error"
+                    agent.error_message = str(e)
+                    log.error(f"Backend resolution failed for {backend}: {e}")
+                    return agent
 
-            cmd_parts = [cmd_bin] + cmd_args
-            cmd = " ".join(cmd_parts)
+            cmd_parts = [bc.command]
+
+            # Auto-approve flag (already in args for claude-code, but ensure it's there)
+            if bc.auto_approve_flag and bc.auto_approve_flag not in bc.args:
+                cmd_parts.append(bc.auto_approve_flag)
+            else:
+                cmd_parts.extend(bc.args)
+
+            # Model selection
+            if model and bc.supports_model_select:
+                cmd_parts.extend(["--model", model])
+
+            # Tool restriction
+            if tools and bc.supports_tool_restriction:
+                cmd_parts.extend(["--allowedTools", ",".join(tools)])
+
+            # System prompt injection (role context + predecessor output)
+            role_obj = BUILTIN_ROLES.get(role, BUILTIN_ROLES["general"])
+            role_prompt = f"You are a {role_obj.name}. {role_obj.system_prompt}"
+            full_system = role_prompt
+            if system_prompt_extra:
+                full_system += f"\n\n{system_prompt_extra}"
+            if bc.supports_system_prompt:
+                cmd_parts.extend(["--append-system-prompt", full_system])
+                agent.system_prompt = full_system
+
+            # Session resume
+            if resume_session and bc.supports_session_resume:
+                cmd_parts.extend(["--resume", resume_session])
+                agent.session_id = resume_session
+
+            # Build command string
+            cmd = " ".join(f"'{p}'" if " " in p else p for p in cmd_parts)
             await self._tmux_send_keys(session_name, cmd)
 
             # Wait for CLI to start up
             await asyncio.sleep(3)
 
-            # Send role system prompt as first message
-            role_obj = BUILTIN_ROLES.get(role)
-            if role_obj and role_obj.system_prompt and task:
-                # Combine role context with task
-                full_message = f"{role_obj.system_prompt}\n\nYour task: {task}"
-                # Send each line separately for long messages
-                for line in full_message.split("\n"):
-                    if line.strip():
-                        await self._tmux_send_keys(session_name, line)
-                        await asyncio.sleep(0.1)
-            elif task:
-                await self._tmux_send_keys(session_name, task)
+            # Send task as first message
+            if bc.supports_system_prompt:
+                # System prompt already injected via CLI flag — just send task
+                if task:
+                    await self._tmux_send_keys(session_name, task)
+            else:
+                # Fallback: send role context + task as first message
+                if role_obj and role_obj.system_prompt and task:
+                    full_message = f"{role_obj.system_prompt}\n\nYour task: {task}"
+                    for line in full_message.split("\n"):
+                        if line.strip():
+                            await self._tmux_send_keys(session_name, line)
+                            await asyncio.sleep(0.1)
+                elif task:
+                    await self._tmux_send_keys(session_name, task)
 
         agent.status = "working"
         agent.updated_at = datetime.now(timezone.utc).isoformat()
@@ -914,6 +1168,7 @@ class AgentManager:
             except Exception:
                 pass
 
+        self._cleanup_file_activity(agent_id)
         del self.agents[agent_id]
         return True
 
@@ -1131,14 +1386,31 @@ class AgentManager:
                 # Couldn't match — treat all as new
                 new_lines = raw_lines
 
+        # Apply secret redaction
+        new_lines = [redact_secrets(line) for line in new_lines]
+
         # Update ring buffer (only new lines, not the full capture)
         for line in new_lines:
             agent.output_lines.append(line)
 
-        # Track total chars for context estimation
-        agent._total_chars += sum(len(l) for l in new_lines)
+        # Track total chars for context estimation and cost tracking
+        chars_added = sum(len(l) for l in new_lines)
+        agent._total_chars += chars_added
         # ~3.5 chars/token for English, 200K context window
         agent.context_pct = min(1.0, (agent._total_chars / 3.5) / 200000)
+
+        # Token/cost estimation
+        tokens_est = int(chars_added / 3.5)
+        agent.tokens_output += tokens_est
+        # Estimate input tokens as ~50% of output (heuristic for interactive agents)
+        agent.tokens_input = int(agent.tokens_output * 0.5)
+        # Compute cost from backend config rates
+        bc = self.backend_configs.get(agent.backend)
+        if bc:
+            agent.estimated_cost_usd = (
+                (agent.tokens_input / 1000) * bc.cost_input_per_1k +
+                (agent.tokens_output / 1000) * bc.cost_output_per_1k
+            )
 
         return new_lines
 
@@ -1154,7 +1426,10 @@ class AgentManager:
         if not recent:
             return agent.status
 
-        return parse_agent_status(recent, agent)
+        # Get backend-specific patterns if available
+        bc = self.backend_configs.get(agent.backend)
+        bp = bc.status_patterns if bc else None
+        return parse_agent_status(recent, agent, bp)
 
     async def get_agent_memory(self, agent_id: str) -> float:
         """Get RSS memory of agent's process tree in MB."""
@@ -1173,6 +1448,174 @@ class AgentManager:
             return round(total / 1e6, 1)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return 0.0
+
+    # ── Workflow dependency resolution ──
+
+    def _get_ready_indices(self, wf_run: WorkflowRun) -> list[int]:
+        """Get spec indices whose dependencies are all satisfied."""
+        ready = []
+        for idx in list(wf_run.pending_indices):
+            spec = wf_run.agent_specs[idx]
+            deps = spec.get("depends_on", [])
+            if not deps:
+                ready.append(idx)
+                continue
+            # Check if all deps have completed
+            all_done = all(
+                wf_run.agent_map.get(d) in wf_run.completed_ids
+                for d in deps
+            )
+            if all_done:
+                ready.append(idx)
+        return ready
+
+    def _build_dep_context(self, wf_run: WorkflowRun, spec_idx: int) -> str:
+        """Build context from predecessor agents' summaries and output."""
+        spec = wf_run.agent_specs[spec_idx]
+        deps = spec.get("depends_on", [])
+        if not deps:
+            return ""
+        parts = ["## Context from predecessor agents:\n"]
+        for dep_idx in deps:
+            dep_agent_id = wf_run.agent_map.get(dep_idx)
+            if not dep_agent_id:
+                continue
+            dep_agent = self.agents.get(dep_agent_id)
+            if dep_agent:
+                dep_spec = wf_run.agent_specs[dep_idx]
+                parts.append(f"### Agent '{dep_agent.name}' ({dep_spec.get('role', 'general')})")
+                parts.append(f"Task: {dep_agent.task}")
+                parts.append(f"Summary: {dep_agent.summary}")
+                # Include last 20 lines of output
+                recent = list(dep_agent.output_lines)[-20:]
+                if recent:
+                    parts.append(f"Recent output:\n```\n{chr(10).join(recent)}\n```")
+                parts.append("")
+        return "\n".join(parts)
+
+    async def resolve_workflow_deps(self, wf_run: WorkflowRun, hub: Any = None) -> None:
+        """Check and spawn any agents whose deps are now satisfied."""
+        if wf_run.status != "running":
+            return
+        ready = self._get_ready_indices(wf_run)
+        for idx in ready:
+            spec = wf_run.agent_specs[idx]
+            wf_run.pending_indices.discard(idx)
+            # Build context from predecessors
+            dep_context = self._build_dep_context(wf_run, idx)
+            try:
+                agent = await self.spawn(
+                    role=spec.get("role", "general"),
+                    name=spec.get("name"),
+                    working_dir=spec.get("working_dir") or wf_run.working_dir,
+                    task=spec.get("task", ""),
+                    backend=spec.get("backend", self.config.default_backend),
+                    model=spec.get("model"),
+                    tools=spec.get("tools"),
+                    system_prompt_extra=dep_context if dep_context else None,
+                )
+                wf_run.agent_map[idx] = agent.id
+                wf_run.running_ids.add(agent.id)
+                agent.workflow_run_id = wf_run.id
+                agent.related_agents = [
+                    aid for aid in list(wf_run.running_ids) + list(wf_run.completed_ids)
+                    if aid != agent.id
+                ]
+                if hub:
+                    await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
+                    await hub.broadcast_event(
+                        "workflow_agent_spawned",
+                        f"Pipeline '{wf_run.workflow_name}': agent {agent.name} started (deps satisfied)",
+                        agent.id, agent.name,
+                        {"workflow_run_id": wf_run.id, "spec_index": idx},
+                    )
+            except ValueError as e:
+                log.warning(f"Workflow dep spawn failed for spec {idx}: {e}")
+                wf_run.failed_ids.add(f"spec_{idx}")
+
+        # Check if workflow is complete or failed
+        if not wf_run.pending_indices and not wf_run.running_ids:
+            wf_run.status = "completed" if not wf_run.failed_ids else "failed"
+            wf_run.completed_at = datetime.now(timezone.utc).isoformat()
+            if hub:
+                await hub.broadcast_event(
+                    f"workflow_{wf_run.status}",
+                    f"Workflow '{wf_run.workflow_name}' {wf_run.status}",
+                    metadata={"workflow_run_id": wf_run.id},
+                )
+
+    def on_agent_complete(self, agent_id: str) -> WorkflowRun | None:
+        """Called when an agent completes. Returns the WorkflowRun if the agent was part of one."""
+        for wf_run in self.workflow_runs.values():
+            if agent_id in wf_run.running_ids:
+                wf_run.running_ids.discard(agent_id)
+                wf_run.completed_ids.add(agent_id)
+                return wf_run
+        return None
+
+    def on_agent_failed(self, agent_id: str) -> WorkflowRun | None:
+        """Called when an agent fails. Marks downstream deps as blocked."""
+        for wf_run in self.workflow_runs.values():
+            if agent_id in wf_run.running_ids:
+                wf_run.running_ids.discard(agent_id)
+                wf_run.failed_ids.add(agent_id)
+                # Block any pending specs that depend on this one
+                failed_idx = None
+                for idx, aid in wf_run.agent_map.items():
+                    if aid == agent_id:
+                        failed_idx = idx
+                        break
+                if failed_idx is not None:
+                    to_block = set()
+                    for idx in list(wf_run.pending_indices):
+                        deps = wf_run.agent_specs[idx].get("depends_on", [])
+                        if failed_idx in deps:
+                            to_block.add(idx)
+                    for idx in to_block:
+                        wf_run.pending_indices.discard(idx)
+                        wf_run.failed_ids.add(f"blocked_spec_{idx}")
+                return wf_run
+        return None
+
+    # ── File conflict detection ──
+
+    _ACTIVE_FILE_RE = re.compile(
+        r"(?i)(?:writing|editing|creating|modifying|updating|reading|Tool Use:.*(?:Edit|Write))\s+[\'\"]?([/\w\-./]+\.\w{1,8})[\'\"]?"
+    )
+
+    def _check_file_conflicts(self, agent_id: str, lines: list[str]) -> list[dict]:
+        """Parse output for file operations and check for conflicts with other active agents."""
+        conflicts = []
+        for line in lines:
+            stripped = _strip_ansi(line)
+            match = self._ACTIVE_FILE_RE.search(stripped)
+            if not match:
+                continue
+            file_path = match.group(1)
+            # Register this agent's activity on the file
+            if file_path not in self.file_activity:
+                self.file_activity[file_path] = set()
+            self.file_activity[file_path].add(agent_id)
+            # Check if another ACTIVE agent is also working on this file
+            other_agents = self.file_activity[file_path] - {agent_id}
+            for other_id in other_agents:
+                other = self.agents.get(other_id)
+                if other and other.status in ("working", "planning", "reading"):
+                    conflicts.append({
+                        "file_path": file_path,
+                        "agent_id": agent_id,
+                        "agent_name": self.agents[agent_id].name if agent_id in self.agents else agent_id,
+                        "other_agent_id": other_id,
+                        "other_agent_name": other.name,
+                    })
+        return conflicts
+
+    def _cleanup_file_activity(self, agent_id: str) -> None:
+        """Remove an agent from all file activity tracking."""
+        for file_path in list(self.file_activity.keys()):
+            self.file_activity[file_path].discard(agent_id)
+            if not self.file_activity[file_path]:
+                del self.file_activity[file_path]
 
     def cleanup_all(self) -> None:
         """Kill all ashlar tmux sessions and clean temp files. Synchronous for shutdown."""
@@ -1272,10 +1715,11 @@ WAITING_LINE_PATTERNS = [
 ]
 
 
-def parse_agent_status(recent_lines: list[str], agent: Agent) -> str:
+def parse_agent_status(recent_lines: list[str], agent: Agent, backend_patterns: dict[str, list[str]] | None = None) -> str:
     """Parse recent terminal output to detect agent status.
     Priority: waiting > error > reading > planning > working > complete > current status.
-    Tracks non-fatal error mentions for health scoring without flipping status."""
+    Tracks non-fatal error mentions for health scoring without flipping status.
+    backend_patterns override defaults for specific status categories."""
     text_block = "\n".join(recent_lines)
     tail_text = "\n".join(recent_lines[-5:])
 
@@ -1648,6 +2092,13 @@ class Database:
     async def init(self) -> None:
         self._db = await aiosqlite.connect(str(self.db_path))
         self._db.row_factory = aiosqlite.Row
+
+        # SQLite performance PRAGMAs
+        await self._db.execute("PRAGMA journal_mode=WAL")
+        await self._db.execute("PRAGMA busy_timeout=5000")
+        await self._db.execute("PRAGMA synchronous=NORMAL")
+        await self._db.execute("PRAGMA cache_size=-8000")
+
         await self._db.executescript("""
             CREATE TABLE IF NOT EXISTS agents_history (
                 id TEXT PRIMARY KEY,
@@ -1692,8 +2143,44 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_history_completed ON agents_history(completed_at);
             CREATE INDEX IF NOT EXISTS idx_messages_from ON agent_messages(from_agent_id);
             CREATE INDEX IF NOT EXISTS idx_messages_created ON agent_messages(created_at);
+
+            CREATE TABLE IF NOT EXISTS activity_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL,
+                agent_id TEXT,
+                agent_name TEXT,
+                message TEXT,
+                metadata_json TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_events(created_at);
+            CREATE INDEX IF NOT EXISTS idx_activity_agent ON activity_events(agent_id);
+            CREATE INDEX IF NOT EXISTS idx_activity_type ON activity_events(event_type);
+
+            CREATE TABLE IF NOT EXISTS file_locks (
+                file_path TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                agent_name TEXT,
+                locked_at TEXT NOT NULL,
+                PRIMARY KEY (file_path, agent_id)
+            );
         """)
         await self._db.commit()
+
+        # Safe migrations: add columns if missing
+        try:
+            await self._db.execute("ALTER TABLE agent_messages ADD COLUMN message_type TEXT DEFAULT 'text'")
+            await self._db.commit()
+        except Exception:
+            pass  # Column already exists
+
+        try:
+            await self._db.execute("ALTER TABLE agents_history ADD COLUMN tokens_input INTEGER DEFAULT 0")
+            await self._db.execute("ALTER TABLE agents_history ADD COLUMN tokens_output INTEGER DEFAULT 0")
+            await self._db.execute("ALTER TABLE agents_history ADD COLUMN estimated_cost_usd REAL DEFAULT 0.0")
+            await self._db.commit()
+        except Exception:
+            pass  # Columns already exist
 
         # Seed built-in workflows if empty
         async with self._db.execute("SELECT COUNT(*) FROM workflows") as cur:
@@ -1755,11 +2242,13 @@ class Database:
         await self._db.execute(
             """INSERT OR REPLACE INTO agents_history
                (id, name, role, project_id, task, summary, status, working_dir,
-                backend, created_at, completed_at, duration_sec, context_pct, output_preview)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                backend, created_at, completed_at, duration_sec, context_pct, output_preview,
+                tokens_input, tokens_output, estimated_cost_usd)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (agent.id, agent.name, agent.role, agent.project_id, agent.task,
              agent.summary, agent.status, agent.working_dir, agent.backend,
-             agent.created_at, completed_at, duration, agent.context_pct, output_preview),
+             agent.created_at, completed_at, duration, agent.context_pct, output_preview,
+             agent.tokens_input, agent.tokens_output, agent.estimated_cost_usd),
         )
         await self._db.commit()
 
@@ -1906,6 +2395,165 @@ class Database:
             row = await cur.fetchone()
             return row[0] if row else 0
 
+    # ── Activity Events ──
+
+    async def log_event(
+        self,
+        event_type: str,
+        message: str,
+        agent_id: str | None = None,
+        agent_name: str | None = None,
+        metadata: dict | None = None,
+    ) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        metadata_json = json.dumps(metadata) if metadata else None
+        try:
+            await self._db.execute(
+                """INSERT INTO activity_events (event_type, agent_id, agent_name, message, metadata_json, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (event_type, agent_id, agent_name, message, metadata_json, now),
+            )
+            await self._db.commit()
+        except Exception as e:
+            log.debug(f"Failed to log event: {e}")
+
+    async def get_events(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        agent_id: str | None = None,
+        event_type: str | None = None,
+        since: str | None = None,
+    ) -> list[dict]:
+        conditions = []
+        params: list = []
+        if agent_id:
+            conditions.append("agent_id = ?")
+            params.append(agent_id)
+        if event_type:
+            conditions.append("event_type = ?")
+            params.append(event_type)
+        if since:
+            conditions.append("created_at > ?")
+            params.append(since)
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        params.extend([limit, offset])
+        async with self._db.execute(
+            f"SELECT * FROM activity_events {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            params,
+        ) as cur:
+            rows = await cur.fetchall()
+            result = []
+            for r in rows:
+                d = dict(r)
+                if d.get("metadata_json"):
+                    try:
+                        d["metadata"] = json.loads(d.pop("metadata_json"))
+                    except Exception:
+                        d["metadata"] = None
+                        d.pop("metadata_json", None)
+                else:
+                    d.pop("metadata_json", None)
+                    d["metadata"] = None
+                result.append(d)
+            return result
+
+    async def get_events_count(
+        self,
+        agent_id: str | None = None,
+        event_type: str | None = None,
+        since: str | None = None,
+    ) -> int:
+        conditions = []
+        params: list = []
+        if agent_id:
+            conditions.append("agent_id = ?")
+            params.append(agent_id)
+        if event_type:
+            conditions.append("event_type = ?")
+            params.append(event_type)
+        if since:
+            conditions.append("created_at > ?")
+            params.append(since)
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        async with self._db.execute(
+            f"SELECT COUNT(*) FROM activity_events {where}", params
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else 0
+
+    # ── File Locks ──
+
+    async def set_file_lock(self, file_path: str, agent_id: str, agent_name: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        await self._db.execute(
+            "INSERT OR REPLACE INTO file_locks (file_path, agent_id, agent_name, locked_at) VALUES (?, ?, ?, ?)",
+            (file_path, agent_id, agent_name, now),
+        )
+        await self._db.commit()
+
+    async def get_file_locks(self, file_path: str | None = None) -> list[dict]:
+        if file_path:
+            async with self._db.execute(
+                "SELECT * FROM file_locks WHERE file_path = ?", (file_path,)
+            ) as cur:
+                return [dict(r) for r in await cur.fetchall()]
+        else:
+            async with self._db.execute("SELECT * FROM file_locks") as cur:
+                return [dict(r) for r in await cur.fetchall()]
+
+    async def release_file_locks(self, agent_id: str) -> None:
+        await self._db.execute("DELETE FROM file_locks WHERE agent_id = ?", (agent_id,))
+        await self._db.commit()
+
+
+# ─────────────────────────────────────────────
+# Section 5c: Rate Limiter
+# ─────────────────────────────────────────────
+
+
+class RateLimiter:
+    """Token bucket rate limiter, keyed by client IP."""
+
+    def __init__(self) -> None:
+        self._buckets: dict[str, dict] = {}  # ip -> {tokens, last_refill}
+
+    def check(self, ip: str, cost: float = 1.0, rate: float = 1.0, burst: float = 10.0) -> tuple[bool, float]:
+        """Returns (allowed, retry_after_seconds). Rate is tokens/sec, burst is max tokens."""
+        now = time.monotonic()
+        bucket = self._buckets.get(ip)
+        if not bucket:
+            bucket = {"tokens": burst, "last_refill": now}
+            self._buckets[ip] = bucket
+
+        # Refill tokens
+        elapsed = now - bucket["last_refill"]
+        bucket["tokens"] = min(burst, bucket["tokens"] + elapsed * rate)
+        bucket["last_refill"] = now
+
+        if bucket["tokens"] >= cost:
+            bucket["tokens"] -= cost
+            return True, 0.0
+        else:
+            retry_after = (cost - bucket["tokens"]) / rate
+            return False, retry_after
+
+    def cleanup_stale(self, max_age: float = 300.0) -> None:
+        """Remove buckets not accessed in max_age seconds."""
+        now = time.monotonic()
+        stale = [ip for ip, b in self._buckets.items() if now - b["last_refill"] > max_age]
+        for ip in stale:
+            del self._buckets[ip]
+
+
+def _get_client_ip(request: web.Request) -> str:
+    """Extract client IP from request."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    peername = request.transport.get_extra_info("peername") if request.transport else None
+    return peername[0] if peername else "unknown"
+
 
 # ─────────────────────────────────────────────
 # Section 6: Metrics Collector
@@ -1961,12 +2609,10 @@ class WebSocketHub:
             projects = await self.db.get_projects() if self.db else []
             workflows = await self.db.get_workflows() if self.db else []
             backends_info = {}
-            for name, cfg in self.config.backends.items():
-                backends_info[name] = {
-                    "name": name,
-                    "command": cfg.get("command", ""),
-                    "available": bool(shutil.which(cfg.get("command", ""))),
-                }
+            for name, bc in self.agent_manager.backend_configs.items():
+                d = bc.to_dict()
+                d["name"] = name
+                backends_info[name] = d
             await ws.send_json({
                 "type": "sync",
                 "agents": [a.to_dict() for a in self.agent_manager.agents.values()],
@@ -2014,12 +2660,7 @@ class WebSocketHub:
                         "type": "agent_update",
                         "agent": agent.to_dict(),
                     })
-                    await self.broadcast({
-                        "type": "event",
-                        "event": "agent_spawned",
-                        "agent_id": agent.id,
-                        "message": f"Agent {agent.name} spawned",
-                    })
+                    await self.broadcast_event("agent_spawned", f"Agent {agent.name} spawned", agent.id, agent.name)
                 except ValueError as e:
                     await ws.send_json({"type": "error", "message": str(e)})
 
@@ -2049,12 +2690,7 @@ class WebSocketHub:
                             "type": "agent_removed",
                             "agent_id": agent_id,
                         })
-                        await self.broadcast({
-                            "type": "event",
-                            "event": "agent_killed",
-                            "agent_id": agent_id,
-                            "message": f"Agent {name} killed",
-                        })
+                        await self.broadcast_event("agent_killed", f"Agent {name} killed", agent_id, name)
 
             case "pause":
                 agent_id = data.get("agent_id")
@@ -2104,12 +2740,10 @@ class WebSocketHub:
                 projects = await self.db.get_projects() if self.db else []
                 workflows = await self.db.get_workflows() if self.db else []
                 backends_info = {}
-                for name, cfg in self.config.backends.items():
-                    backends_info[name] = {
-                        "name": name,
-                        "command": cfg.get("command", ""),
-                        "available": bool(shutil.which(cfg.get("command", ""))),
-                    }
+                for name, bc in self.agent_manager.backend_configs.items():
+                    d = bc.to_dict()
+                    d["name"] = name
+                    backends_info[name] = d
                 await ws.send_json({
                     "type": "sync",
                     "agents": [a.to_dict() for a in self.agent_manager.agents.values()],
@@ -2133,10 +2767,80 @@ class WebSocketHub:
                 dead.add(ws)
         self.clients -= dead
 
+    async def broadcast_event(
+        self,
+        event: str,
+        message: str,
+        agent_id: str | None = None,
+        agent_name: str | None = None,
+        metadata: dict | None = None,
+    ) -> None:
+        """Broadcast an event to WebSocket clients AND persist to activity_events table."""
+        payload: dict[str, Any] = {"type": "event", "event": event, "message": message}
+        if agent_id:
+            payload["agent_id"] = agent_id
+        if metadata:
+            payload["metadata"] = metadata
+        await self.broadcast(payload)
+        if self.db:
+            await self.db.log_event(event, message, agent_id, agent_name, metadata)
+
 
 # ─────────────────────────────────────────────
 # Section 8: REST API Handlers
 # ─────────────────────────────────────────────
+
+# ── Auth Middleware ──
+
+@web.middleware
+async def auth_middleware(request: web.Request, handler) -> web.Response:
+    """Token-based auth middleware. Skips for /, /logo.png, /api/health, /api/auth/verify."""
+    config: Config = request.app["config"]
+    if not config.require_auth:
+        return await handler(request)
+
+    # Skip auth for public routes
+    path = request.path
+    if path in ("/", "/logo.png", "/api/health", "/api/auth/verify", "/ws"):
+        # For WebSocket, check token in query params
+        if path == "/ws":
+            token = request.query.get("token", "")
+            if token != config.auth_token:
+                return web.json_response({"error": "Unauthorized"}, status=401)
+        return await handler(request)
+
+    # Check Authorization header or query param
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+    else:
+        token = request.query.get("token", "")
+
+    if token != config.auth_token:
+        return web.json_response({"error": "Unauthorized"}, status=401)
+
+    return await handler(request)
+
+
+async def verify_auth(request: web.Request) -> web.Response:
+    """POST /api/auth/verify — validate an auth token."""
+    config: Config = request.app["config"]
+    if not config.require_auth:
+        return web.json_response({"valid": True, "auth_required": False})
+
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    token = data.get("token", "")
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+
+    valid = token == config.auth_token
+    return web.json_response({"valid": valid, "auth_required": True})
+
 
 async def serve_dashboard(request: web.Request) -> web.FileResponse:
     dashboard_path = Path(__file__).parent / "ashlar_dashboard.html"
@@ -2158,8 +2862,24 @@ async def list_agents(request: web.Request) -> web.Response:
     return web.json_response(agents)
 
 
+def _check_rate(request: web.Request, cost: float = 1.0, rate: float = 5.0, burst: float = 10.0) -> web.Response | None:
+    """Check rate limit. Returns a 429 response if exceeded, None if OK."""
+    rl: RateLimiter = request.app["rate_limiter"]
+    ip = _get_client_ip(request)
+    allowed, retry_after = rl.check(ip, cost, rate, burst)
+    if not allowed:
+        return web.json_response(
+            {"error": "Too many requests", "retry_after": round(retry_after, 1)},
+            status=429,
+            headers={"Retry-After": str(int(retry_after) + 1)},
+        )
+    return None
+
+
 async def spawn_agent(request: web.Request) -> web.Response:
     manager: AgentManager = request.app["agent_manager"]
+    if r := _check_rate(request, cost=3, rate=1.0, burst=5):
+        return r
     try:
         data = await request.json()
     except json.JSONDecodeError:
@@ -2192,6 +2912,18 @@ async def spawn_agent(request: web.Request) -> web.Response:
     if working_dir is not None and not isinstance(working_dir, str):
         return web.json_response({"error": "working_dir must be a string"}, status=400)
 
+    # Optional orchestration fields
+    model_sel = data.get("model")
+    if model_sel is not None and not isinstance(model_sel, str):
+        return web.json_response({"error": "model must be a string"}, status=400)
+    tools_sel = data.get("tools")
+    if tools_sel is not None and not isinstance(tools_sel, list):
+        return web.json_response({"error": "tools must be a list of strings"}, status=400)
+    system_prompt_extra = data.get("system_prompt_extra")
+    if system_prompt_extra is not None and not isinstance(system_prompt_extra, str):
+        return web.json_response({"error": "system_prompt_extra must be a string"}, status=400)
+    resume_session = data.get("resume_session")
+
     try:
         agent = await manager.spawn(
             role=role,
@@ -2200,17 +2932,16 @@ async def spawn_agent(request: web.Request) -> web.Response:
             task=task,
             plan_mode=data.get("plan_mode", False),
             backend=backend,
+            model=model_sel,
+            tools=tools_sel,
+            system_prompt_extra=system_prompt_extra,
+            resume_session=resume_session,
         )
 
         # Broadcast to WebSocket clients
         hub: WebSocketHub = request.app["ws_hub"]
         await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
-        await hub.broadcast({
-            "type": "event",
-            "event": "agent_spawned",
-            "agent_id": agent.id,
-            "message": f"Agent {agent.name} spawned",
-        })
+        await hub.broadcast_event("agent_spawned", f"Agent {agent.name} spawned", agent.id, agent.name)
 
         return web.json_response(agent.to_dict(), status=201)
     except ValueError as e:
@@ -2245,16 +2976,8 @@ async def delete_agent(request: web.Request) -> web.Response:
     name = agent.name
     success = await manager.kill(agent_id)
     if success:
-        await hub.broadcast({
-            "type": "agent_removed",
-            "agent_id": agent_id,
-        })
-        await hub.broadcast({
-            "type": "event",
-            "event": "agent_killed",
-            "agent_id": agent_id,
-            "message": f"Agent {name} killed",
-        })
+        await hub.broadcast({"type": "agent_removed", "agent_id": agent_id})
+        await hub.broadcast_event("agent_killed", f"Agent {name} killed", agent_id, name)
         return web.json_response({"status": "killed"})
     return web.json_response({"error": "Failed to kill agent"}, status=500)
 
@@ -2262,6 +2985,8 @@ async def delete_agent(request: web.Request) -> web.Response:
 async def send_to_agent(request: web.Request) -> web.Response:
     manager: AgentManager = request.app["agent_manager"]
     hub: WebSocketHub = request.app["ws_hub"]
+    if r := _check_rate(request, cost=1, rate=5.0, burst=15):
+        return r
     agent_id = request.match_info["id"]
 
     agent = manager.agents.get(agent_id)
@@ -2326,6 +3051,8 @@ async def restart_agent(request: web.Request) -> web.Response:
     """POST /api/agents/{id}/restart — Manually restart an agent."""
     manager: AgentManager = request.app["agent_manager"]
     hub: WebSocketHub = request.app["ws_hub"]
+    if r := _check_rate(request, cost=2, rate=0.5, burst=3):
+        return r
     agent_id = request.match_info["id"]
 
     agent = manager.agents.get(agent_id)
@@ -2338,12 +3065,11 @@ async def restart_agent(request: web.Request) -> web.Response:
             restarted = manager.agents.get(agent_id)
             if restarted:
                 await hub.broadcast({"type": "agent_update", "agent": restarted.to_dict()})
-                await hub.broadcast({
-                    "type": "event",
-                    "event": "agent_restarted",
-                    "agent_id": agent_id,
-                    "message": f"Agent {restarted.name} manually restarted (attempt {restarted.restart_count})",
-                })
+                await hub.broadcast_event(
+                    "agent_restarted",
+                    f"Agent {restarted.name} manually restarted (attempt {restarted.restart_count})",
+                    agent_id, restarted.name,
+                )
                 return web.json_response({"status": "restarted", "restart_count": restarted.restart_count})
         return web.json_response({"error": "Restart failed"}, status=500)
     except Exception as e:
@@ -2545,6 +3271,8 @@ async def create_workflow(request: web.Request) -> web.Response:
 
 
 async def run_workflow(request: web.Request) -> web.Response:
+    if r := _check_rate(request, cost=5, rate=0.5, burst=3):
+        return r
     db: Database = request.app["db"]
     manager: AgentManager = request.app["agent_manager"]
     hub: WebSocketHub = request.app["ws_hub"]
@@ -2571,42 +3299,124 @@ async def run_workflow(request: web.Request) -> web.Response:
                      f"({current_count}/{config.max_agents} in use)",
         }, status=503)
 
-    agent_ids = []
-    failed = []
-    related = []
-    for agent_def in workflow.get("agents", []):
-        try:
-            agent = await manager.spawn(
-                role=agent_def.get("role", "general"),
-                name=agent_def.get("name"),
-                working_dir=agent_def.get("working_dir") or working_dir,
-                task=agent_def.get("task", ""),
-            )
-            agent_ids.append(agent.id)
-            related.append(agent.id)
-        except ValueError as e:
-            log.warning(f"Workflow spawn failed: {e}")
-            failed.append({"role": agent_def.get("role", "general"), "error": str(e)})
+    agent_specs = workflow.get("agents", [])
+    has_deps = any(spec.get("depends_on") for spec in agent_specs)
 
-    # Link related agents
-    for aid in agent_ids:
-        a = manager.agents.get(aid)
-        if a:
-            a.related_agents = [x for x in related if x != aid]
-            await hub.broadcast({"type": "agent_update", "agent": a.to_dict()})
+    if has_deps:
+        # DAG pipeline mode — create WorkflowRun and start with root agents
+        run_id = uuid.uuid4().hex[:8]
+        now = datetime.now(timezone.utc).isoformat()
+        wf_run = WorkflowRun(
+            id=run_id,
+            workflow_id=workflow_id,
+            workflow_name=workflow["name"],
+            agent_specs=agent_specs,
+            pending_indices=set(range(len(agent_specs))),
+            working_dir=working_dir or config.default_working_dir,
+            created_at=now,
+        )
+        manager.workflow_runs[run_id] = wf_run
 
-    await hub.broadcast({
-        "type": "event",
-        "event": "workflow_started",
-        "message": f"Workflow '{workflow['name']}' started ({len(agent_ids)} agents)",
-    })
+        # Spawn agents with no dependencies (root nodes)
+        await manager.resolve_workflow_deps(wf_run, hub)
 
-    result: dict[str, Any] = {"agent_ids": agent_ids, "workflow": workflow["name"]}
-    if failed:
-        result["spawned"] = agent_ids
-        result["failed"] = failed
+        await hub.broadcast_event(
+            "workflow_started",
+            f"Pipeline '{workflow['name']}' started (run {run_id}, {agents_needed} agents)",
+            metadata={"workflow_run_id": run_id, "has_deps": True},
+        )
 
-    return web.json_response(result)
+        return web.json_response({
+            "workflow_run_id": run_id,
+            "workflow": workflow["name"],
+            "pipeline": True,
+            "agent_map": {str(k): v for k, v in wf_run.agent_map.items()},
+            "pending": list(wf_run.pending_indices),
+        })
+    else:
+        # Legacy parallel mode — spawn all at once
+        agent_ids = []
+        failed = []
+        for agent_def in agent_specs:
+            try:
+                agent = await manager.spawn(
+                    role=agent_def.get("role", "general"),
+                    name=agent_def.get("name"),
+                    working_dir=agent_def.get("working_dir") or working_dir,
+                    task=agent_def.get("task", ""),
+                    backend=agent_def.get("backend", config.default_backend),
+                    model=agent_def.get("model"),
+                    tools=agent_def.get("tools"),
+                )
+                agent_ids.append(agent.id)
+            except ValueError as e:
+                log.warning(f"Workflow spawn failed: {e}")
+                failed.append({"role": agent_def.get("role", "general"), "error": str(e)})
+
+        # Link related agents
+        for aid in agent_ids:
+            a = manager.agents.get(aid)
+            if a:
+                a.related_agents = [x for x in agent_ids if x != aid]
+                await hub.broadcast({"type": "agent_update", "agent": a.to_dict()})
+
+        await hub.broadcast_event(
+            "workflow_started",
+            f"Workflow '{workflow['name']}' started ({len(agent_ids)} agents)",
+        )
+
+        result: dict[str, Any] = {"agent_ids": agent_ids, "workflow": workflow["name"]}
+        if failed:
+            result["spawned"] = agent_ids
+            result["failed"] = failed
+
+        return web.json_response(result)
+
+
+async def list_workflow_runs(request: web.Request) -> web.Response:
+    """GET /api/workflow-runs — list active and recent workflow runs."""
+    manager: AgentManager = request.app["agent_manager"]
+    runs = [wr.to_dict() for wr in manager.workflow_runs.values()]
+    return web.json_response(runs)
+
+
+async def get_workflow_run(request: web.Request) -> web.Response:
+    """GET /api/workflow-runs/{id} — get details of a workflow run."""
+    manager: AgentManager = request.app["agent_manager"]
+    run_id = request.match_info["id"]
+    wf_run = manager.workflow_runs.get(run_id)
+    if not wf_run:
+        return web.json_response({"error": "Workflow run not found"}, status=404)
+    return web.json_response(wf_run.to_dict())
+
+
+async def cancel_workflow_run(request: web.Request) -> web.Response:
+    """POST /api/workflow-runs/{id}/cancel — cancel a running workflow pipeline."""
+    manager: AgentManager = request.app["agent_manager"]
+    hub: WebSocketHub = request.app["ws_hub"]
+    run_id = request.match_info["id"]
+    wf_run = manager.workflow_runs.get(run_id)
+    if not wf_run:
+        return web.json_response({"error": "Workflow run not found"}, status=404)
+    if wf_run.status != "running":
+        return web.json_response({"error": f"Workflow is already {wf_run.status}"}, status=400)
+
+    wf_run.status = "cancelled"
+    wf_run.completed_at = datetime.now(timezone.utc).isoformat()
+    wf_run.pending_indices.clear()
+
+    # Kill running agents
+    for aid in list(wf_run.running_ids):
+        await manager.kill(aid)
+        await hub.broadcast({"type": "agent_removed", "agent_id": aid})
+
+    wf_run.running_ids.clear()
+    await hub.broadcast_event(
+        "workflow_cancelled",
+        f"Pipeline '{wf_run.workflow_name}' cancelled",
+        metadata={"workflow_run_id": run_id},
+    )
+    return web.json_response({"status": "cancelled", "workflow_run_id": run_id})
 
 
 async def delete_workflow(request: web.Request) -> web.Response:
@@ -2664,16 +3474,13 @@ async def update_workflow(request: web.Request) -> web.Response:
 # ── Backend endpoints ──
 
 async def list_backends(request: web.Request) -> web.Response:
-    """GET /api/backends — list available backends with availability."""
-    config: Config = request.app["config"]
+    """GET /api/backends — list available backends with rich capability info."""
+    manager: AgentManager = request.app["agent_manager"]
     result = {}
-    for name, cfg in config.backends.items():
-        result[name] = {
-            "name": name,
-            "command": cfg.get("command", ""),
-            "args": cfg.get("args", []),
-            "available": bool(shutil.which(cfg.get("command", ""))),
-        }
+    for name, bc in manager.backend_configs.items():
+        d = bc.to_dict()
+        d["name"] = name
+        result[name] = d
     return web.json_response(result)
 
 
@@ -2760,6 +3567,96 @@ async def get_agent_messages(request: web.Request) -> web.Response:
     })
 
 
+# ── File Conflicts endpoint ──
+
+async def list_conflicts(request: web.Request) -> web.Response:
+    """GET /api/conflicts — list current file conflicts between agents."""
+    manager: AgentManager = request.app["agent_manager"]
+    conflicts = []
+    for file_path, agent_ids in manager.file_activity.items():
+        active_ids = [
+            aid for aid in agent_ids
+            if aid in manager.agents and manager.agents[aid].status in ("working", "planning", "reading")
+        ]
+        if len(active_ids) > 1:
+            agents_info = [
+                {"id": aid, "name": manager.agents[aid].name, "role": manager.agents[aid].role}
+                for aid in active_ids
+            ]
+            conflicts.append({"file_path": file_path, "agents": agents_info})
+    return web.json_response(conflicts)
+
+
+# ── Agent Handoff endpoint ──
+
+async def handoff_agent(request: web.Request) -> web.Response:
+    """POST /api/agents/{from_id}/handoff — structured handoff from one agent to another."""
+    db: Database = request.app["db"]
+    hub: WebSocketHub = request.app["ws_hub"]
+    manager: AgentManager = request.app["agent_manager"]
+    from_id = request.match_info["id"]
+
+    from_agent = manager.agents.get(from_id)
+    if not from_agent:
+        return web.json_response({"error": "Source agent not found"}, status=404)
+
+    try:
+        data = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    to_id = data.get("to_agent_id")
+    if not to_id:
+        return web.json_response({"error": "to_agent_id is required"}, status=400)
+
+    to_agent = manager.agents.get(to_id)
+    if not to_agent:
+        return web.json_response({"error": "Target agent not found"}, status=404)
+
+    key_findings = data.get("key_findings", "")
+    files_modified = data.get("files_modified", [])
+
+    # Build handoff block
+    from_role = BUILTIN_ROLES.get(from_agent.role, BUILTIN_ROLES["general"])
+    handoff_block = (
+        f"[HANDOFF from {from_agent.name} ({from_role.name})]:\n"
+        f"Summary: {from_agent.summary}\n"
+    )
+    if key_findings:
+        handoff_block += f"Key findings: {key_findings}\n"
+    if files_modified:
+        handoff_block += f"Files modified: {', '.join(files_modified)}\n"
+    # Add last 20 lines of output as context
+    recent = list(from_agent.output_lines)[-20:]
+    if recent:
+        handoff_block += f"Recent output:\n" + "\n".join(recent)
+
+    # Save as structured message
+    msg = {
+        "id": uuid.uuid4().hex[:8],
+        "from_agent_id": from_id,
+        "to_agent_id": to_id,
+        "content": handoff_block,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.save_message(msg)
+    to_agent.unread_messages += 1
+
+    # Send to target agent's tmux session
+    await manager.send_message(to_id, handoff_block[:2000])
+
+    await hub.broadcast({"type": "agent_message", "message": msg})
+    await hub.broadcast({"type": "agent_update", "agent": to_agent.to_dict()})
+    await hub.broadcast_event(
+        "agent_handoff",
+        f"Handoff: {from_agent.name} → {to_agent.name}",
+        from_id, from_agent.name,
+        {"to_agent_id": to_id, "to_agent_name": to_agent.name},
+    )
+
+    return web.json_response({"status": "handed_off", "message_id": msg["id"]})
+
+
 # ── LLM Summary endpoint ──
 
 async def generate_summary(request: web.Request) -> web.Response:
@@ -2784,6 +3681,44 @@ async def generate_summary(request: web.Request) -> web.Response:
         await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
         return web.json_response({"summary": summary})
     return web.json_response({"error": "LLM summary generation failed", "fallback": agent.summary}, status=503)
+
+
+# ── Cost tracking endpoint ──
+
+async def get_costs(request: web.Request) -> web.Response:
+    """GET /api/costs — aggregate cost estimates across active and historical agents."""
+    manager: AgentManager = request.app["agent_manager"]
+    db: Database = request.app["db"]
+
+    # Active agents
+    active_cost = 0.0
+    active_tokens_in = 0
+    active_tokens_out = 0
+    for agent in manager.agents.values():
+        active_cost += agent.estimated_cost_usd
+        active_tokens_in += agent.tokens_input
+        active_tokens_out += agent.tokens_output
+
+    # Historical (from DB)
+    history = await db.get_agent_history(limit=200)
+    hist_cost = sum(h.get("estimated_cost_usd", 0) or 0 for h in history)
+    hist_tokens_in = sum(h.get("tokens_input", 0) or 0 for h in history)
+    hist_tokens_out = sum(h.get("tokens_output", 0) or 0 for h in history)
+
+    return web.json_response({
+        "active": {
+            "cost_usd": round(active_cost, 4),
+            "tokens_input": active_tokens_in,
+            "tokens_output": active_tokens_out,
+            "agent_count": len(manager.agents),
+        },
+        "historical": {
+            "cost_usd": round(hist_cost, 4),
+            "tokens_input": hist_tokens_in,
+            "tokens_output": hist_tokens_out,
+        },
+        "total_cost_usd": round(active_cost + hist_cost, 4),
+    })
 
 
 # ── History endpoints ──
@@ -2813,6 +3748,29 @@ async def get_history_item(request: web.Request) -> web.Response:
     if not item:
         return web.json_response({"error": "Not found"}, status=404)
     return web.json_response(item)
+
+
+# ── Activity Events endpoint ──
+
+async def list_events(request: web.Request) -> web.Response:
+    """GET /api/events — list activity events with optional filters."""
+    db: Database = request.app["db"]
+    try:
+        limit = int(request.query.get("limit", 100))
+        offset = int(request.query.get("offset", 0))
+    except ValueError:
+        return web.json_response({"error": "limit and offset must be integers"}, status=400)
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+    agent_id = request.query.get("agent_id")
+    event_type = request.query.get("event_type")
+    since = request.query.get("since")
+    events = await db.get_events(limit, offset, agent_id, event_type, since)
+    total = await db.get_events_count(agent_id, event_type, since)
+    return web.json_response({
+        "data": events,
+        "pagination": {"limit": limit, "offset": offset, "total": total},
+    })
 
 
 # ── Agent PATCH endpoint (Wave 3A) ──
@@ -2877,6 +3835,8 @@ async def patch_agent(request: web.Request) -> web.Response:
 
 async def bulk_agent_action(request: web.Request) -> web.Response:
     """POST /api/agents/bulk — perform bulk kill/pause/resume on multiple agents."""
+    if r := _check_rate(request, cost=2, rate=1.0, burst=5):
+        return r
     manager: AgentManager = request.app["agent_manager"]
     hub: WebSocketHub = request.app["ws_hub"]
     db: Database = request.app["db"]
@@ -2920,10 +3880,7 @@ async def bulk_agent_action(request: web.Request) -> web.Response:
                 if ok:
                     success_ids.append(aid)
                     await hub.broadcast({"type": "agent_removed", "agent_id": aid})
-                    await hub.broadcast({
-                        "type": "event", "event": "agent_killed",
-                        "agent_id": aid, "message": f"Agent {name} killed (bulk)",
-                    })
+                    await hub.broadcast_event("agent_killed", f"Agent {name} killed (bulk)", aid, name)
                 else:
                     failed_items.append({"id": aid, "error": "Kill failed"})
 
@@ -2973,12 +3930,7 @@ async def output_capture_loop(app: web.Application) -> None:
                         agent._error_entered_at = time.monotonic()
                         agent.updated_at = datetime.now(timezone.utc).isoformat()
                         await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
-                        await hub.broadcast({
-                            "type": "event",
-                            "event": "agent_error",
-                            "agent_id": agent_id,
-                            "message": f"Agent {agent.name} spawn timed out",
-                        })
+                        await hub.broadcast_event("agent_error", f"Agent {agent.name} spawn timed out", agent_id, agent.name)
                         continue
 
                 # Capture output
@@ -3012,6 +3964,19 @@ async def output_capture_loop(app: web.Application) -> None:
                             "agent_id": agent_id,
                             "lines": new_lines,
                         })
+
+                        # File conflict detection
+                        try:
+                            conflicts = manager._check_file_conflicts(agent_id, new_lines)
+                            for conflict in conflicts:
+                                await hub.broadcast_event(
+                                    "file_conflict",
+                                    f"File conflict: {conflict['agent_name']} and {conflict['other_agent_name']} both working on {conflict['file_path']}",
+                                    agent_id, agent.name,
+                                    conflict,
+                                )
+                        except Exception:
+                            pass
 
                         # Update summary — try LLM first (throttled), fall back to heuristic
                         agent.summary = extract_summary(list(agent.output_lines), agent.task)
@@ -3049,19 +4014,9 @@ async def output_capture_loop(app: web.Application) -> None:
                         agent._error_entered_at = time.monotonic()
                         agent.updated_at = datetime.now(timezone.utc).isoformat()
                         await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
-                        await hub.broadcast({
-                            "type": "event",
-                            "event": "agent_error",
-                            "agent_id": agent_id,
-                            "message": f"Agent {agent.name} stale — no output for 15 minutes",
-                        })
+                        await hub.broadcast_event("agent_stale", f"Agent {agent.name} stale — no output for 15 minutes", agent_id, agent.name)
                     elif silence > 300:  # 5 minutes
-                        await hub.broadcast({
-                            "type": "event",
-                            "event": "agent_stale_warning",
-                            "agent_id": agent_id,
-                            "message": f"Agent {agent.name} has had no output for {int(silence)}s",
-                        })
+                        await hub.broadcast_event("agent_stale_warning", f"Agent {agent.name} has had no output for {int(silence)}s", agent_id, agent.name)
 
                 # Update health score
                 try:
@@ -3083,6 +4038,16 @@ async def output_capture_loop(app: web.Application) -> None:
                         # Track when error status is entered (for auto-restart timing)
                         if new_status == "error" and old_status != "error":
                             agent._error_entered_at = time.monotonic()
+                            # Workflow failure handling
+                            wf_run = manager.on_agent_failed(agent_id)
+                            if wf_run:
+                                await manager.resolve_workflow_deps(wf_run, hub)
+
+                        # Workflow completion handling
+                        if new_status == "idle" and old_status != "idle":
+                            wf_run = manager.on_agent_complete(agent_id)
+                            if wf_run:
+                                await manager.resolve_workflow_deps(wf_run, hub)
 
                         await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
 
@@ -3091,12 +4056,11 @@ async def output_capture_loop(app: web.Application) -> None:
                             now_mono = time.monotonic()
                             if now_mono - agent._last_needs_input_event > 5.0:
                                 agent._last_needs_input_event = now_mono
-                                await hub.broadcast({
-                                    "type": "event",
-                                    "event": "agent_needs_input",
-                                    "agent_id": agent_id,
-                                    "message": agent.input_prompt or "Agent needs input",
-                                })
+                                await hub.broadcast_event(
+                                    "agent_needs_input",
+                                    agent.input_prompt or "Agent needs input",
+                                    agent_id, agent.name,
+                                )
                     else:
                         # Broadcast updates even if status unchanged (summary/context may have changed)
                         if new_lines:
@@ -3137,8 +4101,15 @@ async def health_check_loop(app: web.Application) -> None:
     """Verify tmux sessions are alive, clean up dead agents, auto-restart crashed agents."""
     manager: AgentManager = app["agent_manager"]
     hub: WebSocketHub = app["ws_hub"]
+    _tick = 0
 
     while True:
+        _tick += 1
+        # Periodic rate limiter cleanup (~every 300s at 5s interval)
+        if _tick % 60 == 0:
+            rl: RateLimiter | None = app.get("rate_limiter")
+            if rl:
+                rl.cleanup_stale()
         try:
             for agent_id, agent in list(manager.agents.items()):
                 # -- Auto-restart logic for agents in error state --
@@ -3164,12 +4135,7 @@ async def health_check_loop(app: web.Application) -> None:
                                     restarted_agent = manager.agents.get(agent_id)
                                     if restarted_agent:
                                         await hub.broadcast({"type": "agent_update", "agent": restarted_agent.to_dict()})
-                                        await hub.broadcast({
-                                            "type": "event",
-                                            "event": "agent_restarted",
-                                            "agent_id": agent_id,
-                                            "message": f"Agent {agent.name} auto-restarted (attempt {restarted_agent.restart_count})",
-                                        })
+                                        await hub.broadcast_event("agent_restarted", f"Agent {agent.name} auto-restarted (attempt {restarted_agent.restart_count})", agent_id, agent.name)
                                 else:
                                     log.warning(f"Auto-restart failed for agent {agent_id}")
                             except Exception as e:
@@ -3183,15 +4149,11 @@ async def health_check_loop(app: web.Application) -> None:
                             f"Agent {agent_id} ({agent.name}) exceeded max restarts "
                             f"({agent.max_restarts}), leaving in error state"
                         )
-                        await hub.broadcast({
-                            "type": "event",
-                            "event": "agent_restart_exhausted",
-                            "agent_id": agent_id,
-                            "message": (
-                                f"Agent {agent.name} failed after {agent.max_restarts} restart attempts. "
-                                f"Manual intervention required."
-                            ),
-                        })
+                        await hub.broadcast_event(
+                            "agent_restart_exhausted",
+                            f"Agent {agent.name} failed after {agent.max_restarts} restart attempts. Manual intervention required.",
+                            agent_id, agent.name,
+                        )
                     continue
 
                 # -- Check if tmux session is still alive --
@@ -3203,12 +4165,7 @@ async def health_check_loop(app: web.Application) -> None:
                     agent._error_entered_at = time.monotonic()
                     agent.updated_at = datetime.now(timezone.utc).isoformat()
                     await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
-                    await hub.broadcast({
-                        "type": "event",
-                        "event": "agent_error",
-                        "agent_id": agent_id,
-                        "message": f"Agent {agent.name} died unexpectedly",
-                    })
+                    await hub.broadcast_event("agent_error", f"Agent {agent.name} died unexpectedly", agent_id, agent.name)
                 elif agent.pid:
                     # PID liveness check: verify the process is still alive
                     try:
@@ -3221,12 +4178,7 @@ async def health_check_loop(app: web.Application) -> None:
                         agent._error_entered_at = time.monotonic()
                         agent.updated_at = datetime.now(timezone.utc).isoformat()
                         await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
-                        await hub.broadcast({
-                            "type": "event",
-                            "event": "agent_error",
-                            "agent_id": agent_id,
-                            "message": f"Agent {agent.name} process died (PID {agent.pid})",
-                        })
+                        await hub.broadcast_event("agent_error", f"Agent {agent.name} process died (PID {agent.pid})", agent_id, agent.name)
                     except PermissionError:
                         pass  # Process exists but we can't signal it — that's fine
 
@@ -3244,17 +4196,8 @@ async def health_check_loop(app: web.Application) -> None:
                             log.warning(f"Failed to archive agent {agent_id} before reaping: {e}")
                         name = agent.name
                         await manager.kill(agent_id)
-                        await hub.broadcast({
-                            "type": "agent_removed",
-                            "agent_id": agent_id,
-                            "reason": "idle_timeout",
-                        })
-                        await hub.broadcast({
-                            "type": "event",
-                            "event": "agent_reaped",
-                            "agent_id": agent_id,
-                            "message": f"Agent {name} reaped after {int(idle_duration)}s idle",
-                        })
+                        await hub.broadcast({"type": "agent_removed", "agent_id": agent_id, "reason": "idle_timeout"})
+                        await hub.broadcast_event("agent_reaped", f"Agent {name} reaped after {int(idle_duration)}s idle", agent_id, name)
         except Exception as e:
             log.error(f"Health check error: {e}")
 
@@ -3275,16 +4218,8 @@ async def memory_watchdog_loop(app: web.Application) -> None:
                     log.warning(f"Agent {agent_id} exceeded memory limit ({agent.memory_mb}MB > {limit}MB), killing")
                     name = agent.name
                     await manager.kill(agent_id)
-                    await hub.broadcast({
-                        "type": "agent_removed",
-                        "agent_id": agent_id,
-                    })
-                    await hub.broadcast({
-                        "type": "event",
-                        "event": "agent_killed",
-                        "agent_id": agent_id,
-                        "message": f"Agent {name} killed: memory limit exceeded ({agent.memory_mb}MB)",
-                    })
+                    await hub.broadcast({"type": "agent_removed", "agent_id": agent_id})
+                    await hub.broadcast_event("agent_killed", f"Agent {name} killed: memory limit exceeded ({agent.memory_mb}MB)", agent_id, name)
                 elif agent.memory_mb > warn_threshold:
                     log.warning(f"Agent {agent_id} memory warning: {agent.memory_mb}MB / {limit}MB")
         except Exception as e:
@@ -3347,7 +4282,10 @@ async def cleanup_background_tasks(app: web.Application) -> None:
 
 
 def create_app(config: Config) -> web.Application:
-    app = web.Application()
+    middlewares = []
+    if config.require_auth:
+        middlewares.append(auth_middleware)
+    app = web.Application(middlewares=middlewares)
     app["config"] = config
 
     manager = AgentManager(config)
@@ -3358,6 +4296,10 @@ def create_app(config: Config) -> web.Application:
 
     hub = WebSocketHub(manager, config, db)
     app["ws_hub"] = hub
+
+    # Rate limiter
+    rate_limiter = RateLimiter()
+    app["rate_limiter"] = rate_limiter
 
     # LLM Summarizer
     summarizer = LLMSummarizer(config)
@@ -3387,6 +4329,7 @@ def create_app(config: Config) -> web.Application:
     app.router.add_post("/api/agents/{id}/summarize", generate_summary)
     app.router.add_post("/api/agents/{id}/message", send_agent_message)
     app.router.add_get("/api/agents/{id}/messages", get_agent_messages)
+    app.router.add_post("/api/agents/{id}/handoff", handoff_agent)
 
     # REST API — System
     app.router.add_get("/api/system", system_metrics)
@@ -3394,6 +4337,9 @@ def create_app(config: Config) -> web.Application:
     app.router.add_get("/api/config", get_config)
     app.router.add_put("/api/config", put_config)
     app.router.add_get("/api/backends", list_backends)
+    app.router.add_post("/api/auth/verify", verify_auth)
+    app.router.add_get("/api/costs", get_costs)
+    app.router.add_get("/api/conflicts", list_conflicts)
 
     # REST API — Projects
     app.router.add_get("/api/projects", list_projects)
@@ -3407,9 +4353,15 @@ def create_app(config: Config) -> web.Application:
     app.router.add_post("/api/workflows/{id}/run", run_workflow)
     app.router.add_delete("/api/workflows/{id}", delete_workflow)
 
-    # REST API — History
+    # REST API — Workflow Runs (pipeline tracking)
+    app.router.add_get("/api/workflow-runs", list_workflow_runs)
+    app.router.add_get("/api/workflow-runs/{id}", get_workflow_run)
+    app.router.add_post("/api/workflow-runs/{id}/cancel", cancel_workflow_run)
+
+    # REST API — History & Events
     app.router.add_get("/api/history", list_history)
     app.router.add_get("/api/history/{id}", get_history_item)
+    app.router.add_get("/api/events", list_events)
 
     # CORS
     cors = aiohttp_cors.setup(app, defaults={
