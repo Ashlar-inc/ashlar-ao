@@ -3896,7 +3896,9 @@ function updateAgentCard(card, agent) {
     card.querySelector('.card-icon').textContent = agent.role_icon || ROLE_INFO[agent.role]?.icon || '🤖';
     card.querySelector('.card-name').textContent = agent.name;
     card.querySelector('.card-dir').textContent = shortenPath(agent.working_dir);
-    card.querySelector('.card-summary').textContent = agent.summary || agent.task || 'Starting...';
+    card.querySelector('.card-summary').textContent = (agent.status === 'error' && agent.error_message)
+        ? agent.error_message
+        : (agent.summary || agent.task || 'Starting...');
 
     // Project badge
     const projBadge = card.querySelector('.card-project-badge');

@@ -2024,8 +2024,14 @@ def parse_agent_status(recent_lines: list[str], agent: Agent, backend_patterns: 
 
     # Check for fatal error (only in last 5 lines to avoid old mentions)
     for pattern in effective_patterns["error"]:
-        if pattern.search(tail_text):
+        m = pattern.search(tail_text)
+        if m:
             agent.needs_input = False
+            # Capture the matching line as error context
+            for line in reversed(recent_lines[-5:]):
+                if pattern.search(line):
+                    agent.error_message = _strip_ansi(line.strip())[:200]
+                    break
             return "error"
 
     # Check for reading (before working, more specific)
@@ -3336,6 +3342,10 @@ async def spawn_agent(request: web.Request) -> web.Response:
     working_dir = data.get("working_dir")
     if working_dir is not None and not isinstance(working_dir, str):
         return web.json_response({"error": "working_dir must be a string"}, status=400)
+    if working_dir:
+        expanded = os.path.expanduser(working_dir)
+        if not os.path.isdir(expanded):
+            return web.json_response({"error": f"Working directory not found: {working_dir}"}, status=400)
 
     # Optional orchestration fields
     model_sel = data.get("model")
@@ -3412,7 +3422,7 @@ async def delete_agent(request: web.Request) -> web.Response:
         await hub.broadcast({"type": "agent_removed", "agent_id": agent_id})
         await hub.broadcast_event("agent_killed", f"Agent {name} killed", agent_id, name)
         return web.json_response({"status": "killed"})
-    return web.json_response({"error": "Failed to kill agent"}, status=500)
+    return web.json_response({"error": f"Failed to kill agent '{name}' — tmux session may have already terminated"}, status=500)
 
 
 async def send_to_agent(request: web.Request) -> web.Response:
@@ -3439,7 +3449,7 @@ async def send_to_agent(request: web.Request) -> web.Response:
     if success:
         await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
         return web.json_response({"status": "sent"})
-    return web.json_response({"error": "Failed to send message"}, status=500)
+    return web.json_response({"error": f"Failed to send message to '{agent.name}' — agent may have terminated"}, status=500)
 
 
 async def pause_agent(request: web.Request) -> web.Response:
@@ -3513,7 +3523,14 @@ async def restart_agent(request: web.Request) -> web.Response:
 async def system_metrics(request: web.Request) -> web.Response:
     manager: AgentManager = request.app["agent_manager"]
     metrics = await collect_system_metrics(manager)
-    return web.json_response(metrics.to_dict())
+    data = metrics.to_dict()
+    # Service health indicators
+    config: Config = request.app["config"]
+    data["services"] = {
+        "db_available": request.app.get("db_available", True),
+        "llm_enabled": config.llm_enabled,
+    }
+    return web.json_response(data)
 
 
 async def list_roles(request: web.Request) -> web.Response:
