@@ -338,9 +338,12 @@ def load_config(has_claude: bool = True) -> Config:
         except Exception:
             pass
 
+    # ASHLAR_PORT env var overrides config file
+    port = int(os.environ.get("ASHLAR_PORT", server.get("port", 5000)))
+
     return Config(
         host=server.get("host", "127.0.0.1"),
-        port=server.get("port", 5000),
+        port=port,
         log_level=server.get("log_level", "INFO"),
         max_agents=max_agents_val,
         default_role=agents.get("default_role", "general"),

@@ -3498,6 +3498,7 @@ class AshlarSocket {
         this.ws = null;
         this.reconnectDelay = 1000;
         this.maxDelay = 10000;
+        this.reconnectAttempts = 0;
     }
 
     connect() {
@@ -3508,7 +3509,10 @@ class AshlarSocket {
         this.ws.onopen = () => {
             state.connected = true;
             this.reconnectDelay = 1000;
-            document.getElementById('connectionBanner').classList.remove('active');
+            this.reconnectAttempts = 0;
+            const banner = document.getElementById('connectionBanner');
+            banner.classList.remove('active');
+            banner.textContent = 'Disconnected — reconnecting...';
             showToast('Connected to Ashlar', 'success');
         };
 
@@ -3524,7 +3528,14 @@ class AshlarSocket {
 
         this.ws.onclose = () => {
             state.connected = false;
-            document.getElementById('connectionBanner').classList.add('active');
+            this.reconnectAttempts++;
+            const banner = document.getElementById('connectionBanner');
+            banner.classList.add('active');
+            if (this.reconnectAttempts >= 10) {
+                banner.textContent = 'Server unreachable — restart with ./start.sh and refresh';
+            } else {
+                banner.textContent = `Disconnected — reconnecting (attempt ${this.reconnectAttempts})...`;
+            }
             const jitter = this.reconnectDelay * (0.5 + Math.random());
             setTimeout(() => this.connect(), jitter);
             this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, this.maxDelay);
@@ -5569,8 +5580,16 @@ if ('Notification' in window && Notification.permission === 'default') {
 // ── Tab Title ──
 
 function updateTabTitle() {
-    const waiting = [...state.agents.values()].filter(a => a.needs_input).length;
-    document.title = waiting > 0 ? `(${waiting}) Ashlar AO` : 'Ashlar AO';
+    const agents = [...state.agents.values()];
+    const waiting = agents.filter(a => a.needs_input).length;
+    const active = agents.filter(a => ['working', 'planning', 'reading', 'spawning'].includes(a.status)).length;
+    if (waiting > 0) {
+        document.title = `(${waiting} waiting) Ashlar AO`;
+    } else if (active > 0) {
+        document.title = `${active} active — Ashlar AO`;
+    } else {
+        document.title = 'Ashlar AO';
+    }
 }
 
 // ── Attention Badge + Queue ──
