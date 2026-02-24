@@ -1485,8 +1485,9 @@ class AgentManager:
         overflow_count = len(agent.output_lines) + len(new_lines) - agent.output_lines.maxlen
         if overflow_count > 0:
             overflow_lines = list(agent.output_lines)[:overflow_count]
-            agent._overflow_to_archive = (agent_id, overflow_lines, agent._archived_lines)
-            agent._archived_lines += len(overflow_lines)
+            current_offset = agent._archived_lines
+            agent._overflow_to_archive = (agent_id, overflow_lines, current_offset)
+            agent._archived_lines += len(overflow_lines)  # Pre-increment; offset captured above
 
         # Update ring buffer (only new lines, not the full capture)
         for line in new_lines:
@@ -2198,7 +2199,8 @@ class LLMSummarizer:
             ) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                    choices = data.get("choices") or []
+                    content = (choices[0].get("message", {}).get("content", "").strip() if choices else "")
                     if content:
                         self._failures = 0
                         return content[:100]
@@ -3328,6 +3330,8 @@ async def spawn_agent(request: web.Request) -> web.Response:
     backend = data.get("backend", "claude-code")
     if not isinstance(backend, str):
         return web.json_response({"error": "backend must be a string"}, status=400)
+    if backend not in KNOWN_BACKENDS:
+        return web.json_response({"error": f"Unknown backend '{backend}'. Available: {', '.join(KNOWN_BACKENDS.keys())}"}, status=400)
 
     working_dir = data.get("working_dir")
     if working_dir is not None and not isinstance(working_dir, str):
@@ -4851,8 +4855,8 @@ async def output_capture_loop(app: web.Application) -> None:
                                 agent_id, agent.name,
                                 conflict,
                             )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log.debug(f"File conflict detection error for {agent_id}: {e}")
 
                     # Update summary
                     agent.summary = extract_summary(list(agent.output_lines), agent.task)

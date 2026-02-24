@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ashlar AO</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230D1520'/%3E%3Cpath d='M16 6L8 26h4l2-5h4l2 5h4L16 6zm0 8l2.5 6h-5L16 14z' fill='%23F97316'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -3549,15 +3550,19 @@ class AshlarSocket {
     }
 
     handleMessage(data) {
-        switch (data.type) {
-            case 'sync': handleSync(data); break;
-            case 'agent_update': handleAgentUpdate(data.agent); break;
-            case 'agent_output': handleAgentOutput(data); break;
-            case 'agent_removed': handleAgentRemoved(data.agent_id); break;
-            case 'metrics': handleMetrics(data); break;
-            case 'event': handleEvent(data); break;
-            case 'agent_message': handleAgentMessage(data.message); break;
-            case 'error': showToast(data.message || 'Server error', 'error'); break;
+        try {
+            switch (data.type) {
+                case 'sync': handleSync(data); break;
+                case 'agent_update': handleAgentUpdate(data.agent); break;
+                case 'agent_output': handleAgentOutput(data); break;
+                case 'agent_removed': handleAgentRemoved(data.agent_id); break;
+                case 'metrics': handleMetrics(data); break;
+                case 'event': handleEvent(data); break;
+                case 'agent_message': handleAgentMessage(data.message); break;
+                case 'error': showToast(data.message || 'Server error', 'error'); break;
+            }
+        } catch (e) {
+            console.error('WebSocket message handler error:', e, data);
         }
     }
 }
@@ -3634,8 +3639,9 @@ function handleAgentRemoved(agentId) {
     }
     state.agents.delete(agentId);
     state.conflicts.delete(agentId);
+    selectedAgents.delete(agentId);
     if (state.view === 'deep' && state.focusedAgentId === agentId) closeDeepView();
-    setTimeout(() => { scheduleRender(); updateTabTitle(); updateAttentionBadge(); }, 350);
+    setTimeout(() => { scheduleRender(); updateTabTitle(); updateAttentionBadge(); updateBulkUI(); }, 350);
 }
 
 function handleMetrics(data) {
@@ -4555,8 +4561,8 @@ function deepSearch() {
             countEl.textContent = 'No matches';
             countEl.style.color = 'var(--danger)';
         }
-        // Store match count for navigation compatibility
-        deepSearchMatches = { length: _virtualSearchMatches.length };
+        // Store match count for navigation — use array-like object to prevent scrollIntoView crash
+        deepSearchMatches = new Array(_virtualSearchMatches.length).fill(null);
         return;
     }
 
@@ -4651,7 +4657,7 @@ function deepSearchNext() {
     deepSearchIdx = (deepSearchIdx + 1) % deepSearchMatches.length;
     if (_virtualSearchMatches.length > 0) {
         _virtualSearchScrollTo(document.getElementById('deepTerminal'), deepSearchIdx);
-    } else {
+    } else if (deepSearchMatches[deepSearchIdx]?.scrollIntoView) {
         deepSearchMatches[deepSearchIdx].scrollIntoView({ block: 'center' });
     }
     document.getElementById('deepSearchCount').textContent = `${deepSearchIdx + 1} of ${deepSearchMatches.length}`;
@@ -4662,7 +4668,7 @@ function deepSearchPrev() {
     deepSearchIdx = (deepSearchIdx - 1 + deepSearchMatches.length) % deepSearchMatches.length;
     if (_virtualSearchMatches.length > 0) {
         _virtualSearchScrollTo(document.getElementById('deepTerminal'), deepSearchIdx);
-    } else {
+    } else if (deepSearchMatches[deepSearchIdx]?.scrollIntoView) {
         deepSearchMatches[deepSearchIdx].scrollIntoView({ block: 'center' });
     }
     document.getElementById('deepSearchCount').textContent = `${deepSearchIdx + 1} of ${deepSearchMatches.length}`;
@@ -5168,8 +5174,8 @@ async function openHistory() {
             el.className = 'history-item';
             el.innerHTML = `
                 <span class="hi-icon">${info.icon}</span>
-                <span class="hi-name">${item.name}</span>
-                <span class="hi-task">${item.task || item.summary || ''}</span>
+                <span class="hi-name">${escapeHtml(item.name)}</span>
+                <span class="hi-task">${escapeHtml(item.task || item.summary || '')}</span>
                 <span class="hi-meta">${dur}</span>
             `;
             el.onclick = () => showHistoryDetail(item);
@@ -5229,12 +5235,12 @@ function openWorkflowRunner() {
         card.innerHTML = `
             <div class="wf-picker-card-icon">${roleIcons.split(' ')[0] || '⚡'}</div>
             <div class="wf-picker-card-info">
-                <div class="wf-picker-card-name">${wf.name}${(() => {
+                <div class="wf-picker-card-name">${escapeHtml(wf.name)}${(() => {
                     let running = false;
                     state.workflowRuns.forEach(r => { if (r.workflow_id === wf.id && r.status === 'running') running = true; });
                     return running ? '<span class="wf-picker-running-badge">Running</span>' : '';
                 })()}</div>
-                <div class="wf-picker-card-desc">${wf.description || 'No description'}</div>
+                <div class="wf-picker-card-desc">${escapeHtml(wf.description || 'No description')}</div>
                 <div class="wf-picker-card-meta">
                     <span class="agent-count">${agents.length} agent${agents.length !== 1 ? 's' : ''}</span>
                     <span>${roleIcons}</span>
@@ -5511,7 +5517,7 @@ function showToast(message, type = 'info') {
     toast.style.cursor = 'pointer';
     toast._toastMessage = message;
     toast._toastType = type;
-    toast.innerHTML = `<span class="toast-icon">${icons[type] || 'ℹ️'}</span><span>${message}</span><div class="toast-progress"></div>`;
+    toast.innerHTML = `<span class="toast-icon">${icons[type] || 'ℹ️'}</span><span>${escapeHtml(message)}</span><div class="toast-progress"></div>`;
     const dismiss = () => { toast.classList.add('toast-out'); setTimeout(() => toast.remove(), 300); };
     toast._dismiss = dismiss;
     toast.onclick = dismiss;
@@ -5539,7 +5545,7 @@ function renderNotificationList() {
     state.notifications.slice(0, 30).forEach(n => {
         const el = document.createElement('div');
         el.className = 'notification-item';
-        el.innerHTML = `<span class="ni-icon">${icons[n.type] || '📌'}</span><span class="ni-text">${n.message}</span><span class="ni-time">${timeAgo(new Date(n.time).toISOString())}</span>`;
+        el.innerHTML = `<span class="ni-icon">${icons[n.type] || '📌'}</span><span class="ni-text">${escapeHtml(n.message)}</span><span class="ni-time">${timeAgo(new Date(n.time).toISOString())}</span>`;
         el.onclick = () => { closeNotifications(); if (n.agentId && state.agents.has(n.agentId)) openDeepView(n.agentId); };
         list.appendChild(el);
     });
@@ -6278,7 +6284,7 @@ function openDeepMessaging() {
         const chip = document.createElement('div');
         chip.className = 'msg-agent-chip';
         chip.dataset.agentId = a.id;
-        chip.innerHTML = `<span class="msg-agent-chip-icon">${info.icon}</span>${a.name}`;
+        chip.innerHTML = `<span class="msg-agent-chip-icon">${info.icon}</span>${escapeHtml(a.name)}`;
         chip.onclick = () => selectMsgTarget(a.id);
         chipsEl.appendChild(chip);
     });
@@ -6328,7 +6334,7 @@ async function selectMsgTarget(agentId) {
                 const isSent = m.from_agent_id === state.focusedAgentId;
                 bubble.className = 'msg-bubble' + (isSent ? ' sent' : '');
                 const fromName = state.agents.get(m.from_agent_id)?.name || m.from_agent_id;
-                bubble.innerHTML = `${m.content}<div class="msg-bubble-meta">${fromName} · ${timeAgo(m.created_at)}</div>`;
+                bubble.innerHTML = `${escapeHtml(m.content)}<div class="msg-bubble-meta">${escapeHtml(fromName)} · ${timeAgo(m.created_at)}</div>`;
                 body.appendChild(bubble);
             });
         body.scrollTop = body.scrollHeight;
@@ -6356,7 +6362,7 @@ function sendMsgPanelMessage() {
     const bubble = document.createElement('div');
     bubble.className = 'msg-bubble sent';
     const fromName = state.agents.get(state.focusedAgentId)?.name || 'You';
-    bubble.innerHTML = `${content}<div class="msg-bubble-meta">${fromName} · now</div>`;
+    bubble.innerHTML = `${escapeHtml(content)}<div class="msg-bubble-meta">${escapeHtml(fromName)} · now</div>`;
     body.appendChild(bubble);
     body.scrollTop = body.scrollHeight;
 
@@ -6609,9 +6615,9 @@ async function refreshTimeline() {
             const relTime = timeAgo(evt.created_at);
             const agentName = evt.agent_name || '';
             el.innerHTML = `
-                <span class="timeline-event-badge ${badgeClass}">${evt.event_type.replace('agent_', '').replace('workflow_', 'wf:')}</span>
-                ${agentName ? `<span style="font-weight:600;flex-shrink:0">${agentName}</span>` : ''}
-                <span style="flex:1;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${evt.message || ''}</span>
+                <span class="timeline-event-badge ${badgeClass}">${escapeHtml(evt.event_type.replace('agent_', '').replace('workflow_', 'wf:'))}</span>
+                ${agentName ? `<span style="font-weight:600;flex-shrink:0">${escapeHtml(agentName)}</span>` : ''}
+                <span style="flex:1;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(evt.message || '')}</span>
                 <span style="color:var(--text-dimmed);font-size:11px;flex-shrink:0">${relTime}</span>
             `;
             if (evt.agent_id && state.agents.has(evt.agent_id)) {
@@ -6833,8 +6839,8 @@ function renderAgentTable() {
         tr.innerHTML = `
             <td><span class="table-status-dot ${agent.status}"></span>${agent.status}</td>
             <td>${role.icon}</td>
-            <td>${state.pinnedAgents.has(agent.id) ? '📌 ' : ''}${agent.name}</td>
-            <td title="${(agent.task || '').replace(/"/g, '&quot;')}">${(agent.task || '').substring(0, 60)}</td>
+            <td>${state.pinnedAgents.has(agent.id) ? '📌 ' : ''}${escapeHtml(agent.name)}</td>
+            <td title="${escapeHtml((agent.task || ''))}">${escapeHtml((agent.task || '').substring(0, 60))}</td>
             <td>${agent.phase || '-'}</td>
             <td>${pct}%</td>
             <td>${hs}%</td>
@@ -7219,9 +7225,9 @@ function renderScratchpadTab(entries) {
     }
     let html = '';
     entries.forEach(e => {
-        const safeKey = (e.key || '').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-        const safeVal = (e.value || '').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-        const safeBy = (e.set_by || '-').replace(/</g, '&lt;');
+        const safeKey = (e.key || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const safeVal = (e.value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const safeBy = (e.set_by || '-').replace(/&/g, '&amp;').replace(/</g, '&lt;');
         html += `<div class="scratchpad-entry">
             <span class="scratchpad-key">${safeKey}</span>
             <span class="scratchpad-val" title="${safeVal}">${safeVal}</span>
