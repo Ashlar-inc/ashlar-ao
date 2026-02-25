@@ -51,6 +51,19 @@
     --transition-slow: 0.3s ease;
 }
 
+/* ── Z-Index Scale ──
+   Cards/Grid:    0-10
+   Card menus:    50
+   Top bar:       100
+   Deep view:     150
+   Overlays:      200 (settings, workflow editor, notifications)
+   Command palette: 300
+   Interaction sheet: 350
+   Toasts:        400
+   Confirm dialogs: 500
+   Auth layer:    10000
+   ────────────── */
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
@@ -377,8 +390,10 @@ body {
 .agent-card[data-status="waiting"] { border-left-color: var(--orange) !important; animation: fadeUp 0.4s ease-out backwards, waiting-glow 2s ease-in-out infinite; }
 .agent-card[data-status="planning"] { border-left-color: var(--warning) !important; }
 .agent-card[data-status="error"] { border-left-color: var(--danger) !important; }
-.agent-card[data-status="paused"] { opacity: 0.45; filter: grayscale(0.3); }
+.agent-card[data-status="paused"] { opacity: 0.45; filter: grayscale(0.3); cursor: default; }
+.agent-card[data-status="paused"]:hover { opacity: 0.75; filter: grayscale(0.1); cursor: pointer; }
 .agent-card[data-status="idle"] { border-left-color: var(--text-dimmed) !important; opacity: 0.6; }
+.agent-card[data-status="idle"]:hover { opacity: 0.85; }
 .agent-card[data-status="reading"] { border-left-color: #3B82F6 !important; }
 .agent-card[data-status="spawning"] { animation: fadeUp 0.4s ease-out backwards, skeleton-pulse 1.5s ease-in-out infinite; will-change: opacity; }
 
@@ -506,7 +521,8 @@ body {
     height: 100%;
     border-radius: 2px;
     background: var(--accent);
-    transition: width 0.8s ease;
+    transition: transform 0.8s ease;
+    transform-origin: left;
 }
 
 .context-bar {
@@ -519,7 +535,8 @@ body {
 .context-bar-fill {
     height: 100%;
     border-radius: 2px;
-    transition: width 0.5s ease, background 0.5s ease;
+    transition: transform 0.5s ease, background 0.5s ease;
+    transform-origin: left;
 }
 
 .card-footer {
@@ -633,7 +650,7 @@ body {
     max-height: 85vh;
     overflow-y: auto;
     box-shadow: 0 24px 64px rgba(0,0,0,0.5);
-    animation: modalIn 0.25s ease;
+    animation: modalIn 0.2s ease;
 }
 @keyframes modalIn {
     from { opacity: 0; transform: scale(0.96) translateY(8px); }
@@ -967,7 +984,7 @@ body {
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
     padding: 24px;
     overflow-y: auto;
-    animation: sheetUp 0.3s ease;
+    animation: sheetUp 0.2s ease;
 }
 @keyframes sheetUp {
     from { transform: translateY(100%); }
@@ -1189,7 +1206,7 @@ body {
     border-radius: var(--radius-lg);
     box-shadow: 0 24px 64px rgba(0,0,0,0.5);
     overflow: hidden;
-    animation: paletteIn 0.15s ease;
+    animation: paletteIn 0.2s ease;
 }
 @keyframes paletteIn {
     from { opacity: 0; transform: scale(0.97) translateY(-4px); }
@@ -1404,6 +1421,14 @@ body {
 }
 .connection-banner.active { display: block; }
 
+.filter-empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-dimmed);
+    font-size: 14px;
+}
+
 /* ── Shortcut Cheatsheet ── */
 .cheatsheet-overlay {
     position: fixed;
@@ -1467,7 +1492,7 @@ body {
     max-height: 80vh;
     overflow-y: auto;
     box-shadow: 0 24px 64px rgba(0,0,0,0.5);
-    animation: modalIn 0.25s ease;
+    animation: modalIn 0.2s ease;
 }
 .history-panel h3 { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
 .history-item {
@@ -2317,6 +2342,60 @@ body {
     animation: modalScaleIn 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* ── Surface Refinement ── */
+
+/* Glass depth — card inner highlight + deeper backdrop */
+.agent-card {
+    border-top: 1px solid rgba(255,255,255,0.04);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+}
+
+/* Status badges — slightly larger, bolder presence */
+.status-badge {
+    padding: 3px 10px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+}
+
+/* Input focus glow */
+.deep-input:focus, .settings-input:focus, .form-input:focus, .form-textarea:focus, .form-select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.15), 0 0 12px -2px rgba(37,99,235,0.1);
+    outline: none;
+}
+
+/* Notification dropdown: dividers between items */
+.notification-item + .notification-item {
+    border-top: 1px solid rgba(255,255,255,0.04);
+}
+
+/* Empty state cubes — more dramatic float */
+.empty-cube {
+    box-shadow: 0 4px 20px -4px rgba(37,99,235,0.15);
+}
+@keyframes empty-float {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-12px) rotate(2deg); }
+}
+.empty-cube:nth-child(2) {
+    animation-delay: 0.6s;
+}
+.empty-cube:nth-child(3) {
+    animation-delay: 1.2s;
+}
+
+/* Top bar glow — intensified */
+.top-bar {
+    background: linear-gradient(180deg, rgba(13,21,32,0.9) 0%, rgba(13,21,32,0.85) 100%);
+    box-shadow: 0 1px 32px -4px rgba(37,99,235,0.18), 0 0 1px rgba(37,99,235,0.4);
+}
+.top-bar::after {
+    height: 2px;
+    background: linear-gradient(90deg, transparent 2%, rgba(37,99,235,0.3) 20%, rgba(37,99,235,0.7) 50%, rgba(37,99,235,0.3) 80%, transparent 98%);
+}
+
 /* ── Health Score Indicator ── */
 .card-health {
     width: 8px; height: 8px;
@@ -2512,6 +2591,48 @@ body {
 .card-pipeline-badge { display: none; font-family: 'JetBrains Mono', monospace; font-size: 10px; background: rgba(6,182,212,0.15); color: #06b6d4; padding: 1px 6px; border-radius: 8px; white-space: nowrap; }
 .card-pipeline-badge.active { display: inline-block; }
 
+/* ── Card Model Badge ── */
+.card-model-badge {
+    font-size: 9px;
+    font-family: var(--font-mono);
+    color: var(--purple);
+    background: rgba(168,85,247,0.12);
+    border: 1px solid rgba(168,85,247,0.2);
+    padding: 1px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+}
+
+/* ── Card Tools Badge ── */
+.card-tools-badge {
+    font-size: 9px;
+    color: var(--text-dimmed);
+    padding: 1px 4px;
+    border-radius: 3px;
+    letter-spacing: 0.2px;
+}
+.card-tools-badge.restricted {
+    color: var(--warning);
+    background: rgba(245,158,11,0.1);
+    border: 1px solid rgba(245,158,11,0.15);
+}
+.card-tools-badge.full {
+    color: var(--success);
+    opacity: 0.6;
+}
+
+/* ── Card Cost Badge ── */
+.card-cost-badge {
+    font-size: 9px;
+    font-family: var(--font-mono);
+    color: var(--text-dimmed);
+    background: rgba(255,255,255,0.04);
+    padding: 1px 5px;
+    border-radius: 3px;
+    letter-spacing: 0.3px;
+}
+
 /* ── Workflow Picker Running Badge ── */
 .wf-picker-running-badge { display: inline-block; background: rgba(34,197,94,0.15); color: #22c55e; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 8px; margin-left: 8px; animation: running-pulse 1.5s ease-in-out infinite; }
 @keyframes running-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
@@ -2540,7 +2661,7 @@ body {
 .agent-table { width: 100%; border-collapse: separate; border-spacing: 0 4px; padding: 0 16px; display: none; }
 .agent-table th { position: sticky; top: 0; background: var(--bg-primary); text-align: left; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; padding: 6px 10px; cursor: pointer; user-select: none; white-space: nowrap; z-index: 1; }
 .agent-table th:hover { color: var(--text-primary); }
-.agent-table th .sort-arrow { font-size: 10px; margin-left: 2px; opacity: 0.4; }
+.agent-table th .sort-arrow { font-size: 10px; margin-left: 2px; opacity: 0.6; }
 .agent-table th .sort-arrow.active { opacity: 1; color: var(--accent); }
 .agent-table tr.table-row { background: var(--bg-card); cursor: pointer; transition: background 0.15s, transform 0.1s; border-radius: 8px; }
 .agent-table tr.table-row:hover { background: var(--bg-elevated); }
@@ -2587,6 +2708,16 @@ body {
 .config-diff-line.changed { background: rgba(234,179,8,0.1); color: var(--warning); }
 .config-diff-line.added { background: rgba(34,197,94,0.1); color: #22c55e; }
 .config-diff-line.removed { background: rgba(239,68,68,0.1); color: #ef4444; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+    .agent-card { will-change: auto; }
+    .deep-view { transition: none; }
+}
 </style>
 </head>
 <body>
@@ -2605,7 +2736,7 @@ body {
 <!-- ── Top Bar ── -->
 <div class="top-bar">
     <div class="logo">
-        <img src="/logo.png" alt="Ashlar" onerror="this.style.display='none'">
+        <img src="/logo.png" alt="Ashlar" onerror="this.onerror=null;this.style.display='none';this.parentElement.insertAdjacentHTML('afterbegin','<svg width=\'26\' height=\'26\' viewBox=\'0 0 32 32\' style=\'flex-shrink:0\'><rect width=\'32\' height=\'32\' rx=\'6\' fill=\'%230D1520\'/><path d=\'M16 6L8 26h4l2-5h4l2 5h4L16 6zm0 8l2.5 6h-5L16 14z\' fill=\'%23F97316\'/></svg>')">
     </div>
     <span class="demo-badge" id="demoBadge">DEMO</span>
     <select class="project-selector" id="projectSelector" onchange="filterByProject(this.value)" aria-label="Filter by project">
@@ -2694,6 +2825,9 @@ body {
                 <span class="shortcut-hint"><span class="kbd">⌘K</span> command palette</span>
                 <span class="shortcut-hint"><span class="kbd">?</span> shortcuts</span>
             </div>
+        </div>
+        <div class="filter-empty-state" id="filterEmptyState" style="display:none">
+            <p>No agents match your search</p>
         </div>
     </div>
 </div>
@@ -3849,6 +3983,8 @@ function createAgentCard(agent) {
         <div class="card-info-row">
             <span class="card-project-badge" style="display:none"></span>
             <span class="card-backend-label"></span>
+            <span class="card-model-badge" style="display:none"></span>
+            <span class="card-tools-badge" style="display:none" title="Tool permissions"></span>
             <span class="card-workflow-dot" style="display:none" title="Workflow group"></span>
             <span class="card-pipeline-badge"></span>
         </div>
@@ -3864,6 +4000,7 @@ function createAgentCard(agent) {
         <span class="card-pin-indicator">📌</span>
         <div class="card-footer">
             <span class="status-badge"></span>
+            <span class="card-cost-badge" style="display:none"></span>
             <span class="card-meta"></span>
         </div>
         <div class="card-menu" id="menu-${agent.id}">
@@ -3879,7 +4016,7 @@ function createAgentCard(agent) {
     // Hover glow — set up once, reads roleColor from dataset
     card.addEventListener('mouseenter', () => {
         const rc = card.dataset.roleColor || '#64748B';
-        card.style.boxShadow = `0 12px 36px -8px ${rc}22, 0 0 0 1px rgba(255,255,255,0.06)`;
+        card.style.boxShadow = `0 16px 40px -6px ${rc}44, 0 4px 16px -4px ${rc}33, inset 0 1px 0 rgba(255,255,255,0.06)`;
     });
     card.addEventListener('mouseleave', () => { card.style.boxShadow = ''; });
     card.onclick = () => openDeepView(agent.id);
@@ -3951,7 +4088,7 @@ function updateAgentCard(card, agent) {
     // Progress bar with phase colors
     const progPct = Math.round((agent.progress_pct || 0) * 100);
     const progFill = card.querySelector('.progress-bar-fill');
-    progFill.style.width = `${progPct}%`;
+    progFill.style.transform = `scaleX(${progPct / 100})`;
     // Phase-based color
     // Use server-provided phase if available, fallback to status-based mapping
     const phaseMap = { planning: 'phase-planning', reading: 'phase-reading', implementing: 'phase-implementing', working: 'phase-implementing', testing: 'phase-testing', idle: 'phase-complete', complete: 'phase-complete' };
@@ -3961,7 +4098,7 @@ function updateAgentCard(card, agent) {
     // Context bar with gradient
     const pct = Math.round((agent.context_pct || 0) * 100);
     const fill = card.querySelector('.context-bar-fill');
-    fill.style.width = `${pct}%`;
+    fill.style.transform = `scaleX(${pct / 100})`;
     fill.className = 'context-bar-fill ' + (pct < 50 ? 'low' : pct < 80 ? 'medium' : 'high');
 
     // Message badge
@@ -4040,6 +4177,43 @@ function updateAgentCard(card, agent) {
             }
         } else {
             pipelineBadge.classList.remove('active');
+        }
+    }
+
+    // Model badge
+    const modelBadge = card.querySelector('.card-model-badge');
+    if (modelBadge) {
+        if (agent.model) {
+            const shortModel = agent.model.replace(/^claude-/, '').replace(/-\d{8}$/, '');
+            modelBadge.textContent = shortModel;
+            modelBadge.style.display = '';
+        } else {
+            modelBadge.style.display = 'none';
+        }
+    }
+
+    // Tools permission badge
+    const toolsBadge = card.querySelector('.card-tools-badge');
+    if (toolsBadge) {
+        if (agent.tools_allowed && agent.tools_allowed.length > 0) {
+            toolsBadge.textContent = `🔒 ${agent.tools_allowed.length}`;
+            toolsBadge.title = `Allowed tools: ${agent.tools_allowed.join(', ')}`;
+            toolsBadge.className = 'card-tools-badge restricted';
+            toolsBadge.style.display = '';
+        } else {
+            toolsBadge.style.display = 'none';
+        }
+    }
+
+    // Cost badge
+    const costBadge = card.querySelector('.card-cost-badge');
+    if (costBadge) {
+        if (agent.estimated_cost_usd > 0) {
+            const cost = agent.estimated_cost_usd;
+            costBadge.textContent = cost >= 1 ? `$${cost.toFixed(2)}` : `$${cost.toFixed(3)}`;
+            costBadge.style.display = '';
+        } else {
+            costBadge.style.display = 'none';
         }
     }
 
@@ -6547,6 +6721,13 @@ function filterAgentGrid(query) {
         countEl.style.display = '';
     } else {
         countEl.style.display = 'none';
+    }
+
+    const filterEmpty = document.getElementById('filterEmptyState');
+    if (gridSearchQuery && visible === 0 && total > 0) {
+        filterEmpty.style.display = '';
+    } else {
+        filterEmpty.style.display = 'none';
     }
 }
 

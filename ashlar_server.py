@@ -14,6 +14,7 @@ import asyncio
 import collections
 import json
 import logging
+import logging.handlers
 import os
 import re
 import shutil
@@ -66,8 +67,10 @@ def setup_logging(level: str = "INFO") -> None:
     ch.setFormatter(ColoredFormatter("%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"))
     root.addHandler(ch)
 
-    # File handler
-    fh = logging.FileHandler(ASHLAR_DIR / "ashlar.log")
+    # File handler with rotation (10 MB max, 5 backups)
+    fh = logging.handlers.RotatingFileHandler(
+        ASHLAR_DIR / "ashlar.log", maxBytes=10 * 1024 * 1024, backupCount=5
+    )
     fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
     root.addHandler(fh)
 
@@ -594,6 +597,16 @@ class Agent:
     _health_critical_warned: bool = field(default=False, repr=False)
     _workflow_stall_warned: bool = field(default=False, repr=False)
     _workflow_hung_warned: bool = field(default=False, repr=False)
+    _status_updated_at: float = field(default=0.0, repr=False)  # monotonic time of last status change
+
+    def set_status(self, new_status: str) -> bool:
+        """Update status with monotonic timestamp guard. Returns True if updated."""
+        now = time.monotonic()
+        if now >= self._status_updated_at:
+            self.status = new_status
+            self._status_updated_at = now
+            return True
+        return False
 
     def to_dict(self) -> dict:
         role_obj = BUILTIN_ROLES.get(self.role)
@@ -959,8 +972,21 @@ class AgentManager:
 
         if self.config.demo_mode:
             # Demo mode: run a bash script that simulates agent behavior
-            demo_script = self._build_demo_script(role, task, agent)
-            await self._tmux_send_keys(session_name, demo_script)
+            try:
+                demo_script = self._build_demo_script(role, task, agent)
+                await self._tmux_send_keys(session_name, demo_script)
+            except Exception as e:
+                agent.status = "error"
+                agent.error_message = f"Demo script setup failed: {e}"
+                log.error(f"Demo script setup failed for {agent_id}: {e}")
+                # Clean up temp script if it was created
+                if agent.script_path:
+                    try:
+                        Path(agent.script_path).unlink(missing_ok=True)
+                        agent.script_path = None
+                    except Exception:
+                        pass
+                return agent
         else:
             # Real mode: launch backend CLI using BackendConfig capabilities
             bc = self.backend_configs.get(backend)
@@ -1218,21 +1244,21 @@ class AgentManager:
         try:
             await self._tmux_send_keys(session, "/exit")
             await asyncio.sleep(2)
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning(f"Failed to send /exit to tmux session {session} for agent {agent_id}: {e}")
 
         # Force kill tmux session
         try:
             await self._run_tmux(["kill-session", "-t", session])
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning(f"Failed to kill tmux session {session} for agent {agent_id}: {e}")
 
         # Clean up demo script temp file
         if agent.script_path:
             try:
                 Path(agent.script_path).unlink(missing_ok=True)
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning(f"Failed to remove demo script {agent.script_path} for agent {agent_id}: {e}")
 
         self._cleanup_file_activity(agent_id)
         del self.agents[agent_id]
@@ -1296,27 +1322,27 @@ class AgentManager:
             try:
                 await self._tmux_send_keys(old_tmux_session, "/exit")
                 await asyncio.sleep(1)
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning(f"Restart: failed to send /exit to old session {old_tmux_session} for agent {agent_id}: {e}")
             try:
                 await self._run_tmux(["kill-session", "-t", old_tmux_session])
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning(f"Restart: failed to kill old tmux session {old_tmux_session} for agent {agent_id}: {e}")
 
             # Verify old session is gone
             try:
                 check = await self._run_tmux(["has-session", "-t", old_tmux_session])
                 if check.returncode == 0:
                     await self._run_tmux(["kill-session", "-t", old_tmux_session])
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning(f"Restart: failed to verify/force-kill old session {old_tmux_session} for agent {agent_id}: {e}")
 
             # Clean up demo script temp file
             if agent.script_path:
                 try:
                     Path(agent.script_path).unlink(missing_ok=True)
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.warning(f"Restart: failed to remove demo script {agent.script_path} for agent {agent_id}: {e}")
 
             # Create NEW tmux session (same session name)
             session_name = f"{self.tmux_prefix}-{agent_id}"
@@ -1883,8 +1909,8 @@ class AgentManager:
             if agent.script_path:
                 try:
                     Path(agent.script_path).unlink(missing_ok=True)
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.warning(f"Cleanup: failed to remove demo script {agent.script_path}: {e}")
 
         try:
             result = subprocess.run(
@@ -1899,10 +1925,10 @@ class AgentManager:
                                 ["tmux", "kill-session", "-t", session_name],
                                 capture_output=True, timeout=5
                             )
-                        except Exception:
-                            pass
-        except Exception:
-            pass
+                        except Exception as e:
+                            log.warning(f"Cleanup: failed to kill tmux session {session_name}: {e}")
+        except Exception as e:
+            log.warning(f"Cleanup: failed to list/kill tmux sessions: {e}")
         log.info("All agent sessions cleaned up")
 
 
@@ -3013,10 +3039,18 @@ class WebSocketHub:
         self.agent_manager = agent_manager
         self.config = config
         self.db = db
+        self.max_clients: int = 100
 
     async def handle_ws(self, request: web.Request) -> web.WebSocketResponse:
         ws = web.WebSocketResponse(heartbeat=30.0)
         await ws.prepare(request)
+
+        # Enforce connection limit — reject if at capacity
+        if len(self.clients) >= self.max_clients:
+            log.warning(f"WebSocket connection limit reached ({self.max_clients}), rejecting new client")
+            await ws.close(code=1013, message=b"Too many connections")
+            return ws
+
         self.clients.add(ws)
         log.info(f"WebSocket client connected ({len(self.clients)} total)")
 
@@ -3529,6 +3563,7 @@ async def system_metrics(request: web.Request) -> web.Response:
     data["services"] = {
         "db_available": request.app.get("db_available", True),
         "llm_enabled": config.llm_enabled,
+        "bg_task_health": request.app.get("bg_task_health", {}),
     }
     return web.json_response(data)
 
@@ -3786,11 +3821,34 @@ async def create_workflow(request: web.Request) -> web.Response:
     if not data.get("name") or not data.get("agents"):
         return web.json_response({"error": "name and agents are required"}, status=400)
 
+    agent_specs = data["agents"]
+    if not isinstance(agent_specs, list) or len(agent_specs) == 0:
+        return web.json_response({"error": "agents must be a non-empty list"}, status=400)
+
+    # Validate each agent spec
+    valid_indices = set(range(len(agent_specs)))
+    for i, spec in enumerate(agent_specs):
+        if not isinstance(spec, dict):
+            return web.json_response({"error": f"agents[{i}] must be an object"}, status=400)
+        if not spec.get("role"):
+            return web.json_response({"error": f"agents[{i}] missing required field 'role'"}, status=400)
+        deps = spec.get("depends_on")
+        if deps:
+            if not isinstance(deps, list):
+                return web.json_response({"error": f"agents[{i}].depends_on must be a list"}, status=400)
+            for dep in deps:
+                if not isinstance(dep, int) or dep not in valid_indices:
+                    return web.json_response({
+                        "error": f"agents[{i}].depends_on contains invalid index {dep} (valid: 0-{len(agent_specs)-1})"
+                    }, status=400)
+                if dep == i:
+                    return web.json_response({"error": f"agents[{i}].depends_on cannot reference itself"}, status=400)
+
     workflow = {
         "id": uuid.uuid4().hex[:8],
         "name": data["name"],
         "description": data.get("description", ""),
-        "agents_json": data["agents"],
+        "agents_json": agent_specs,
     }
     await db.save_workflow(workflow)
     workflow["agents"] = data["agents"]
@@ -4789,9 +4847,27 @@ async def output_capture_loop(app: web.Application) -> None:
     manager: AgentManager = app["agent_manager"]
     hub: WebSocketHub = app["ws_hub"]
     interval = app["config"].output_capture_interval
+    _archive_retry_queue: list[tuple[str, list[str], int]] = []  # (agent_id, lines, offset)
 
     while True:
         try:
+            # Retry previously failed archival (max 5 per iteration)
+            if _archive_retry_queue and app.get("db_available", True):
+                db_retry: Database = app["db"]
+                retried = 0
+                still_pending: list[tuple[str, list[str], int]] = []
+                for item in _archive_retry_queue:
+                    if retried >= 5:
+                        still_pending.append(item)
+                        continue
+                    try:
+                        await db_retry.archive_output(item[0], item[1], item[2])
+                        retried += 1
+                    except Exception:
+                        still_pending.append(item)
+                        retried += 1
+                _archive_retry_queue = still_pending
+
             # Phase 1: Parallel output capture
             active_agents = [
                 (aid, agent) for aid, agent in list(manager.agents.items())
@@ -4802,7 +4878,7 @@ async def output_capture_loop(app: web.Application) -> None:
             for agent_id, agent in active_agents:
                 if agent.status == "spawning" and agent._spawn_time > 0:
                     if time.monotonic() - agent._spawn_time > 30:
-                        agent.status = "error"
+                        agent.set_status("error")
                         agent.error_message = "Spawn timeout — no output after 30s"
                         agent._error_entered_at = time.monotonic()
                         agent.updated_at = datetime.now(timezone.utc).isoformat()
@@ -4833,7 +4909,7 @@ async def output_capture_loop(app: web.Application) -> None:
 
                 if new_lines is None:
                     # Capture failed — mark error
-                    agent.status = "error"
+                    agent.set_status("error")
                     agent.error_message = "Output capture failed"
                     agent._error_entered_at = time.monotonic()
                     agent.updated_at = datetime.now(timezone.utc).isoformat()
@@ -4863,6 +4939,9 @@ async def output_capture_loop(app: web.Application) -> None:
                                 await db.archive_output(aid_arch, overflow_lines, offset)
                             except Exception as e:
                                 log.debug(f"Output archiving failed for {agent_id}: {e}")
+                                # Queue for retry (cap at 50 to avoid unbounded growth)
+                                if len(_archive_retry_queue) < 50:
+                                    _archive_retry_queue.append((aid_arch, overflow_lines, offset))
 
                     # Rolling output rate
                     cutoff = now_mono - 60.0
@@ -4915,7 +4994,7 @@ async def output_capture_loop(app: web.Application) -> None:
                 if agent.status == "working" and agent.last_output_time > 0:
                     silence = time.monotonic() - agent.last_output_time
                     if silence > 900:
-                        agent.status = "error"
+                        agent.set_status("error")
                         agent.error_message = "No output for 15 minutes"
                         agent._error_entered_at = time.monotonic()
                         agent.updated_at = datetime.now(timezone.utc).isoformat()
@@ -4959,7 +5038,7 @@ async def output_capture_loop(app: web.Application) -> None:
                     new_status = await manager.detect_status(agent_id)
                     if new_status != agent.status:
                         old_status = agent.status
-                        agent.status = new_status
+                        agent.set_status(new_status)
                         agent.updated_at = datetime.now(timezone.utc).isoformat()
                         log.debug(f"Agent {agent_id} status: {old_status} -> {new_status}")
 
@@ -5097,7 +5176,7 @@ async def health_check_loop(app: web.Application) -> None:
                 exists = await manager._tmux_session_exists(agent.tmux_session)
                 if not exists:
                     log.warning(f"Agent {agent_id} ({agent.name}) tmux session died")
-                    agent.status = "error"
+                    agent.set_status("error")
                     agent.error_message = "tmux session terminated unexpectedly"
                     agent._error_entered_at = time.monotonic()
                     agent.updated_at = datetime.now(timezone.utc).isoformat()
@@ -5110,7 +5189,7 @@ async def health_check_loop(app: web.Application) -> None:
                     except ProcessLookupError:
                         # PID is dead but tmux session still exists
                         log.warning(f"Agent {agent_id} ({agent.name}) PID {agent.pid} is dead but tmux session alive")
-                        agent.status = "error"
+                        agent.set_status("error")
                         agent.error_message = f"Agent process (PID {agent.pid}) died unexpectedly"
                         agent._error_entered_at = time.monotonic()
                         agent.updated_at = datetime.now(timezone.utc).isoformat()
@@ -5165,11 +5244,12 @@ async def health_check_loop(app: web.Application) -> None:
 
 
 async def memory_watchdog_loop(app: web.Application) -> None:
-    """Check per-agent memory usage, warn/kill if over limit."""
+    """Check per-agent memory usage, warn/kill if over limit. Also cleans old archive rows."""
     manager: AgentManager = app["agent_manager"]
     hub: WebSocketHub = app["ws_hub"]
     limit = app["config"].memory_limit_mb
     warn_threshold = limit * 0.75
+    _cleanup_counter = 0
 
     while True:
         try:
@@ -5185,12 +5265,59 @@ async def memory_watchdog_loop(app: web.Application) -> None:
         except Exception as e:
             log.error(f"Memory watchdog error: {e}")
 
+        # Archive cleanup: every ~180 iterations (30 min at 10s interval)
+        _cleanup_counter += 1
+        if _cleanup_counter >= 180:
+            _cleanup_counter = 0
+            try:
+                db: Database = app["db"]
+                if app.get("db_available", True) and db.db:
+                    cutoff = datetime.now(timezone.utc).replace(microsecond=0)
+                    cutoff_str = cutoff.isoformat().replace("+00:00", "Z")
+                    # Delete archive rows older than 24h for agents no longer running
+                    active_ids = set(manager.agents.keys())
+                    async with db.db.execute(
+                        "SELECT DISTINCT agent_id FROM agent_output_archive WHERE created_at < datetime('now', '-24 hours')"
+                    ) as cursor:
+                        old_agents = [row[0] async for row in cursor]
+                    for aid in old_agents:
+                        if aid not in active_ids:
+                            await db.db.execute("DELETE FROM agent_output_archive WHERE agent_id = ?", (aid,))
+                    await db.db.commit()
+                    if old_agents:
+                        cleaned = [a for a in old_agents if a not in active_ids]
+                        if cleaned:
+                            log.info(f"Archive cleanup: removed output for {len(cleaned)} old agents")
+            except Exception as e:
+                log.warning(f"Archive cleanup error: {e}")
+
         await asyncio.sleep(10.0)
 
 
 # ─────────────────────────────────────────────
 # Section 10: Application Setup & Main
 # ─────────────────────────────────────────────
+
+async def _supervised_task(name: str, coro_fn, app: web.Application) -> None:
+    """Supervisor wrapper: restarts a background task if it crashes."""
+    restart_count = 0
+    while True:
+        try:
+            await coro_fn(app)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            restart_count += 1
+            log.error(f"Background task '{name}' crashed (restart #{restart_count}): {e}")
+            # Track health for /api/system
+            task_health = app.setdefault("bg_task_health", {})
+            task_health[name] = {
+                "restarts": restart_count,
+                "last_crash": datetime.now(timezone.utc).isoformat(),
+                "last_error": str(e)[:200],
+            }
+            await asyncio.sleep(min(5 * restart_count, 30))  # back off
+
 
 async def start_background_tasks(app: web.Application) -> None:
     # Initialize database with retry
@@ -5206,11 +5333,12 @@ async def start_background_tasks(app: web.Application) -> None:
             log.error(f"Database init failed on retry: {e2} — running in degraded mode (no persistence)")
             app["db_available"] = False
 
+    app["bg_task_health"] = {}
     app["bg_tasks"] = [
-        asyncio.create_task(output_capture_loop(app)),
-        asyncio.create_task(metrics_loop(app)),
-        asyncio.create_task(health_check_loop(app)),
-        asyncio.create_task(memory_watchdog_loop(app)),
+        asyncio.create_task(_supervised_task("output_capture", output_capture_loop, app)),
+        asyncio.create_task(_supervised_task("metrics", metrics_loop, app)),
+        asyncio.create_task(_supervised_task("health_check", health_check_loop, app)),
+        asyncio.create_task(_supervised_task("memory_watchdog", memory_watchdog_loop, app)),
     ]
     log.info("Background tasks started")
 
@@ -5226,11 +5354,12 @@ async def cleanup_background_tasks(app: web.Application) -> None:
     # Archive remaining agents to history
     db: Database = app["db"]
     manager: AgentManager = app["agent_manager"]
-    for agent in manager.agents.values():
-        try:
-            await db.save_agent(agent)
-        except Exception:
-            pass
+    if app.get("db_available", True):
+        for agent in manager.agents.values():
+            try:
+                await db.save_agent(agent)
+            except Exception as e:
+                log.warning(f"Shutdown: failed to archive agent {agent.id} ({agent.name}): {e}")
 
     # Close LLM summarizer
     summarizer: LLMSummarizer | None = app.get("llm_summarizer")
