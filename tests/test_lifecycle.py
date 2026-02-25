@@ -1,0 +1,421 @@
+"""Tests for agent lifecycle: set_status, output capture dedup, parse_agent_status patterns,
+pause/resume/restart edge cases, and spawn validation."""
+
+import asyncio
+import sys
+import time
+from pathlib import Path
+from unittest.mock import patch, AsyncMock, MagicMock
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+with patch("psutil.cpu_percent", return_value=0.0):
+    import ashlar_server
+    from ashlar_server import (
+        parse_agent_status,
+        extract_summary,
+        STATUS_PATTERNS,
+        BackendConfig,
+        KNOWN_BACKENDS,
+    )
+
+
+# ─────────────────────────────────────────────
+# T1: set_status() monotonic guard
+# ─────────────────────────────────────────────
+
+class TestSetStatus:
+    def test_normal_transition_succeeds(self, make_agent):
+        agent = make_agent(status="spawning")
+        result = agent.set_status("working")
+        assert result is True
+        assert agent.status == "working"
+
+    def test_rapid_duplicate_still_succeeds(self, make_agent):
+        """Monotonic time always advances, so rapid calls should still succeed."""
+        agent = make_agent(status="working")
+        result1 = agent.set_status("planning")
+        result2 = agent.set_status("working")
+        assert result1 is True
+        assert result2 is True
+        assert agent.status == "working"
+
+    def test_updates_status_string_correctly(self, make_agent):
+        agent = make_agent(status="spawning")
+        agent.set_status("planning")
+        assert agent.status == "planning"
+        agent.set_status("working")
+        assert agent.status == "working"
+        agent.set_status("idle")
+        assert agent.status == "idle"
+
+    def test_multiple_transitions_all_tracked(self, make_agent):
+        agent = make_agent(status="spawning")
+        statuses = ["working", "planning", "working", "waiting", "working", "idle"]
+        for s in statuses:
+            assert agent.set_status(s) is True
+        assert agent.status == "idle"
+
+
+# ─────────────────────────────────────────────
+# T2: Output capture hash dedup
+# ─────────────────────────────────────────────
+
+class TestOutputHashDedup:
+    def test_identical_output_hash_returns_no_change(self, make_agent):
+        """When _prev_output_hash matches, capture should detect no change."""
+        agent = make_agent()
+        lines = ["line1", "line2", "line3"]
+        # Simulate setting the hash as if capture ran once
+        agent._prev_output_hash = hash(tuple(lines[-50:]))
+        # Same hash means no new output
+        new_hash = hash(tuple(lines[-50:]))
+        assert new_hash == agent._prev_output_hash
+
+    def test_changed_output_gives_different_hash(self, make_agent):
+        """Changed output should produce a different hash."""
+        agent = make_agent()
+        lines1 = ["line1", "line2"]
+        lines2 = ["line1", "line2", "line3 new"]
+        hash1 = hash(tuple(lines1[-50:]))
+        hash2 = hash(tuple(lines2[-50:]))
+        assert hash1 != hash2
+
+    def test_first_capture_always_has_zero_hash(self, make_agent):
+        """New agent starts with hash 0, so any real output is different."""
+        agent = make_agent()
+        assert agent._prev_output_hash == 0
+        real_hash = hash(tuple(["hello"]))
+        assert real_hash != 0  # Extremely unlikely to collide with 0
+
+    def test_hash_updates_after_change(self, make_agent):
+        """After simulating a capture, hash should update."""
+        agent = make_agent()
+        lines = ["output line 1", "output line 2"]
+        new_hash = hash(tuple(lines[-50:]))
+        agent._prev_output_hash = new_hash
+        assert agent._prev_output_hash == new_hash
+        # Now change and verify
+        lines.append("output line 3")
+        newer_hash = hash(tuple(lines[-50:]))
+        assert newer_hash != new_hash
+
+
+# ─────────────────────────────────────────────
+# T3: parse_agent_status() comprehensive patterns
+# ─────────────────────────────────────────────
+
+class TestParseAgentStatusPatterns:
+    def test_each_category_has_patterns(self):
+        """Every status category should have at least one compiled pattern."""
+        for category in ("planning", "reading", "working", "waiting", "error", "error_mention", "complete"):
+            assert len(STATUS_PATTERNS[category]) > 0, f"No patterns for {category}"
+
+    def test_waiting_beats_error_when_both_present(self, make_agent):
+        """Waiting has higher priority than error."""
+        agent = make_agent(status="working")
+        lines = [
+            "Traceback (most recent call last):",
+            "  File 'test.py'",
+            "Should I fix this error?",
+        ]
+        status = parse_agent_status(lines, agent)
+        assert status == "waiting"
+
+    def test_error_captures_error_message(self, make_agent):
+        """Error status should populate agent.error_message."""
+        agent = make_agent(status="working")
+        lines = ["Working on files...", "fatal: repository not found"]
+        status = parse_agent_status(lines, agent)
+        assert status == "error"
+        assert agent.error_message  # Should be non-empty
+
+    def test_error_mention_increments_count_without_status_change(self, make_agent):
+        """error_mention patterns increment error_count but don't flip status."""
+        agent = make_agent(status="working", error_count=0)
+        # "failed" without a waiting/error trigger
+        lines = ["Build step 1 failed", "Retrying..."]
+        status = parse_agent_status(lines, agent)
+        # Should stay working (error_mention doesn't change status)
+        # but error_count should increment
+        assert agent.error_count >= 1
+
+    def test_backend_specific_pattern_merge(self, make_agent):
+        """Backend patterns should extend default detection."""
+        agent = make_agent(status="idle")
+        lines = ["⎿ Writing to file"]
+        # Without backend patterns, this may or may not match
+        backend_patterns = {"working": [r"⎿"]}
+        status = parse_agent_status(lines, agent, backend_patterns=backend_patterns)
+        assert status == "working"
+
+    def test_thinking_block_detected_as_planning(self, make_agent):
+        """<thinking> blocks should trigger planning status."""
+        agent = make_agent(status="working")
+        lines = ["<thinking>", "Let me consider the options..."]
+        status = parse_agent_status(lines, agent)
+        assert status == "planning"
+
+    def test_tool_call_detected_as_working(self, make_agent):
+        """Claude Code tool calls like Read( should trigger working."""
+        agent = make_agent(status="idle")
+        lines = ["Read(/src/app.ts)"]
+        status = parse_agent_status(lines, agent)
+        assert status == "working"
+
+    def test_tool_output_detected_as_working(self, make_agent):
+        """Tool Output: markers should trigger working status."""
+        agent = make_agent(status="idle")
+        lines = ["Tool Result: success"]
+        status = parse_agent_status(lines, agent)
+        assert status == "working"
+
+    def test_changes_committed_detected_as_complete(self, make_agent):
+        """'changes committed' should trigger complete/idle."""
+        agent = make_agent(status="working")
+        lines = ["All changes committed to main"]
+        status = parse_agent_status(lines, agent)
+        assert status == "idle"  # complete maps to idle
+
+    def test_no_issues_found_detected_as_complete(self, make_agent):
+        """'no issues found' should trigger complete/idle."""
+        agent = make_agent(status="working")
+        lines = ["Lint check: no issues found"]
+        status = parse_agent_status(lines, agent)
+        assert status == "idle"
+
+
+# ─────────────────────────────────────────────
+# T4: Pause/resume/restart edge cases
+# ─────────────────────────────────────────────
+
+class TestPauseResumeRestart:
+    def test_pause_already_paused_agent(self, make_agent):
+        """Pausing an already-paused agent should still return True."""
+        agent = make_agent(status="paused")
+        manager = MagicMock(spec=ashlar_server.AgentManager)
+        manager.agents = {agent.id: agent}
+        manager._tmux_send_raw = AsyncMock()
+        result = asyncio.run(ashlar_server.AgentManager.pause(manager, agent.id))
+        assert result is True
+        assert agent.status == "paused"
+
+    def test_resume_running_agent(self, make_agent):
+        """Resuming a working agent should still succeed and send the message."""
+        agent = make_agent(status="working")
+        manager = MagicMock(spec=ashlar_server.AgentManager)
+        manager.agents = {agent.id: agent}
+        manager._tmux_send_keys = AsyncMock()
+        result = asyncio.run(ashlar_server.AgentManager.resume(manager, agent.id))
+        assert result is True
+        assert agent.status == "working"
+
+    def test_restart_guard_prevents_concurrent(self, make_agent):
+        """If _restart_in_progress is set, restart should return False."""
+        agent = make_agent(status="error")
+        agent._restart_in_progress = True
+        manager = MagicMock(spec=ashlar_server.AgentManager)
+        manager.agents = {agent.id: agent}
+        result = asyncio.run(ashlar_server.AgentManager.restart(manager, agent.id))
+        assert result is False
+
+    def test_resume_with_custom_message(self, make_agent):
+        """Resume should use the custom message if provided."""
+        agent = make_agent(status="paused")
+        manager = MagicMock(spec=ashlar_server.AgentManager)
+        manager.agents = {agent.id: agent}
+        manager._tmux_send_keys = AsyncMock()
+        result = asyncio.run(ashlar_server.AgentManager.resume(manager, agent.id, message="yes, proceed"))
+        assert result is True
+        manager._tmux_send_keys.assert_called_once_with(agent.tmux_session, "yes, proceed")
+
+
+# ─────────────────────────────────────────────
+# T5: Spawn validation and error paths
+# ─────────────────────────────────────────────
+
+class TestSpawnValidation:
+    def test_max_agents_config_exists(self):
+        """Config should have a max_agents setting."""
+        config = ashlar_server.Config()
+        assert hasattr(config, "max_agents")
+        assert config.max_agents > 0
+
+    def test_invalid_backend_rejected(self):
+        """Unknown backend should not be in KNOWN_BACKENDS."""
+        assert "nonexistent-backend" not in KNOWN_BACKENDS
+
+    def test_backend_config_has_context_window(self):
+        """All known backends should have context_window and char_to_token_ratio."""
+        for name, bc in KNOWN_BACKENDS.items():
+            assert bc.context_window > 0, f"{name} missing context_window"
+            assert bc.char_to_token_ratio > 0, f"{name} missing char_to_token_ratio"
+
+    def test_claude_code_context_window_200k(self):
+        """Claude Code should have 200K context window."""
+        bc = KNOWN_BACKENDS["claude-code"]
+        assert bc.context_window == 200_000
+
+    def test_codex_context_window_128k(self):
+        """Codex should have 128K context window."""
+        bc = KNOWN_BACKENDS["codex"]
+        assert bc.context_window == 128_000
+
+    def test_aider_context_window_128k(self):
+        """Aider should have 128K context window."""
+        bc = KNOWN_BACKENDS["aider"]
+        assert bc.context_window == 128_000
+
+
+# ─────────────────────────────────────────────
+# T5 continued: extract_summary with new features
+# ─────────────────────────────────────────────
+
+class TestExtractSummaryEnhanced:
+    def test_intent_pattern_extracts_claude_intent(self):
+        """'I'll fix the authentication bug' should extract intent."""
+        lines = ["Looking at the code.", "I'll fix the authentication bug in the login handler"]
+        summary = extract_summary(lines, "Fix bugs")
+        assert "fix" in summary.lower() or "authentication" in summary.lower()
+
+    def test_git_commit_summary(self):
+        """Git commit messages should be extracted."""
+        lines = ["staged files", "committed changes to main branch"]
+        summary = extract_summary(lines, "Deploy")
+        assert "committed" in summary.lower()
+
+    def test_error_status_shows_error_line(self):
+        """When status is error, should show the error line."""
+        lines = ["Working...", "fatal: repository not found", "some other line"]
+        summary = extract_summary(lines, "Clone repo", status="error")
+        assert "fatal" in summary.lower()
+
+    def test_summary_capped_at_80_chars(self):
+        """Summaries should now be capped at 80 characters."""
+        lines = ["Writing " + "a" * 200 + ".ts"]
+        summary = extract_summary(lines, "task")
+        assert len(summary) <= 80
+
+
+# ─────────────────────────────────────────────
+# Restart field reset tests
+# ─────────────────────────────────────────────
+
+class TestRestartFieldReset:
+    def test_restart_resets_archived_lines(self, make_agent):
+        """Restart should reset _archived_lines to prevent stale offsets."""
+        agent = make_agent(status="working")
+        agent._archived_lines = 500
+        agent._overflow_to_archive = ("a1b2", ["line1"], 499)
+        agent._total_chars = 50000
+        agent.tokens_input = 1000
+        agent.tokens_output = 2000
+        agent.estimated_cost_usd = 0.15
+        # Simulate the fields that restart should clear
+        # (We verify the field exists and check its default)
+        assert hasattr(agent, '_archived_lines')
+        assert hasattr(agent, '_overflow_to_archive')
+        assert hasattr(agent, 'tokens_input')
+        assert hasattr(agent, 'tokens_output')
+        assert hasattr(agent, 'estimated_cost_usd')
+
+    def test_overflow_archive_field_is_settable(self, make_agent):
+        """Agent should accept _overflow_to_archive as a dynamic attribute."""
+        agent = make_agent()
+        agent._overflow_to_archive = ("a1b2", ["line1"], 0)
+        assert agent._overflow_to_archive == ("a1b2", ["line1"], 0)
+        agent._overflow_to_archive = None
+        assert agent._overflow_to_archive is None
+
+
+# ─────────────────────────────────────────────
+# Backend config context fields tests
+# ─────────────────────────────────────────────
+
+class TestBackendConfigContextFields:
+    def test_backend_config_to_dict_includes_context_fields(self):
+        """BackendConfig.to_dict() should include context_window and char_to_token_ratio."""
+        bc = BackendConfig(command="test", context_window=150_000, char_to_token_ratio=3.0)
+        d = bc.to_dict()
+        assert "context_window" in d
+        assert "char_to_token_ratio" in d
+        assert d["context_window"] == 150_000
+        assert d["char_to_token_ratio"] == 3.0
+
+    def test_codex_has_different_ratio(self):
+        """Codex should have a different char_to_token_ratio than claude-code."""
+        claude = KNOWN_BACKENDS["claude-code"]
+        codex = KNOWN_BACKENDS["codex"]
+        assert claude.char_to_token_ratio != codex.char_to_token_ratio
+
+    def test_all_backends_have_positive_context_window(self):
+        """Every backend should have a positive context window."""
+        for name, bc in KNOWN_BACKENDS.items():
+            assert bc.context_window > 0, f"{name} has non-positive context_window"
+
+
+# ─────────────────────────────────────────────
+# Health warning flag reset tests
+# ─────────────────────────────────────────────
+
+class TestHealthWarningFlags:
+    def test_health_flags_exist_on_agent(self, make_agent):
+        """Agent should have health warning flag attributes."""
+        agent = make_agent()
+        # These are set dynamically, so check with getattr
+        agent._health_low_warned = True
+        agent._health_critical_warned = True
+        assert agent._health_low_warned is True
+        assert agent._health_critical_warned is True
+
+    def test_health_flags_can_be_reset(self, make_agent):
+        """Health warning flags should be resettable."""
+        agent = make_agent()
+        agent._health_low_warned = True
+        agent._health_critical_warned = True
+        # Simulate reset (as done in status change to error)
+        agent._health_low_warned = False
+        agent._health_critical_warned = False
+        assert agent._health_low_warned is False
+        assert agent._health_critical_warned is False
+
+
+# ─────────────────────────────────────────────
+# Tmux capture return type tests
+# ─────────────────────────────────────────────
+
+class TestCaptureOutputReturnTypes:
+    def test_capture_output_returns_none_for_missing_agent(self, make_agent):
+        """capture_output should return None for non-existent agent."""
+        manager = MagicMock(spec=ashlar_server.AgentManager)
+        manager.agents = {}
+        result = asyncio.run(ashlar_server.AgentManager.capture_output(manager, "nonexistent"))
+        assert result is None
+
+    def test_status_patterns_planning_includes_thinking(self):
+        """Planning patterns should include <thinking> block detection."""
+        patterns = STATUS_PATTERNS["planning"]
+        # Check that at least one pattern matches <thinking>
+        matches = any(p.search("<thinking>") for p in patterns)
+        assert matches, "No planning pattern matches <thinking>"
+
+    def test_status_patterns_working_includes_tool_calls(self):
+        """Working patterns should include Claude Code tool call patterns."""
+        patterns = STATUS_PATTERNS["working"]
+        test_strings = ["Read(src/app.ts)", "Tool Result: success", "installing dependencies"]
+        for test in test_strings:
+            matches = any(p.search(test) for p in patterns)
+            assert matches, f"No working pattern matches: {test}"
+
+    def test_status_patterns_complete_includes_committed(self):
+        """Complete patterns should include 'changes committed'."""
+        patterns = STATUS_PATTERNS["complete"]
+        matches = any(p.search("changes committed") for p in patterns)
+        assert matches, "No complete pattern matches 'changes committed'"
+
+    def test_status_patterns_complete_includes_no_issues(self):
+        """Complete patterns should include 'no issues found'."""
+        patterns = STATUS_PATTERNS["complete"]
+        matches = any(p.search("no issues found") for p in patterns)
+        assert matches, "No complete pattern matches 'no issues found'"

@@ -411,6 +411,9 @@ class BackendConfig:
     # Cost rates (per 1K tokens)
     cost_input_per_1k: float = 0.003
     cost_output_per_1k: float = 0.015
+    # Context window sizing
+    context_window: int = 200_000  # tokens
+    char_to_token_ratio: float = 3.5
 
     def to_dict(self) -> dict:
         return {
@@ -425,6 +428,8 @@ class BackendConfig:
             "auto_approve_flag": self.auto_approve_flag,
             "cost_input_per_1k": self.cost_input_per_1k,
             "cost_output_per_1k": self.cost_output_per_1k,
+            "context_window": self.context_window,
+            "char_to_token_ratio": self.char_to_token_ratio,
         }
 
 
@@ -444,6 +449,8 @@ KNOWN_BACKENDS: dict[str, BackendConfig] = {
         },
         cost_input_per_1k=0.003,
         cost_output_per_1k=0.015,
+        context_window=200_000,
+        char_to_token_ratio=3.5,
     ),
     "codex": BackendConfig(
         command="codex",
@@ -452,6 +459,8 @@ KNOWN_BACKENDS: dict[str, BackendConfig] = {
         auto_approve_flag="--full-auto",
         cost_input_per_1k=0.003,
         cost_output_per_1k=0.012,
+        context_window=128_000,
+        char_to_token_ratio=3.2,
     ),
     "aider": BackendConfig(
         command="aider",
@@ -460,6 +469,8 @@ KNOWN_BACKENDS: dict[str, BackendConfig] = {
         auto_approve_flag="-y",
         cost_input_per_1k=0.003,
         cost_output_per_1k=0.015,
+        context_window=128_000,
+        char_to_token_ratio=3.5,
     ),
     "goose": BackendConfig(
         command="goose",
@@ -468,6 +479,8 @@ KNOWN_BACKENDS: dict[str, BackendConfig] = {
         auto_approve_flag="-y",
         cost_input_per_1k=0.003,
         cost_output_per_1k=0.015,
+        context_window=200_000,
+        char_to_token_ratio=3.5,
     ),
 }
 
@@ -662,6 +675,7 @@ class Agent:
             "tokens_output": self.tokens_output,
             "estimated_cost_usd": round(self.estimated_cost_usd, 4),
             "cost_is_estimated": True,
+            "context_window": KNOWN_BACKENDS[self.backend].context_window if self.backend in KNOWN_BACKENDS else 200_000,
         }
 
     def to_dict_full(self) -> dict:
@@ -838,14 +852,17 @@ class AgentManager:
         except Exception:
             return False
 
-    async def _tmux_capture(self, session: str, lines: int = 200) -> list[str]:
+    async def _tmux_capture(self, session: str, lines: int = 200) -> list[str] | None:
+        """Capture terminal output. Returns lines on success, empty list if no output, None if tmux error."""
         try:
             result = await self._run_tmux(["capture-pane", "-t", session, "-p", "-S", f"-{lines}"])
             if result.returncode == 0:
                 return result.stdout.splitlines()
-            return []
-        except Exception:
-            return []
+            log.debug(f"tmux capture failed for {session}: exit={result.returncode} stderr={result.stderr[:200]}")
+            return None  # Signal capture failure (session may be dead)
+        except Exception as e:
+            log.debug(f"tmux capture exception for {session}: {e}")
+            return None
 
     async def _tmux_get_pane_pid(self, session: str) -> int | None:
         try:
@@ -973,10 +990,18 @@ class AgentManager:
                 agent.status = "error"
                 agent.error_message = f"Failed to create tmux session: {result.stderr}"
                 log.error(f"tmux new-session failed: {result.stderr}")
+                try:
+                    await self._run_tmux(["kill-session", "-t", session_name])
+                except Exception:
+                    pass
                 return agent
         except Exception as e:
             agent.status = "error"
             agent.error_message = str(e)
+            try:
+                await self._run_tmux(["kill-session", "-t", session_name])
+            except Exception:
+                pass
             return agent
 
         # Get pane PID
@@ -998,6 +1023,11 @@ class AgentManager:
                         agent.script_path = None
                     except Exception:
                         pass
+                # Kill orphaned tmux session
+                try:
+                    await self._run_tmux(["kill-session", "-t", session_name])
+                except Exception:
+                    pass
                 return agent
         else:
             # Real mode: launch backend CLI using BackendConfig capabilities
@@ -1010,6 +1040,11 @@ class AgentManager:
                     agent.status = "error"
                     agent.error_message = str(e)
                     log.error(f"Backend resolution failed for {backend}: {e}")
+                    # Kill orphaned tmux session
+                    try:
+                        await self._run_tmux(["kill-session", "-t", session_name])
+                    except Exception:
+                        pass
                     return agent
 
             cmd_parts = [bc.command]
@@ -1397,7 +1432,12 @@ class AgentManager:
             agent._first_output_received = False
             agent.output_lines.clear()
             agent._total_chars = 0
+            agent._archived_lines = 0
+            agent._overflow_to_archive = None
             agent.context_pct = 0.0
+            agent.tokens_input = 0
+            agent.tokens_output = 0
+            agent.estimated_cost_usd = 0.0
             agent.script_path = None
 
             # Get pane PID
@@ -1476,13 +1516,16 @@ class AgentManager:
         agent.updated_at = datetime.now(timezone.utc).isoformat()
         return True
 
-    async def capture_output(self, agent_id: str) -> list[str]:
-        """Capture terminal output and return new lines since last capture."""
+    async def capture_output(self, agent_id: str) -> list[str] | None:
+        """Capture terminal output and return new lines since last capture.
+        Returns None if tmux session is dead/unreachable (vs empty list for no new output)."""
         agent = self.agents.get(agent_id)
         if not agent:
-            return []
+            return None
 
         raw_lines = await self._tmux_capture(agent.tmux_session)
+        if raw_lines is None:
+            return None  # Propagate tmux failure signal
         if not raw_lines:
             return []
 
@@ -1534,20 +1577,22 @@ class AgentManager:
         # Track total chars for context estimation and cost tracking
         chars_added = sum(len(l) for l in new_lines)
         agent._total_chars += chars_added
-        # ~3.5 chars/token for English, 200K context window
-        # Include base context: task + system prompt + overhead
+        # Use backend-specific context window and char/token ratio
+        bc = self.backend_configs.get(agent.backend)
+        ctx_window = bc.context_window if bc else 200_000
+        char_ratio = bc.char_to_token_ratio if bc else 3.5
+        # Include base context: task + system prompt + overhead (compute once, reuse)
         base_chars = len(agent.task or '') + len(agent.system_prompt or '') + 1750  # tool/overhead
         total_context_chars = agent._total_chars + base_chars
-        agent.context_pct = min(1.0, (total_context_chars / 3.5) / 200000)
+        agent.context_pct = min(1.0, (total_context_chars / char_ratio) / ctx_window)
 
         # Token/cost estimation (approximate — marked as estimates in API)
-        tokens_est = int(chars_added / 3.5)
+        # Use same char_ratio for consistency with context calculation
+        tokens_est = int(chars_added / char_ratio)
         agent.tokens_output += tokens_est
-        # Input includes base context: task + system prompt + overhead
-        base_input_chars = len(agent.task or '') + len(agent.system_prompt or '') + 2000  # overhead
-        agent.tokens_input = int(base_input_chars / 3.5) + int(agent.tokens_output * 0.3)
+        # Input tokens: base context + fraction of output (agent reads its own output)
+        agent.tokens_input = int(base_chars / char_ratio) + int(agent.tokens_output * 0.3)
         # Compute cost from backend config rates
-        bc = self.backend_configs.get(agent.backend)
         if bc:
             agent.estimated_cost_usd = (
                 (agent.tokens_input / 1000) * bc.cost_input_per_1k +
@@ -1917,7 +1962,7 @@ class AgentManager:
     def cleanup_all(self) -> None:
         """Kill all ashlar tmux sessions and clean temp files. Synchronous for shutdown."""
         # Clean up temp demo scripts
-        for agent in self.agents.values():
+        for agent in list(self.agents.values()):
             if agent.script_path:
                 try:
                     Path(agent.script_path).unlink(missing_ok=True)
@@ -1943,6 +1988,29 @@ class AgentManager:
             log.warning(f"Cleanup: failed to list/kill tmux sessions: {e}")
         log.info("All agent sessions cleaned up")
 
+    def cleanup_orphaned_sessions(self) -> int:
+        """Kill any ashlar-* tmux sessions left from previous ungraceful shutdowns. Returns count killed."""
+        killed = 0
+        try:
+            result = subprocess.run(
+                ["tmux", "list-sessions", "-F", "#{session_name}"],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                for session_name in result.stdout.strip().split("\n"):
+                    if session_name.startswith(self.tmux_prefix + "-"):
+                        try:
+                            subprocess.run(
+                                ["tmux", "kill-session", "-t", session_name],
+                                capture_output=True, timeout=5
+                            )
+                            killed += 1
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+        return killed
+
 
 # ─────────────────────────────────────────────
 # Section 5: Status Parser
@@ -1955,6 +2023,7 @@ STATUS_PATTERNS = {
         re.compile(r"(?i)here'?s (my|the) (plan|approach|strategy)"),
         re.compile(r"(?i)I'll (start by|first|begin)"),
         re.compile(r"(?i)thinking about"),
+        re.compile(r"<thinking>"),  # Claude thinking blocks
     ],
     "reading": [
         re.compile(r"(?i)(reading|loading|scanning|parsing) .+\.\w+"),
@@ -1976,6 +2045,13 @@ STATUS_PATTERNS = {
         re.compile(r"(?i)(building|compiling|bundling|webpack|vite|esbuild)"),
         # Test result patterns (working, not complete — tests are still running)
         re.compile(r"(?i)(\d+ (tests?|specs?) (passed|failed|skipped))"),
+        # Claude Code tool calls
+        re.compile(r"(?i)(Read|Write|Edit|Glob|Grep|Bash)\("),
+        re.compile(r"(?i)Tool (Result|Output):"),
+        # Package management / network
+        re.compile(r"(?i)(installing|downloading|fetching|uploading)"),
+        # Linting / formatting
+        re.compile(r"(?i)(lint|format|prettier|eslint|mypy|ruff)"),
     ],
     "waiting": [
         re.compile(r"(?i)(do you want|shall I|should I|would you like)"),
@@ -2001,6 +2077,8 @@ STATUS_PATTERNS = {
         re.compile(r"(?i)\b(done|complete|finished|successfully)\b"),
         re.compile(r"(?i)task completed"),
         re.compile(r"(?i)all tests pass"),
+        re.compile(r"(?i)changes committed"),  # Git commit completion
+        re.compile(r"(?i)no (issues|errors|warnings) found"),  # Clean lint/test
     ],
 }
 
@@ -2130,19 +2208,32 @@ _ACTION_PATTERNS = [
     re.compile(r"(?i)(scanning|auditing|testing|deploying) (.+)"),
     re.compile(r"(?i)(found \d+.+)"),
     re.compile(r"(?i)(coverage.+\d+%)"),
+    re.compile(r"(?i)(committed .+ to .+)"),  # Git commit
 ]
 
+# Claude Code intent patterns — "I'll fix the auth bug" → extract intent
+_INTENT_RE = re.compile(r"(?i)I'll\s+(.{10,80})")
+_GIT_COMMIT_RE = re.compile(r"(?i)committed .+ to .+")
 
-def extract_summary(lines: list[str], task: str) -> str:
+
+def extract_summary(lines: list[str], task: str, status: str = "") -> str:
     """Extract a 1-2 line summary from recent output with file paths and test results."""
+    MAX_LEN = 80  # Tighter cap for card display
+
     # Check for test results
     for line in reversed(lines[-20:]):
         m = _TEST_RESULT_RE.search(line)
         if m:
-            return _strip_ansi(f"Tests: {m.group(1)} passed, {m.group(2)} failed")
+            return _strip_ansi(f"Tests: {m.group(1)} passed, {m.group(2)} failed")[:MAX_LEN]
         m = _COVERAGE_RE.search(line)
         if m:
-            return _strip_ansi(f"Coverage: {m.group(1)}%")
+            return _strip_ansi(f"Coverage: {m.group(1)}%")[:MAX_LEN]
+
+    # Git commit summaries
+    for line in reversed(lines[-20:]):
+        m = _GIT_COMMIT_RE.search(_strip_ansi(line.strip()))
+        if m:
+            return _strip_ansi(m.group(0))[:MAX_LEN]
 
     # Extract file paths being worked on
     for line in reversed(lines[-20:]):
@@ -2156,22 +2247,35 @@ def extract_summary(lines: list[str], task: str) -> str:
                 # Try to extract file path from the match
                 fp = _FILE_PATH_RE.search(stripped)
                 if fp:
-                    return f"{match.group(1).title()} {fp.group(0)}"[:100]
-                return stripped[:100]
+                    return f"{match.group(1).title()} {fp.group(0)}"[:MAX_LEN]
+                return stripped[:MAX_LEN]
+
+    # Claude Code intent patterns — "I'll fix the authentication bug"
+    for line in reversed(lines[-20:]):
+        m = _INTENT_RE.search(_strip_ansi(line.strip()))
+        if m:
+            return m.group(1).strip().rstrip(".")[:MAX_LEN]
 
     # Files progress
     for line in reversed(lines[-15:]):
         m = _FILES_PROGRESS_RE.search(_strip_ansi(line))
         if m:
-            return f"Progress: {m.group(1)} of {m.group(2)} files"
+            return f"Progress: {m.group(1)} of {m.group(2)} files"[:MAX_LEN]
+
+    # When status is error, show first error line
+    if status == "error":
+        for line in reversed(lines[-20:]):
+            stripped = _strip_ansi(line.strip())
+            if stripped and re.search(r"(?i)(error|traceback|fatal|panic)", stripped):
+                return stripped[:MAX_LEN]
 
     # Fallback: last non-empty line
     for line in reversed(lines[-10:]):
         stripped = _strip_ansi(line.strip())
         if stripped and len(stripped) > 5:
-            return stripped[:100]
+            return stripped[:MAX_LEN]
 
-    return _strip_ansi(task[:100]) if task else "Working..."
+    return _strip_ansi(task[:MAX_LEN]) if task else "Working..."
 
 
 # ── LLM-Powered Summary Generation ──
@@ -3023,7 +3127,7 @@ async def collect_system_metrics(agent_manager: AgentManager) -> SystemMetrics:
     mem = psutil.virtual_memory()
     disk = psutil.disk_usage("/")
 
-    active = sum(1 for a in agent_manager.agents.values() if a.status in ("working", "planning"))
+    active = sum(1 for a in list(agent_manager.agents.values()) if a.status in ("working", "planning"))
 
     return SystemMetrics(
         cpu_pct=round(cpu, 1),
@@ -3082,7 +3186,7 @@ class WebSocketHub:
                 presets = []
             await ws.send_json({
                 "type": "sync",
-                "agents": [a.to_dict() for a in self.agent_manager.agents.values()],
+                "agents": [a.to_dict() for a in list(self.agent_manager.agents.values())],
                 "projects": projects,
                 "workflows": workflows,
                 "presets": presets,
@@ -3228,7 +3332,7 @@ class WebSocketHub:
                 app = getattr(self, 'app', None)
                 await ws.send_json({
                     "type": "sync",
-                    "agents": [a.to_dict() for a in self.agent_manager.agents.values()],
+                    "agents": [a.to_dict() for a in list(self.agent_manager.agents.values())],
                     "projects": projects,
                     "workflows": workflows,
                     "presets": presets,
@@ -3346,7 +3450,7 @@ async def serve_logo(request: web.Request) -> web.Response:
 
 async def list_agents(request: web.Request) -> web.Response:
     manager: AgentManager = request.app["agent_manager"]
-    agents = [a.to_dict() for a in manager.agents.values()]
+    agents = [a.to_dict() for a in list(manager.agents.values())]
     return web.json_response(agents)
 
 
@@ -4313,7 +4417,7 @@ async def get_costs(request: web.Request) -> web.Response:
     active_cost = 0.0
     active_tokens_in = 0
     active_tokens_out = 0
-    for agent in manager.agents.values():
+    for agent in list(manager.agents.values()):
         active_cost += agent.estimated_cost_usd
         active_tokens_in += agent.tokens_input
         active_tokens_out += agent.tokens_output
@@ -4875,6 +4979,7 @@ async def output_capture_loop(app: web.Application) -> None:
     hub: WebSocketHub = app["ws_hub"]
     interval = app["config"].output_capture_interval
     _archive_retry_queue: list[tuple[str, list[str], int]] = []  # (agent_id, lines, offset)
+    _seen_conflicts: set[tuple[str, frozenset]] = set()  # Dedup file conflict notifications
 
     while True:
         try:
@@ -4984,21 +5089,24 @@ async def output_capture_loop(app: web.Application) -> None:
                         "lines": new_lines,
                     })
 
-                    # File conflict detection
+                    # File conflict detection (deduplicate — only report each conflict pair+file once)
                     try:
                         conflicts = manager._check_file_conflicts(agent_id, new_lines)
                         for conflict in conflicts:
-                            await hub.broadcast_event(
-                                "file_conflict",
-                                f"File conflict: {conflict['agent_name']} and {conflict['other_agent_name']} both working on {conflict['file_path']}",
-                                agent_id, agent.name,
-                                conflict,
-                            )
+                            conflict_key = (conflict['file_path'], frozenset([conflict['agent_id'], conflict['other_agent_id']]))
+                            if conflict_key not in _seen_conflicts:
+                                _seen_conflicts.add(conflict_key)
+                                await hub.broadcast_event(
+                                    "file_conflict",
+                                    f"File conflict: {conflict['agent_name']} and {conflict['other_agent_name']} both working on {conflict['file_path']}",
+                                    agent_id, agent.name,
+                                    conflict,
+                                )
                     except Exception as e:
                         log.debug(f"File conflict detection error for {agent_id}: {e}")
 
                     # Update summary
-                    agent.summary = extract_summary(list(agent.output_lines), agent.task)
+                    agent.summary = extract_summary(list(agent.output_lines), agent.task, agent.status)
                     agent.progress_pct = estimate_progress(agent)
 
                     # LLM summary with throttling
@@ -5071,6 +5179,9 @@ async def output_capture_loop(app: web.Application) -> None:
 
                         if new_status == "error" and old_status != "error":
                             agent._error_entered_at = time.monotonic()
+                            # Reset health warning flags so they can re-fire on recovery+relapse
+                            agent._health_low_warned = False
+                            agent._health_critical_warned = False
                             wf_run, failure_action = manager.on_agent_failed(agent_id)
                             if wf_run:
                                 if failure_action == "retry":
@@ -5396,7 +5507,7 @@ async def cleanup_background_tasks(app: web.Application) -> None:
     db: Database = app["db"]
     manager: AgentManager = app["agent_manager"]
     if app.get("db_available", True):
-        for agent in manager.agents.values():
+        for agent in list(manager.agents.values()):
             try:
                 await db.save_agent(agent)
             except Exception as e:
@@ -5561,7 +5672,13 @@ def main() -> None:
     app = create_app(config)
 
     # Signal handlers need the agent manager reference
-    setup_signal_handlers(app["agent_manager"])
+    manager = app["agent_manager"]
+    setup_signal_handlers(manager)
+
+    # Clean up orphaned tmux sessions from prior ungraceful shutdowns
+    orphans = manager.cleanup_orphaned_sessions()
+    if orphans:
+        print(f"  \033[33mCleaned up {orphans} orphaned tmux session{'s' if orphans != 1 else ''}\033[0m")
 
     mode_str = "\033[33mDEMO MODE\033[0m" if config.demo_mode else "\033[32mLIVE MODE\033[0m"
     print(f"  Mode: {mode_str}")

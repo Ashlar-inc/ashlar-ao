@@ -153,7 +153,7 @@ class TestExtractSummary:
     def test_truncates_long_summary(self):
         lines = ["Writing " + "x" * 200 + ".ts"]
         summary = extract_summary(lines, "task")
-        assert len(summary) <= 100
+        assert len(summary) <= 80
 
     def test_strips_ansi_from_summary(self):
         lines = ["\033[32mWriting src/app.ts\033[0m"]

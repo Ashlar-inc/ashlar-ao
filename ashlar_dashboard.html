@@ -452,10 +452,12 @@ body {
     border-radius: 4px;
     line-height: 1;
     transition: all var(--transition);
-    opacity: 0;
+    opacity: 0.4;
 }
 .agent-card:hover .card-menu-btn { opacity: 1; }
+.card-menu-btn:focus-visible { opacity: 1; outline: 2px solid var(--accent); outline-offset: 2px; }
 .card-menu-btn:hover { background: var(--bg-elevated); color: var(--text-primary); }
+@media (max-width: 768px) { .card-menu-btn { opacity: 1; } }
 
 .card-dir {
     font-size: 11px;
@@ -523,14 +525,30 @@ body {
     background: var(--accent);
     transition: transform 0.8s ease;
     transform-origin: left;
+    position: relative;
+    overflow: hidden;
 }
+.agent-card[data-status="working"] .progress-bar-fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.2) 50%, transparent 100%);
+    animation: progressShimmer 2s ease-in-out infinite;
+}
+@keyframes progressShimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
 
+.context-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
 .context-bar {
     height: 3px;
     background: rgba(255,255,255,0.06);
     border-radius: 2px;
-    margin-bottom: 10px;
     overflow: hidden;
+    flex: 1;
 }
 .context-bar-fill {
     height: 100%;
@@ -538,6 +556,19 @@ body {
     transition: transform 0.5s ease, background 0.5s ease;
     transform-origin: left;
 }
+.context-bar-fill.high { animation: ctx-pulse 1.5s ease-in-out infinite; }
+@keyframes ctx-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+.context-text {
+    font-size: 10px;
+    color: var(--text-dimmed);
+    white-space: nowrap;
+    font-family: 'JetBrains Mono', monospace;
+    display: none;
+}
+.context-text.visible { display: inline; }
+.context-text.warning { color: #EF4444; }
+.context-warn-icon { display: none; font-size: 11px; }
+.context-warn-icon.visible { display: inline; }
 
 .card-footer {
     display: flex;
@@ -547,13 +578,14 @@ body {
 }
 
 .status-badge {
-    font-size: 10px;
-    font-weight: 600;
+    font-size: 11px;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    padding: 2px 8px;
-    border-radius: 5px;
+    padding: 3px 10px;
+    border-radius: 6px;
     font-family: var(--font-mono);
+    line-height: 1.1;
 }
 .status-badge.working { background: var(--accent-subtle); color: var(--accent-hover); }
 .status-badge.planning { background: var(--warning-subtle); color: var(--warning); }
@@ -622,8 +654,10 @@ body {
     transition: all var(--transition);
 }
 .card-menu-item:hover { background: var(--bg-card); color: var(--text-primary); }
+.card-menu-item:active { background: var(--accent-subtle); transform: scale(0.98); }
 .card-menu-item.danger { color: var(--danger); }
 .card-menu-item.danger:hover { background: var(--danger-subtle); }
+.card-menu-item.danger:active { background: var(--danger); color: white; }
 
 /* ── Spawn Dialog (Modal) ── */
 
@@ -679,8 +713,9 @@ body {
     text-align: center;
     transition: all var(--transition);
 }
-.role-option:hover { border-color: var(--border-light); background: var(--bg-card-hover); }
-.role-option.selected { border-color: var(--accent); background: var(--accent-subtle); }
+.role-option:hover { border-color: var(--border-light); background: var(--bg-card-hover); transform: translateY(-1px); }
+.role-option:active { transform: scale(0.97); }
+.role-option.selected { border-color: var(--accent); background: var(--accent-subtle); box-shadow: 0 0 20px rgba(37,99,235,0.15), inset 0 0 0 1px rgba(37,99,235,0.1); transform: translateY(-2px); }
 .role-option .role-icon { font-size: 24px; margin-bottom: 4px; }
 .role-option .role-name { font-size: 11px; color: var(--text-secondary); font-weight: 500; }
 .role-option .role-desc { font-size: 9px; color: var(--text-dimmed); margin-top: 2px; display: none; }
@@ -711,6 +746,14 @@ body {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
 }
+.form-input.error, .form-textarea.error {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 3px rgba(239,68,68,0.12);
+}
+.form-input.error:focus, .form-textarea.error:focus {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 3px rgba(239,68,68,0.2);
+}
 .form-textarea { resize: vertical; min-height: 80px; }
 .form-input::placeholder, .form-textarea::placeholder { color: var(--text-dimmed); }
 
@@ -737,7 +780,8 @@ body {
     position: relative;
     transition: all var(--transition);
 }
-.toggle.active { background: var(--accent); }
+.toggle.active { background: var(--accent); box-shadow: 0 0 12px rgba(37,99,235,0.3); }
+.toggle:active { transform: scale(0.95); }
 .toggle::after {
     content: '';
     width: 18px; height: 18px;
@@ -745,9 +789,10 @@ body {
     border-radius: 50%;
     position: absolute;
     top: 3px; left: 3px;
-    transition: transform var(--transition);
+    transition: transform var(--transition), box-shadow var(--transition);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
-.toggle.active::after { transform: translateX(18px); }
+.toggle.active::after { transform: translateX(18px); box-shadow: 0 1px 3px rgba(0,0,0,0.3), 0 0 4px rgba(37,99,235,0.4); }
 
 .dialog-actions {
     display: flex;
@@ -763,13 +808,28 @@ body {
     cursor: pointer;
     border: none;
     transition: all var(--transition);
+    user-select: none;
 }
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 .btn-primary {
     background: var(--accent);
     color: white;
     box-shadow: 0 0 20px var(--accent-glow);
 }
 .btn-primary:hover { background: var(--accent-hover); }
+.btn-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: btn-spin 0.6s linear infinite;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+@keyframes btn-spin { to { transform: rotate(360deg); } }
 .btn-secondary {
     background: var(--bg-card);
     color: var(--text-secondary);
@@ -919,7 +979,8 @@ body {
     z-index: 5;
 }
 .jump-to-bottom:hover { background: var(--bg-card-hover); color: var(--text-primary); }
-.jump-to-bottom.visible { display: block; }
+.jump-to-bottom.visible { display: block; animation: jumpPulse 2s ease-in-out infinite; }
+@keyframes jumpPulse { 0%,100% { box-shadow: 0 2px 8px rgba(0,0,0,0.3); } 50% { box-shadow: 0 2px 16px rgba(37,99,235,0.3); } }
 
 .deep-input-bar {
     height: 54px;
@@ -985,11 +1046,11 @@ body {
     padding: 24px;
     padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     overflow-y: auto;
-    animation: sheetUp 0.2s ease;
+    animation: sheetUp 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 @keyframes sheetUp {
-    from { transform: translateY(100%); }
-    to { transform: translateY(0); }
+    from { transform: translateY(100%); opacity: 0.8; }
+    to { transform: translateY(0); opacity: 1; }
 }
 
 /* ── Attention Queue ── */
@@ -1250,7 +1311,9 @@ body {
     color: var(--text-secondary);
     transition: all var(--transition);
 }
-.palette-item:hover, .palette-item.selected { background: var(--bg-card-hover); color: var(--text-primary); }
+.palette-item:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+.palette-item.selected { background: var(--bg-card-hover); color: var(--text-primary); transform: translateX(4px); box-shadow: inset 3px 0 0 var(--accent); }
+.palette-item:active { transform: scale(0.99); }
 .palette-item-icon { font-size: 16px; width: 24px; text-align: center; flex-shrink: 0; }
 .palette-item-label { flex: 1; }
 .palette-item-label mark { background: transparent; color: var(--accent); font-weight: 600; }
@@ -1772,14 +1835,21 @@ body {
     50% { box-shadow: 0 0 0 4px rgba(249,115,22,0); }
 }
 
-/* Spawning skeleton — shimmer effect */
+/* Spawning skeleton — shimmer effect across all content elements */
 .agent-card[data-status="spawning"] .card-summary,
-.agent-card[data-status="spawning"] .card-dir {
+.agent-card[data-status="spawning"] .card-dir,
+.agent-card[data-status="spawning"] .card-info-row,
+.agent-card[data-status="spawning"] .context-bar-row,
+.agent-card[data-status="spawning"] .progress-bar {
     background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s ease-in-out infinite;
     border-radius: 4px;
     color: transparent !important;
+}
+.agent-card[data-status="spawning"] .card-icon {
+    animation: shimmer 1.5s ease-in-out infinite;
+    opacity: 0.5;
 }
 @keyframes shimmer {
     0% { background-position: 200% 0; }
@@ -1971,8 +2041,19 @@ body {
 .deep-tab:hover { color: var(--text-primary); }
 .deep-tab.active {
     color: var(--accent);
-    border-bottom-color: var(--accent);
+    border-bottom-color: transparent;
+    position: relative;
 }
+.deep-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent);
+    border-radius: 1px 1px 0 0;
+    animation: tabSlideIn 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes tabSlideIn { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .deep-scratchpad-panel {
     flex: 1;
     overflow-y: auto;
@@ -2479,9 +2560,15 @@ body {
 .notification-item {
     border-radius: var(--radius-sm);
     margin: 2px 0;
+    transition: all var(--transition);
 }
 .notification-item:hover {
     background: rgba(37,99,235,0.08);
+    transform: translateX(2px);
+}
+.notification-item.unread {
+    background: rgba(37,99,235,0.06);
+    border-left: 2px solid var(--accent);
 }
 
 /* ── Overlay entrances ── */
@@ -2588,7 +2675,10 @@ body {
     border: none;
     transition: all var(--transition);
 }
-.btn-danger:hover { background: #DC2626; }
+.btn-danger:hover { background: #DC2626; box-shadow: 0 0 20px rgba(239,68,68,0.3); }
+.btn-danger:active { transform: scale(0.97); }
+.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+.confirm-dialog.danger { border-color: rgba(239,68,68,0.3); }
 /* ── Accessibility: Screen-reader only ── */
 .sr-only {
     position: absolute;
@@ -2727,7 +2817,7 @@ body {
 .pipeline-connector { width: 2px; height: 20px; background: var(--border); margin: 0 auto; }
 
 /* ── Keyboard Focus ── */
-.agent-card.keyboard-focused { outline: 2px solid var(--accent); outline-offset: 2px; }
+.agent-card.keyboard-focused { outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: 0 0 24px var(--accent-glow), 0 8px 32px rgba(0,0,0,0.3); }
 
 /* ── Deep Search: Regex Toggle + Log Filter ── */
 .deep-search-toggle { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); border-radius: 4px; padding: 2px 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px; cursor: pointer; transition: all 0.15s; margin-right: 4px; }
@@ -2853,7 +2943,8 @@ body {
 
 /* ── Scratchpad Tab (C2) ── */
 .scratchpad-panel { padding: 12px 0; }
-.scratchpad-entry { display: flex; align-items: center; gap: 8px; padding: 6px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.scratchpad-entry { display: flex; align-items: center; gap: 8px; padding: 6px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); transition: all var(--transition); cursor: default; }
+.scratchpad-entry:hover { background: rgba(255,255,255,0.03); transform: translateX(2px); }
 .scratchpad-key { font-family: var(--font-mono); font-size: 12px; color: var(--accent); min-width: 120px; }
 .scratchpad-val { font-size: 12px; color: var(--text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scratchpad-by { font-size: 10px; color: var(--text-dimmed); min-width: 60px; }
@@ -2979,8 +3070,9 @@ body {
                 <div class="empty-cube">⚙</div>
                 <div class="empty-cube">🧪</div>
             </div>
-            <h2>No agents running</h2>
-            <p>Spawn your first agent to get started, or run a workflow</p>
+            <h2>Your AI agents, one command center</h2>
+            <p>Spawn agents to work across your projects — each gets its own terminal, status tracking, and context window</p>
+            <button class="btn btn-primary" onclick="openSpawnDialog()" style="margin-bottom: 16px; padding: 10px 28px; font-size: 14px;">Spawn Agent</button>
             <div class="shortcuts">
                 <span class="shortcut-hint"><span class="kbd">⌘N</span> spawn agent</span>
                 <span class="shortcut-hint"><span class="kbd">⌘K</span> command palette</span>
@@ -3628,7 +3720,9 @@ function confirmAction(title, message, confirmText = 'Confirm', options = {}) {
         titleEl.textContent = title;
         msgEl.textContent = message;
         okBtn.textContent = confirmText;
-        okBtn.className = options.danger !== false ? 'btn btn-danger' : 'btn btn-primary';
+        const isDanger = options.danger !== false;
+        okBtn.className = isDanger ? 'btn btn-danger' : 'btn btn-primary';
+        overlay.querySelector('.confirm-dialog').classList.toggle('danger', isDanger);
 
         overlay.classList.add('active');
 
@@ -3690,14 +3784,14 @@ function promptInput(title, placeholder = '', options = {}) {
 // ── Loading State Utility ──
 
 async function withLoading(btn, asyncFn, loadingText = 'Saving...') {
-    const original = btn.textContent;
+    const original = btn.innerHTML;
     btn.disabled = true;
-    btn.textContent = loadingText;
+    btn.innerHTML = '<span class="btn-spinner"></span>' + escapeHtml(loadingText);
     try {
         return await asyncFn();
     } finally {
         btn.disabled = false;
-        btn.textContent = original;
+        btn.innerHTML = original;
     }
 }
 
@@ -4222,7 +4316,7 @@ function createAgentCard(agent) {
         </div>
         <div class="progress-bar" role="progressbar" aria-label="Task progress"><div class="progress-bar-fill"></div></div>
         <canvas class="card-sparkline" width="160" height="20"></canvas>
-        <div class="context-bar" role="progressbar" aria-label="Context window usage"><div class="context-bar-fill"></div></div>
+        <div class="context-bar-row"><div class="context-bar" role="progressbar" aria-label="Context window usage"><div class="context-bar-fill"></div></div><span class="context-warn-icon" title="High context usage">&#9888;</span><span class="context-text"></span></div>
         <span class="card-pin-indicator">📌</span>
         <div class="card-footer">
             <span class="status-badge"></span>
@@ -4325,7 +4419,7 @@ function updateAgentCard(card, agent) {
     const phase = agent.phase || agent.status;
     progFill.className = 'progress-bar-fill ' + (phaseMap[phase] || '');
 
-    // Context bar with gradient
+    // Context bar with gradient + token count
     const pct = Math.round((agent.context_pct || 0) * 100);
     const ctxBar = card.querySelector('.context-bar');
     const fill = card.querySelector('.context-bar-fill');
@@ -4334,6 +4428,20 @@ function updateAgentCard(card, agent) {
     ctxBar.setAttribute('aria-valuenow', pct);
     ctxBar.setAttribute('aria-valuemin', '0');
     ctxBar.setAttribute('aria-valuemax', '100');
+    // Token count text (visible at >=50%)
+    const ctxText = card.querySelector('.context-text');
+    const ctxWarn = card.querySelector('.context-warn-icon');
+    if (ctxText) {
+        const ctxWindow = agent.context_window || 200000;
+        const ctxWindowK = Math.round(ctxWindow / 1000);
+        const usedK = Math.round((agent.context_pct || 0) * ctxWindowK);
+        ctxText.textContent = usedK + 'K / ' + ctxWindowK + 'K';
+        ctxText.className = 'context-text' + (pct >= 50 ? ' visible' : '') + (pct >= 80 ? ' warning' : '');
+        ctxBar.title = `Context window: ~${usedK},000 of ${ctxWindow.toLocaleString()} tokens used`;
+    }
+    if (ctxWarn) {
+        ctxWarn.className = 'context-warn-icon' + (pct >= 80 ? ' visible' : '');
+    }
 
     // Message badge
     const msgBadge = card.querySelector('.card-message-badge');
@@ -4788,7 +4896,10 @@ function scrollDeepToBottom() {
 
 function closeDeepView() {
     const terminal = document.getElementById('deepTerminal');
-    if (terminal) terminal.onscroll = null;
+    if (terminal && terminal._ashlarScrollHandler) {
+        terminal.removeEventListener('scroll', terminal._ashlarScrollHandler);
+        terminal._ashlarScrollHandler = null;
+    }
     document.getElementById('deepView').classList.remove('active');
     closeDeepSearch();
     state.focusedAgentId = null;
@@ -5976,14 +6087,16 @@ function clearTerminalDisplay() {
 
 function showToast(message, type = 'info') {
     const container = document.getElementById('toastContainer');
+    const durations = { info: 3000, success: 3000, warning: 5000, error: 8000 };
+    const duration = durations[type] || 3000;
     // Deduplicate: if identical message already visible, reset its timer instead
     for (const existing of container.children) {
         if (existing._toastMessage === message && existing._toastType === type && !existing.classList.contains('toast-out')) {
             clearTimeout(existing._toastTimer);
-            existing._toastTimer = setTimeout(existing._dismiss, 3000);
+            existing._toastTimer = setTimeout(existing._dismiss, duration);
             // Reset progress bar animation
             const progress = existing.querySelector('.toast-progress');
-            if (progress) { progress.style.animation = 'none'; progress.offsetHeight; progress.style.animation = ''; }
+            if (progress) { progress.style.animation = 'none'; progress.offsetHeight; progress.style.animationDuration = duration + 'ms'; progress.style.animation = ''; }
             return;
         }
     }
@@ -5997,19 +6110,24 @@ function showToast(message, type = 'info') {
     toast._toastType = type;
     if (type === 'error') toast.setAttribute('role', 'alert');
     toast.innerHTML = `<span class="toast-icon">${icons[type] || 'ℹ️'}</span><span>${escapeHtml(message)}</span><div class="toast-progress"></div>`;
+    // Set progress bar animation duration to match toast duration
+    const progress = toast.querySelector('.toast-progress');
+    if (progress) progress.style.animationDuration = duration + 'ms';
     const dismiss = () => { toast.classList.add('toast-out'); setTimeout(() => toast.remove(), 300); };
     toast._dismiss = dismiss;
     toast.onclick = dismiss;
     container.appendChild(toast);
-    toast._toastTimer = setTimeout(dismiss, 3000);
+    toast._toastTimer = setTimeout(dismiss, duration);
     toast.onmouseenter = () => clearTimeout(toast._toastTimer);
-    toast.onmouseleave = () => { toast._toastTimer = setTimeout(dismiss, 1500); };
+    toast.onmouseleave = () => { toast._toastTimer = setTimeout(dismiss, Math.min(1500, duration / 2)); };
+    // Play error tone on error toasts
+    if (type === 'error') playTone([330, 220], 0.15);
 }
 
 // ── Notifications ──
 
 function addNotification(evtType, message, agentId) {
-    const n = { type: evtType, message, agentId, time: Date.now() };
+    const n = { type: evtType, message, agentId, time: Date.now(), read: false };
     state.notifications.unshift(n);
     if (state.notifications.length > 50) state.notifications.pop();
     state.unreadCount++;
@@ -6023,9 +6141,9 @@ function renderNotificationList() {
     const icons = { agent_spawned: '🚀', agent_killed: '💀', agent_needs_input: '⚠', agent_error: '❌' };
     state.notifications.slice(0, 30).forEach(n => {
         const el = document.createElement('div');
-        el.className = 'notification-item';
+        el.className = 'notification-item' + (n.read ? '' : ' unread');
         el.innerHTML = `<span class="ni-icon">${icons[n.type] || '📌'}</span><span class="ni-text">${escapeHtml(n.message)}</span><span class="ni-time">${timeAgo(new Date(n.time).toISOString())}</span>`;
-        el.onclick = () => { closeNotifications(); if (n.agentId && state.agents.has(n.agentId)) openDeepView(n.agentId); };
+        el.onclick = () => { n.read = true; el.classList.remove('unread'); closeNotifications(); if (n.agentId && state.agents.has(n.agentId)) openDeepView(n.agentId); };
         list.appendChild(el);
     });
 }
@@ -6037,6 +6155,8 @@ function toggleNotifications(e) {
     if (dd.classList.contains('active')) {
         state.unreadCount = 0;
         document.getElementById('unreadDot').classList.remove('active');
+        state.notifications.forEach(n => { n.read = true; });
+        renderNotificationList();
     }
 }
 
