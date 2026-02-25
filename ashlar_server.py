@@ -126,8 +126,20 @@ def check_dependencies() -> bool:
     log.info("tmux found")
 
     if shutil.which("claude") and not os.environ.get("CLAUDECODE"):
-        log.info("claude CLI found")
-        return True
+        try:
+            result = subprocess.run(
+                ["claude", "--version"], capture_output=True, timeout=5, text=True
+            )
+            if result.returncode == 0:
+                version = result.stdout.strip().split('\n')[0][:80]
+                log.info(f"claude CLI validated: {version}")
+                return True
+            else:
+                log.warning(f"claude CLI found but --version failed (exit {result.returncode}) — using demo mode")
+                return False
+        except (subprocess.TimeoutExpired, OSError) as e:
+            log.warning(f"claude CLI found but not functional ({e}) — using demo mode")
+            return False
     elif os.environ.get("CLAUDECODE"):
         log.warning("Running inside Claude Code session — using demo mode to avoid nested sessions")
         return False
@@ -3040,9 +3052,10 @@ class WebSocketHub:
         self.config = config
         self.db = db
         self.max_clients: int = 100
+        self._last_sync_time: dict[web.WebSocketResponse, float] = {}
 
     async def handle_ws(self, request: web.Request) -> web.WebSocketResponse:
-        ws = web.WebSocketResponse(heartbeat=30.0)
+        ws = web.WebSocketResponse(heartbeat=30.0, max_msg_size=1 * 1024 * 1024)
         await ws.prepare(request)
 
         # Enforce connection limit — reject if at capacity
@@ -3075,6 +3088,8 @@ class WebSocketHub:
                 "presets": presets,
                 "config": self.config.to_dict(),
                 "backends": backends_info,
+                "db_ready": request.app.get("db_ready", False),
+                "db_available": request.app.get("db_available", True),
             })
 
             async for msg in ws:
@@ -3091,6 +3106,7 @@ class WebSocketHub:
             log.error(f"WebSocket handler error: {e}")
         finally:
             self.clients.discard(ws)
+            self._last_sync_time.pop(ws, None)
             log.info(f"WebSocket client disconnected ({len(self.clients)} total)")
 
         return ws
@@ -3192,6 +3208,12 @@ class WebSocketHub:
                         await self.broadcast({"type": "agent_update", "agent": to_agent.to_dict()})
 
             case "sync_request":
+                now = time.monotonic()
+                last = self._last_sync_time.get(ws, 0.0)
+                if now - last < 2.0:
+                    await ws.send_json({"type": "error", "message": "sync_request throttled (max 1 per 2s)"})
+                    return
+                self._last_sync_time[ws] = now
                 projects = await self.db.get_projects() if self.db else []
                 workflows = await self.db.get_workflows() if self.db else []
                 try:
@@ -3203,6 +3225,7 @@ class WebSocketHub:
                     d = bc.to_dict()
                     d["name"] = name
                     backends_info[name] = d
+                app = getattr(self, 'app', None)
                 await ws.send_json({
                     "type": "sync",
                     "agents": [a.to_dict() for a in self.agent_manager.agents.values()],
@@ -3211,6 +3234,8 @@ class WebSocketHub:
                     "presets": presets,
                     "config": self.config.to_dict(),
                     "backends": backends_info,
+                    "db_ready": app.get("db_ready", False) if app else False,
+                    "db_available": app.get("db_available", True) if app else True,
                 })
 
             case _:
@@ -3478,6 +3503,8 @@ async def send_to_agent(request: web.Request) -> web.Response:
     message = data.get("message", "")
     if not message:
         return web.json_response({"error": "No message provided"}, status=400)
+    if len(message) > 50_000:
+        return web.json_response({"error": "Message too long (max 50,000 chars)"}, status=400)
 
     success = await manager.send_message(agent_id, message)
     if success:
@@ -5316,6 +5343,19 @@ async def _supervised_task(name: str, coro_fn, app: web.Application) -> None:
                 "last_crash": datetime.now(timezone.utc).isoformat(),
                 "last_error": str(e)[:200],
             }
+            # Broadcast crash event to connected clients
+            hub: WebSocketHub | None = app.get("ws_hub")
+            if hub:
+                try:
+                    await hub.broadcast({
+                        "type": "event",
+                        "event": "bg_task_crash",
+                        "task": name,
+                        "restart": restart_count,
+                        "error": str(e)[:200],
+                    })
+                except Exception:
+                    pass  # Don't let broadcast failure block restart
             await asyncio.sleep(min(5 * restart_count, 30))  # back off
 
 
@@ -5333,6 +5373,7 @@ async def start_background_tasks(app: web.Application) -> None:
             log.error(f"Database init failed on retry: {e2} — running in degraded mode (no persistence)")
             app["db_available"] = False
 
+    app["db_ready"] = True
     app["bg_task_health"] = {}
     app["bg_tasks"] = [
         asyncio.create_task(_supervised_task("output_capture", output_capture_loop, app)),
@@ -5389,6 +5430,7 @@ def create_app(config: Config) -> web.Application:
     app["db_available"] = True  # Set to False if DB init fails in start_background_tasks
 
     hub = WebSocketHub(manager, config, db)
+    hub.app = app
     app["ws_hub"] = hub
 
     # Rate limiter

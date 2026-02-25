@@ -983,6 +983,7 @@ body {
     border-bottom: none;
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
     padding: 24px;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     overflow-y: auto;
     animation: sheetUp 0.2s ease;
 }
@@ -1283,6 +1284,7 @@ body {
     display: flex;
     align-items: center;
     padding: 0 20px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
     gap: 12px;
     z-index: 100;
 }
@@ -1798,6 +1800,151 @@ body {
 .deep-view.active {
     transform: translateX(0);
     opacity: 1;
+}
+
+/* ── Project Detail Panel ── */
+.project-detail-panel {
+    position: fixed;
+    top: 0; right: 0; bottom: 0;
+    width: 440px;
+    max-width: 100vw;
+    background: var(--bg-primary);
+    border-left: 1px solid var(--border);
+    z-index: 160;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease;
+    opacity: 0;
+}
+.project-detail-panel.active {
+    transform: translateX(0);
+    opacity: 1;
+}
+.project-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    background: rgba(13,21,32,0.8);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+.project-detail-header h3 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 600;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.project-detail-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+}
+.project-detail-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.project-stat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 12px;
+}
+.project-stat-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+.project-stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.project-detail-section {
+    margin-bottom: 20px;
+}
+.project-detail-section h4 {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0 0 10px 0;
+}
+.project-agent-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.project-agent-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition);
+}
+.project-agent-item:hover {
+    border-color: var(--accent);
+    background: rgba(99,102,241,0.05);
+}
+.project-agent-status {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.project-agent-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    flex: 1;
+}
+.project-agent-role {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+.project-detail-path {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    margin-bottom: 16px;
+    word-break: break-all;
+}
+.project-scratchpad-entry {
+    padding: 10px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+.project-scratchpad-entry .entry-time {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+.project-empty-state {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+    padding: 20px 0;
+}
+@media (max-width: 480px) {
+    .project-detail-panel { width: 100vw; }
 }
 
 /* ── Terminal Toolbar ── */
@@ -2442,6 +2589,19 @@ body {
     transition: all var(--transition);
 }
 .btn-danger:hover { background: #DC2626; }
+/* ── Accessibility: Screen-reader only ── */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 /* ── Responsive Layout ── */
 @media (max-width: 768px) {
     .top-bar { flex-wrap: wrap; padding: 8px 12px; gap: 8px; }
@@ -2457,7 +2617,8 @@ body {
 @media (max-width: 480px) {
     .logo-text { display: none; }
     .metrics-bar { display: none; }
-    .card-info-row { display: none; }
+    .card-info-row { gap: 4px; font-size: 10px; }
+    .card-info-row .card-data-badge { display: none; }
     .agent-grid { grid-template-columns: 1fr; padding: 8px; }
     .deep-actions { flex-wrap: wrap; }
 }
@@ -2742,7 +2903,7 @@ body {
     <select class="project-selector" id="projectSelector" onchange="filterByProject(this.value)" aria-label="Filter by project">
         <option value="">All Projects</option>
     </select>
-    <span class="project-metrics-badge" id="projectMetricsBadge" style="display:none"></span>
+    <span class="project-metrics-badge" id="projectMetricsBadge" style="display:none;cursor:pointer" onclick="if(state.selectedProjectId)openProjectDetail(state.selectedProjectId)" title="Click to view project details"></span>
     <div class="top-spacer"></div>
     <div class="metrics-bar" id="metricsBar" style="cursor:pointer" onclick="toggleMetricsDropdown()">
         <div class="metric">
@@ -3041,8 +3202,48 @@ body {
     <button class="command-send-btn" onclick="sendCommand()">Send</button>
 </div>
 
+<!-- ── Project Detail Panel ── -->
+<div class="project-detail-panel" id="projectDetailPanel">
+    <div class="project-detail-header">
+        <button class="back-btn" onclick="closeProjectDetail()">← Back</button>
+        <h3 id="projectDetailName"></h3>
+    </div>
+    <div class="project-detail-body">
+        <div class="project-detail-path" id="projectDetailPath"></div>
+        <div class="project-detail-stats">
+            <div class="project-stat-card">
+                <div class="project-stat-label">Active Agents</div>
+                <div class="project-stat-value" id="projectDetailActive">0</div>
+            </div>
+            <div class="project-stat-card">
+                <div class="project-stat-label">Total Agents</div>
+                <div class="project-stat-value" id="projectDetailTotal">0</div>
+            </div>
+            <div class="project-stat-card">
+                <div class="project-stat-label">Total Cost</div>
+                <div class="project-stat-value" id="projectDetailCost">$0.00</div>
+            </div>
+            <div class="project-stat-card">
+                <div class="project-stat-label">Avg Context</div>
+                <div class="project-stat-value" id="projectDetailContext">0%</div>
+            </div>
+        </div>
+        <div class="project-detail-section">
+            <h4>Agents</h4>
+            <div class="project-agent-list" id="projectDetailAgents"></div>
+        </div>
+        <div class="project-detail-section">
+            <h4>Scratchpad</h4>
+            <div id="projectDetailScratchpad"></div>
+        </div>
+    </div>
+</div>
+
 <!-- ── Toast Container ── -->
-<div class="toast-container" id="toastContainer"></div>
+<div class="toast-container" id="toastContainer" role="status"></div>
+
+<!-- ── ARIA Live Region for screen readers ── -->
+<div id="liveRegion" aria-live="polite" class="sr-only"></div>
 
 <!-- ── History Panel ── -->
 <div class="history-overlay" id="historyOverlay" onclick="if(event.target===this)closeHistory()">
@@ -3709,6 +3910,10 @@ async function handleSync(data) {
     state.presets = data.presets || [];
     state.backends = data.backends || {};
     if (state.config.demo_mode) document.getElementById('demoBadge').style.display = '';
+    // Show degraded-mode toast if DB unavailable
+    if (data.db_available === false) {
+        showToast('Database unavailable — running in degraded mode (no persistence)', 'warning');
+    }
     renderProjectSelector();
     renderAgentGrid();
     if (state.viewMode === 'table') renderAgentTable();
@@ -3724,6 +3929,7 @@ async function handleSync(data) {
     } catch (e) { /* workflow-runs endpoint may not exist yet */ }
 }
 
+let _lastAriaAnnounce = 0;
 function handleAgentUpdate(agent) {
     const prev = state.agents.get(agent.id);
     state.agents.set(agent.id, agent);
@@ -3731,9 +3937,25 @@ function handleAgentUpdate(agent) {
     // Preserve output buffer from previous state
     if (prev?._outputBuffer) agent._outputBuffer = prev._outputBuffer;
 
+    // Announce critical status changes to screen readers (throttle: max 1 per 3s)
+    if (prev && prev.status !== agent.status && (agent.status === 'waiting' || agent.status === 'error')) {
+        const now = Date.now();
+        if (now - _lastAriaAnnounce > 3000) {
+            _lastAriaAnnounce = now;
+            const region = document.getElementById('liveRegion');
+            if (region) {
+                const msg = agent.status === 'waiting'
+                    ? `Agent ${agent.name} needs input`
+                    : `Agent ${agent.name} encountered an error`;
+                region.textContent = msg;
+            }
+        }
+    }
+
     scheduleRender();
     if (state.viewMode === 'table') renderAgentTable();
     if (state.view === 'deep' && state.focusedAgentId === agent.id) updateDeepViewHeader(agent);
+    if (state._projectDetailId) updateProjectDetailContent(state._projectDetailId);
     updateTabTitle();
     updateAttentionBadge();
 }
@@ -3878,6 +4100,10 @@ function handleEvent(data) {
         case 'agent_handoff':
             showToast(msg || 'Agent handoff', 'info');
             playTone([550, 660], 0.08);
+            break;
+        case 'bg_task_crash':
+            showToast(`Background task "${data.task}" crashed (restart #${data.restart})`, 'warning');
+            playTone([330, 220], 0.15);
             break;
     }
 }
@@ -4087,8 +4313,12 @@ function updateAgentCard(card, agent) {
 
     // Progress bar with phase colors
     const progPct = Math.round((agent.progress_pct || 0) * 100);
+    const progBar = card.querySelector('.progress-bar');
     const progFill = card.querySelector('.progress-bar-fill');
     progFill.style.transform = `scaleX(${progPct / 100})`;
+    progBar.setAttribute('aria-valuenow', progPct);
+    progBar.setAttribute('aria-valuemin', '0');
+    progBar.setAttribute('aria-valuemax', '100');
     // Phase-based color
     // Use server-provided phase if available, fallback to status-based mapping
     const phaseMap = { planning: 'phase-planning', reading: 'phase-reading', implementing: 'phase-implementing', working: 'phase-implementing', testing: 'phase-testing', idle: 'phase-complete', complete: 'phase-complete' };
@@ -4097,9 +4327,13 @@ function updateAgentCard(card, agent) {
 
     // Context bar with gradient
     const pct = Math.round((agent.context_pct || 0) * 100);
+    const ctxBar = card.querySelector('.context-bar');
     const fill = card.querySelector('.context-bar-fill');
     fill.style.transform = `scaleX(${pct / 100})`;
     fill.className = 'context-bar-fill ' + (pct < 50 ? 'low' : pct < 80 ? 'medium' : 'high');
+    ctxBar.setAttribute('aria-valuenow', pct);
+    ctxBar.setAttribute('aria-valuemin', '0');
+    ctxBar.setAttribute('aria-valuemax', '100');
 
     // Message badge
     const msgBadge = card.querySelector('.card-message-badge');
@@ -5322,6 +5556,79 @@ function updateProjectMetricsBadge() {
     badge.innerHTML = `<span class="pm-count">${count}</span> agent${count !== 1 ? 's' : ''}${active > 0 ? ` (${active} active)` : ''}${cost > 0 ? ` · <span class="pm-cost">$${cost.toFixed(3)}</span>` : ''}`;
 }
 
+// ── Project Detail Panel ──
+
+const STATUS_COLORS = {
+    spawning: '#64748B', planning: '#F59E0B', working: '#22C55E',
+    waiting: '#F97316', idle: '#64748B', error: '#EF4444', paused: '#64748B',
+    complete: '#10B981',
+};
+
+function openProjectDetail(projectId) {
+    const project = state.projects.find(p => p.id === projectId);
+    if (!project) return;
+
+    state._projectDetailId = projectId;
+    document.getElementById('projectDetailName').textContent = project.name;
+    document.getElementById('projectDetailPath').textContent = project.directory || project.path || '';
+    updateProjectDetailContent(projectId);
+    document.getElementById('projectDetailPanel').classList.add('active');
+
+    // Close with Escape
+    document.addEventListener('keydown', _projectDetailEscHandler);
+}
+
+function _projectDetailEscHandler(e) {
+    if (e.key === 'Escape') closeProjectDetail();
+}
+
+function closeProjectDetail() {
+    document.getElementById('projectDetailPanel').classList.remove('active');
+    document.removeEventListener('keydown', _projectDetailEscHandler);
+    state._projectDetailId = null;
+}
+
+function updateProjectDetailContent(projectId) {
+    const agents = [...state.agents.values()].filter(a => a.project_id === projectId);
+    const active = agents.filter(a => !['idle', 'error', 'paused'].includes(a.status)).length;
+    const totalCost = agents.reduce((s, a) => s + (a.estimated_cost_usd || 0), 0);
+    const avgCtx = agents.length ? agents.reduce((s, a) => s + (a.context_pct || 0), 0) / agents.length : 0;
+
+    document.getElementById('projectDetailActive').textContent = active;
+    document.getElementById('projectDetailTotal').textContent = agents.length;
+    document.getElementById('projectDetailCost').textContent = '$' + totalCost.toFixed(2);
+    document.getElementById('projectDetailContext').textContent = Math.round(avgCtx * 100) + '%';
+
+    // Agent list
+    const listEl = document.getElementById('projectDetailAgents');
+    if (!agents.length) {
+        listEl.innerHTML = '<div class="project-empty-state">No agents in this project</div>';
+    } else {
+        const roles = window.ROLES || {};
+        listEl.innerHTML = agents.map(a => {
+            const role = roles[a.role] || {};
+            const color = STATUS_COLORS[a.status] || '#64748B';
+            return `<div class="project-agent-item" onclick="closeProjectDetail(); openDeepView('${escapeHtml(a.id)}')">
+                <div class="project-agent-status" style="background:${color}"></div>
+                <span class="project-agent-name">${role.icon || ''} ${escapeHtml(a.name)}</span>
+                <span class="project-agent-role">${escapeHtml(a.status)}</span>
+            </div>`;
+        }).join('');
+    }
+
+    // Scratchpad entries (from state)
+    const spEl = document.getElementById('projectDetailScratchpad');
+    const entries = (state._scratchpadEntries || []).filter(e => e.project_id === projectId);
+    if (!entries.length) {
+        spEl.innerHTML = '<div class="project-empty-state">No scratchpad entries</div>';
+    } else {
+        spEl.innerHTML = entries.map(e => `<div class="project-scratchpad-entry">
+            <div class="entry-time">${new Date(e.created_at).toLocaleString()}</div>
+            ${escapeHtml(e.content)}
+        </div>`).join('');
+    }
+}
+
 // ── Agent History ──
 
 async function openHistory() {
@@ -5688,6 +5995,7 @@ function showToast(message, type = 'info') {
     toast.style.cursor = 'pointer';
     toast._toastMessage = message;
     toast._toastType = type;
+    if (type === 'error') toast.setAttribute('role', 'alert');
     toast.innerHTML = `<span class="toast-icon">${icons[type] || 'ℹ️'}</span><span>${escapeHtml(message)}</span><div class="toast-progress"></div>`;
     const dismiss = () => { toast.classList.add('toast-out'); setTimeout(() => toast.remove(), 300); };
     toast._dismiss = dismiss;
