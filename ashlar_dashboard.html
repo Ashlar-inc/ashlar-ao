@@ -4664,6 +4664,7 @@ function renderAgentGrid() {
     }
 
     // Update or create cards (filtered by project)
+    const newCard = document.getElementById('newAgentCard') || createNewAgentCard();
     let idx = 0;
     for (const [id, agent] of state.agents) {
         // Project filter
@@ -4677,16 +4678,15 @@ function renderAgentGrid() {
             card = createAgentCard(agent);
             card.style.animationDelay = `${Math.min(idx * 0.08, 1.5)}s`;
             cardElements.set(id, card);
-            const newCard = document.getElementById('newAgentCard');
-            if (newCard) grid.insertBefore(card, newCard);
-            else grid.appendChild(card);
         }
+        // Always insert before newAgentCard to maintain Map order (respects pin sort)
+        grid.insertBefore(card, newCard);
         card.style.display = '';
         updateAgentCard(card, agent);
         idx++;
     }
 
-    if (!document.getElementById('newAgentCard')) grid.appendChild(createNewAgentCard());
+    if (!newCard.parentNode) grid.appendChild(newCard);
 }
 
 function createNewAgentCard() {
@@ -7885,7 +7885,12 @@ function updateBulkUI() {
 
 async function bulkAction(action) {
     if (selectedAgents.size === 0) return;
-    const ids = [...selectedAgents];
+    // Only act on visible (not filtered-out) agents
+    const ids = [...selectedAgents].filter(id => {
+        const card = cardElements.get(id);
+        return card && card.style.display !== 'none';
+    });
+    if (ids.length === 0) return;
     const actionLabel = action === 'kill' ? 'Kill' : action === 'pause' ? 'Pause' : 'Resume';
     const ok = await confirmAction(`${actionLabel} ${ids.length} Agents`, `${actionLabel} ${ids.length} selected agents?`, actionLabel, { icon: action === 'kill' ? '💀' : '⚡', danger: action === 'kill' });
     if (!ok) return;
@@ -8855,6 +8860,8 @@ function parseActivityFromOutput(agentId) {
         }
     }
     cache.lastIdx = lines.length;
+    // Cap events to prevent unbounded memory growth on long-running agents
+    if (cache.events.length > 500) cache.events = cache.events.slice(-500);
     return cache.events;
 }
 
