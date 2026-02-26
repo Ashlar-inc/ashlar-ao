@@ -17,6 +17,7 @@ import logging
 import logging.handlers
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -348,13 +349,27 @@ def load_config(has_claude: bool = True) -> Config:
             else:
                 raw_yaml = {}
             raw_yaml.setdefault("server", {})["auth_token"] = auth_token
-            with open(config_path, "w") as f:
-                yaml.dump(raw_yaml, f, default_flow_style=False, sort_keys=False)
+            tmp_fd, tmp_path = tempfile.mkstemp(dir=str(config_path.parent), suffix='.yaml.tmp')
+            try:
+                with os.fdopen(tmp_fd, 'w') as f:
+                    yaml.dump(raw_yaml, f, default_flow_style=False, sort_keys=False)
+                Path(tmp_path).rename(config_path)
+            except Exception:
+                Path(tmp_path).unlink(missing_ok=True)
+                raise
         except Exception:
             pass
 
     # ASHLAR_PORT env var overrides config file
-    port = int(os.environ.get("ASHLAR_PORT", server.get("port", 5000)))
+    port_raw = os.environ.get("ASHLAR_PORT")
+    if port_raw is not None:
+        try:
+            port = int(port_raw)
+        except ValueError:
+            log.warning(f"Invalid ASHLAR_PORT '{port_raw}', using default")
+            port = server.get("port", 5000)
+    else:
+        port = server.get("port", 5000)
 
     return Config(
         host=server.get("host", "127.0.0.1"),
@@ -607,6 +622,7 @@ class Agent:
     tools_allowed: list[str] | None = None
     session_id: str | None = None
     system_prompt: str | None = None
+    plan_mode: bool = False
     workflow_run_id: str | None = None
     tokens_input: int = 0
     tokens_output: int = 0
@@ -620,6 +636,7 @@ class Agent:
     _error_entered_at: float = field(default=0.0, repr=False)  # monotonic time when error status was first detected
     _health_low_warned: bool = field(default=False, repr=False)
     _health_critical_warned: bool = field(default=False, repr=False)
+    _stale_warned: bool = field(default=False, repr=False)
     _workflow_stall_warned: bool = field(default=False, repr=False)
     _workflow_hung_warned: bool = field(default=False, repr=False)
     _status_updated_at: float = field(default=0.0, repr=False)  # monotonic time of last status change
@@ -674,6 +691,7 @@ class Agent:
             "tokens_input": self.tokens_input,
             "tokens_output": self.tokens_output,
             "estimated_cost_usd": round(self.estimated_cost_usd, 4),
+            "plan_mode": self.plan_mode,
             "cost_is_estimated": True,
             "context_window": KNOWN_BACKENDS[self.backend].context_window if self.backend in KNOWN_BACKENDS else 200_000,
         }
@@ -974,6 +992,7 @@ class AgentManager:
             model=model,
             tools_allowed=tools,
             system_prompt=system_prompt_extra,
+            plan_mode=plan_mode,
             _spawn_time=time.monotonic(),
         )
         agent.last_output_time = time.monotonic()
@@ -1062,6 +1081,12 @@ class AgentManager:
             if tools and bc.supports_tool_restriction:
                 cmd_parts.extend(["--allowedTools", ",".join(tools)])
 
+            # Plan mode: use --permission-mode plan (incompatible with auto-approve)
+            if plan_mode and backend == "claude-code":
+                if bc.auto_approve_flag and bc.auto_approve_flag in cmd_parts:
+                    cmd_parts.remove(bc.auto_approve_flag)
+                cmd_parts.extend(["--permission-mode", "plan"])
+
             # System prompt injection (role context + predecessor output)
             role_obj = BUILTIN_ROLES.get(role, BUILTIN_ROLES["general"])
             role_prompt = f"You are a {role_obj.name}. {role_obj.system_prompt}"
@@ -1078,29 +1103,39 @@ class AgentManager:
                 agent.session_id = resume_session
 
             # Build command string
-            cmd = " ".join(f"'{p}'" if " " in p else p for p in cmd_parts)
+            cmd = " ".join(shlex.quote(p) for p in cmd_parts)
             await self._tmux_send_keys(session_name, cmd)
 
             # Wait for CLI to start up
             await asyncio.sleep(3)
 
+            # Prepare task text — plan-mode prefix for non-claude-code backends
+            if plan_mode and backend != "claude-code":
+                task_to_send = (
+                    "IMPORTANT: Create a detailed plan for the following task. "
+                    "DO NOT execute any changes. Present your plan and ask for approval.\n\n"
+                    f"Task: {task}"
+                )
+            else:
+                task_to_send = task
+
             # Send task as first message
             if bc.supports_system_prompt:
                 # System prompt already injected via CLI flag — just send task
-                if task:
-                    await self._tmux_send_keys(session_name, task)
+                if task_to_send:
+                    await self._tmux_send_keys(session_name, task_to_send)
             else:
                 # Fallback: send role context + task as first message
-                if role_obj and role_obj.system_prompt and task:
-                    full_message = f"{role_obj.system_prompt}\n\nYour task: {task}"
+                if role_obj and role_obj.system_prompt and task_to_send:
+                    full_message = f"{role_obj.system_prompt}\n\nYour task: {task_to_send}"
                     for line in full_message.split("\n"):
                         if line.strip():
                             await self._tmux_send_keys(session_name, line)
                             await asyncio.sleep(0.1)
-                elif task:
-                    await self._tmux_send_keys(session_name, task)
+                elif task_to_send:
+                    await self._tmux_send_keys(session_name, task_to_send)
 
-        agent.status = "working"
+        agent.status = "planning" if plan_mode else "working"
         agent.updated_at = datetime.now(timezone.utc).isoformat()
         log.info(f"Spawned agent {agent_id} ({name}) with role {role}")
         return agent
@@ -1109,7 +1144,7 @@ class AgentManager:
         """Build a multi-phase bash script that simulates realistic agent behavior."""
         import random as _rand
         role_obj = BUILTIN_ROLES.get(role, BUILTIN_ROLES["general"])
-        safe_task = task[:80].replace('"', '\\"').replace("'", "")
+        safe_task = task[:80].replace("'", "'\\''")  # escape for single-quoted bash strings
 
         # Role-specific working messages with file paths and progress
         role_work = {
@@ -1203,7 +1238,7 @@ class AgentManager:
         def rsleep(lo: float = 0.5, hi: float = 3.0) -> str:
             return f"sleep $(echo \"scale=1; {_rand.uniform(lo, hi):.1f}\" | bc)"
 
-        # Build script lines
+        # Build script lines — header is shared
         script_lines = [
             '#!/bin/bash',
             f'echo "╭──────────────────────────────────────────╮"',
@@ -1211,64 +1246,123 @@ class AgentManager:
             f'echo "│ Role: {role_obj.name:<34}│"',
             f'echo "╰──────────────────────────────────────────╯"',
             f'echo ""',
-            f'echo "Task: {safe_task}"',
+            f"echo 'Task: {safe_task}'",
             f'echo ""',
-            # Phase 1: Planning (10-15s)
-            'echo "Planning approach..."',
-            rsleep(1.5, 3.0),
-            'echo "Let me analyze the codebase structure first."',
-            rsleep(1.0, 2.0),
-            'echo ""',
-            'echo "Here is my plan:"',
-            'echo "  1. Read existing code and understand patterns"',
-            'echo "  2. Implement the required changes"',
-            'echo "  3. Write tests and verify correctness"',
-            'echo "  4. Clean up and document"',
-            rsleep(2.0, 4.0),
-            'echo ""',
         ]
 
-        # Phase 2: Working (30-60s total)
-        for i, msg in enumerate(work_msgs):
-            script_lines.append(f'echo "{msg}"')
-            script_lines.append(rsleep(1.0, 4.0))
+        is_plan_mode = agent.plan_mode if agent else False
 
-        # Phase 3: First question
-        script_lines.extend([
-            'echo ""',
-            'echo "I have completed the initial implementation."',
-            'echo "Do you want me to proceed with this approach? (yes/no)"',
-            'read -r REPLY',
-            'echo ""',
-            'echo "Received: $REPLY"',
-            'echo "Continuing with additional changes..."',
-            rsleep(2.0, 4.0),
-        ])
+        if is_plan_mode:
+            # Plan mode: analyze → present plan → wait for approval → then work
+            script_lines.extend([
+                'echo "Planning approach..."',
+                rsleep(1.5, 3.0),
+                'echo "Let me analyze the codebase structure first."',
+                rsleep(1.0, 2.0),
+                'echo "Reading project files..."',
+                rsleep(1.5, 2.5),
+                'echo "Analyzing dependencies and patterns..."',
+                rsleep(2.0, 3.0),
+                'echo ""',
+                'echo "╭──────────────────────────────────────────╮"',
+                'echo "│  PLAN                                    │"',
+                'echo "╰──────────────────────────────────────────╯"',
+                'echo ""',
+                'echo "Here is my proposed plan:"',
+                'echo ""',
+                'echo "  1. Read existing code and understand patterns"',
+                'echo "     - Scan src/ for relevant files"',
+                'echo "     - Identify existing abstractions to reuse"',
+                'echo ""',
+                'echo "  2. Implement the required changes"',
+                'echo "     - Create/modify 3-4 files"',
+                'echo "     - Follow existing code conventions"',
+                'echo ""',
+                'echo "  3. Write tests and verify correctness"',
+                'echo "     - Add unit tests for new logic"',
+                'echo "     - Run existing test suite for regressions"',
+                'echo ""',
+                'echo "  4. Clean up and document"',
+                'echo "     - Remove dead code"',
+                'echo "     - Add inline comments where needed"',
+                'echo ""',
+                rsleep(1.0, 2.0),
+                'echo "Do you want me to proceed with this plan? (yes/no)"',
+                'read -r REPLY',
+                'echo ""',
+                'echo "Received: $REPLY"',
+                rsleep(1.0, 2.0),
+                'echo "Plan approved. Starting implementation..."',
+                'echo ""',
+            ])
+            # After approval, run work phase
+            for msg in work_msgs:
+                script_lines.append(f'echo "{msg}"')
+                script_lines.append(rsleep(1.0, 4.0))
+            script_lines.extend([
+                'echo ""',
+                'echo "Done! Task completed successfully."',
+                'sleep 86400',
+            ])
+        else:
+            # Normal mode: plan briefly → work → question → more work → done
+            script_lines.extend([
+                # Phase 1: Planning (10-15s)
+                'echo "Planning approach..."',
+                rsleep(1.5, 3.0),
+                'echo "Let me analyze the codebase structure first."',
+                rsleep(1.0, 2.0),
+                'echo ""',
+                'echo "Here is my plan:"',
+                'echo "  1. Read existing code and understand patterns"',
+                'echo "  2. Implement the required changes"',
+                'echo "  3. Write tests and verify correctness"',
+                'echo "  4. Clean up and document"',
+                rsleep(2.0, 4.0),
+                'echo ""',
+            ])
 
-        # Phase 4: Second work phase
-        second_phase = [
-            "Writing additional test cases...",
-            "  ✓ Added 4 edge case tests",
-            "Updating documentation...",
-            "Running final verification...",
-        ]
-        for msg in second_phase:
-            script_lines.append(f'echo "{msg}"')
-            script_lines.append(rsleep(1.5, 3.5))
+            # Phase 2: Working (30-60s total)
+            for i, msg in enumerate(work_msgs):
+                script_lines.append(f'echo "{msg}"')
+                script_lines.append(rsleep(1.0, 4.0))
 
-        # Phase 5: Second question
-        script_lines.extend([
-            'echo ""',
-            'echo "All changes are ready. Should I finalize and commit? (yes/no)"',
-            'read -r REPLY',
-            'echo ""',
-            'echo "Received: $REPLY"',
-            rsleep(1.0, 2.0),
-            'echo "Finalizing changes..."',
-            rsleep(2.0, 3.0),
-            'echo "Done! Task completed successfully."',
-            'sleep 86400',
-        ])
+            # Phase 3: First question
+            script_lines.extend([
+                'echo ""',
+                'echo "I have completed the initial implementation."',
+                'echo "Do you want me to proceed with this approach? (yes/no)"',
+                'read -r REPLY',
+                'echo ""',
+                'echo "Received: $REPLY"',
+                'echo "Continuing with additional changes..."',
+                rsleep(2.0, 4.0),
+            ])
+
+            # Phase 4: Second work phase
+            second_phase = [
+                "Writing additional test cases...",
+                "  ✓ Added 4 edge case tests",
+                "Updating documentation...",
+                "Running final verification...",
+            ]
+            for msg in second_phase:
+                script_lines.append(f'echo "{msg}"')
+                script_lines.append(rsleep(1.5, 3.5))
+
+            # Phase 5: Second question
+            script_lines.extend([
+                'echo ""',
+                'echo "All changes are ready. Should I finalize and commit? (yes/no)"',
+                'read -r REPLY',
+                'echo ""',
+                'echo "Received: $REPLY"',
+                rsleep(1.0, 2.0),
+                'echo "Finalizing changes..."',
+                rsleep(2.0, 3.0),
+                'echo "Done! Task completed successfully."',
+                'sleep 86400',
+            ])
 
         # Write to temp file and execute
         script_path = Path(tempfile.gettempdir()) / f"ashlar_demo_{uuid.uuid4().hex[:8]}.sh"
@@ -1363,6 +1457,7 @@ class AgentManager:
             saved_model = agent.model
             saved_tools = agent.tools_allowed
             saved_system_prompt = agent.system_prompt
+            saved_plan_mode = agent.plan_mode
 
             # Kill the old tmux session
             old_tmux_session = agent.tmux_session
@@ -1468,30 +1563,47 @@ class AgentManager:
                 if saved_tools and bc.supports_tool_restriction:
                     cmd_parts.extend(["--allowedTools", ",".join(saved_tools)])
 
+                # Plan mode: use --permission-mode plan (incompatible with auto-approve)
+                if saved_plan_mode and saved_backend == "claude-code":
+                    if bc.auto_approve_flag and bc.auto_approve_flag in cmd_parts:
+                        cmd_parts.remove(bc.auto_approve_flag)
+                    cmd_parts.extend(["--permission-mode", "plan"])
+
                 # Rebuild system prompt from role + saved extra
                 role_obj = BUILTIN_ROLES.get(saved_role, BUILTIN_ROLES["general"])
                 if bc.supports_system_prompt and saved_system_prompt:
                     cmd_parts.extend(["--append-system-prompt", saved_system_prompt])
 
-                cmd = " ".join(f"'{p}'" if " " in p else p for p in cmd_parts)
+                cmd = " ".join(shlex.quote(p) for p in cmd_parts)
                 await self._tmux_send_keys(session_name, cmd)
                 await asyncio.sleep(3)
 
+                # Prepare task text — plan-mode prefix for non-claude-code backends
+                if saved_plan_mode and saved_backend != "claude-code":
+                    task_to_send = (
+                        "IMPORTANT: Create a detailed plan for the following task. "
+                        "DO NOT execute any changes. Present your plan and ask for approval.\n\n"
+                        f"Task: {saved_task}"
+                    )
+                else:
+                    task_to_send = saved_task
+
                 # Send task
                 if bc.supports_system_prompt:
-                    if saved_task:
-                        await self._tmux_send_keys(session_name, saved_task)
+                    if task_to_send:
+                        await self._tmux_send_keys(session_name, task_to_send)
                 else:
-                    if role_obj and role_obj.system_prompt and saved_task:
-                        full_message = f"{role_obj.system_prompt}\n\nYour task: {saved_task}"
+                    if role_obj and role_obj.system_prompt and task_to_send:
+                        full_message = f"{role_obj.system_prompt}\n\nYour task: {task_to_send}"
                         for line in full_message.split("\n"):
                             if line.strip():
                                 await self._tmux_send_keys(session_name, line)
                                 await asyncio.sleep(0.1)
-                    elif saved_task:
-                        await self._tmux_send_keys(session_name, saved_task)
+                    elif task_to_send:
+                        await self._tmux_send_keys(session_name, task_to_send)
 
-            agent.status = "working"
+            agent.plan_mode = saved_plan_mode
+            agent.status = "planning" if saved_plan_mode else "working"
             agent.updated_at = datetime.now(timezone.utc).isoformat()
             log.info(f"Agent {agent_id} ({saved_name}) restarted successfully (attempt {agent.restart_count})")
             return True
@@ -1616,7 +1728,15 @@ class AgentManager:
         # Get backend-specific patterns if available
         bc = self.backend_configs.get(agent.backend)
         bp = bc.status_patterns if bc else None
-        return parse_agent_status(recent, agent, bp)
+        detected = parse_agent_status(recent, agent, bp)
+
+        # Plan-mode guard: keep agent in "planning" until it produces a plan (waiting).
+        # Agent flow: planning → waiting (plan ready) → working (after approval)
+        # Block transitions to any work-like status; allow waiting/error to pass through.
+        if agent.plan_mode and agent.status == "planning" and detected not in ("waiting", "error", "planning"):
+            return "planning"
+
+        return detected
 
     async def get_agent_memory(self, agent_id: str) -> float:
         """Get RSS memory of agent's process tree in MB."""
@@ -3220,12 +3340,16 @@ class WebSocketHub:
 
         match msg_type:
             case "spawn":
+                task = data.get("task", "")
+                if not isinstance(task, str) or not task.strip():
+                    await ws.send_json({"type": "error", "message": "task is required"})
+                    return
                 try:
                     agent = await self.agent_manager.spawn(
                         role=data.get("role", self.config.default_role),
                         name=data.get("name"),
                         working_dir=data.get("working_dir"),
-                        task=data.get("task", ""),
+                        task=task,
                         plan_mode=data.get("plan_mode", False),
                         backend=data.get("backend", "claude-code"),
                     )
@@ -3489,6 +3613,8 @@ async def spawn_agent(request: web.Request) -> web.Response:
     task = data.get("task", "")
     if not isinstance(task, str):
         return web.json_response({"error": "task must be a string"}, status=400)
+    if not task.strip():
+        return web.json_response({"error": "task is required"}, status=400)
     if len(task) > 10000:
         return web.json_response({"error": "task exceeds 10000 character limit"}, status=400)
 
@@ -3522,6 +3648,10 @@ async def spawn_agent(request: web.Request) -> web.Response:
         return web.json_response({"error": "system_prompt_extra must be a string"}, status=400)
     resume_session = data.get("resume_session")
 
+    plan_mode = data.get("plan_mode", False)
+    if not isinstance(plan_mode, bool):
+        return web.json_response({"error": "plan_mode must be a boolean"}, status=400)
+
     project_id = data.get("project_id")
     if project_id is not None and not isinstance(project_id, str):
         return web.json_response({"error": "project_id must be a string"}, status=400)
@@ -3532,7 +3662,7 @@ async def spawn_agent(request: web.Request) -> web.Response:
             name=name,
             working_dir=working_dir,
             task=task,
-            plan_mode=data.get("plan_mode", False),
+            plan_mode=plan_mode,
             backend=backend,
             model=model_sel,
             tools=tools_sel,
@@ -4695,8 +4825,8 @@ async def import_config(request: web.Request) -> web.Response:
     diff = flat_diff(current, data)
 
     # Validate before writing — try loading the imported data as config
+    tmp_validate = config_path.with_suffix(".yaml.validate")
     try:
-        tmp_validate = config_path.with_suffix(".yaml.validate")
         with open(tmp_validate, "w") as f:
             yaml.dump(data, f, default_flow_style=False, sort_keys=False)
         # Attempt to parse — load_config reads from the standard path,
@@ -4707,11 +4837,12 @@ async def import_config(request: web.Request) -> web.Response:
             raise ValueError("'server' must be an object")
         if not isinstance(test_raw.get("agents", {}), dict):
             raise ValueError("'agents' must be an object")
-        tmp_validate.unlink(missing_ok=True)
     except ValueError as e:
         return web.json_response({"error": f"Invalid config structure: {e}"}, status=400)
     except Exception as e:
         return web.json_response({"error": f"Config validation failed: {e}"}, status=400)
+    finally:
+        tmp_validate.unlink(missing_ok=True)
 
     # Atomic write (validated)
     try:
@@ -5057,6 +5188,7 @@ async def output_capture_loop(app: web.Application) -> None:
                         agent.time_to_first_output = round(now_mono - agent._spawn_time, 2)
 
                     agent.last_output_time = now_mono
+                    agent._stale_warned = False
                     line_count = len(new_lines)
                     agent.total_output_lines += line_count
                     agent._output_line_timestamps.append((now_mono, line_count))
@@ -5126,7 +5258,7 @@ async def output_capture_loop(app: web.Application) -> None:
                                 log.debug(f"LLM summary failed for {agent_id}: {e}")
 
                 # Output staleness detection (runs whether or not there were new lines)
-                if agent.status == "working" and agent.last_output_time > 0:
+                if agent.status in ("working", "planning") and agent.last_output_time > 0:
                     silence = time.monotonic() - agent.last_output_time
                     if silence > 900:
                         agent.set_status("error")
@@ -5136,7 +5268,9 @@ async def output_capture_loop(app: web.Application) -> None:
                         await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
                         await hub.broadcast_event("agent_stale", f"Agent {agent.name} stale — no output for 15 minutes", agent_id, agent.name)
                     elif silence > 300:
-                        await hub.broadcast_event("agent_stale_warning", f"Agent {agent.name} has had no output for {int(silence)}s", agent_id, agent.name)
+                        if not agent._stale_warned:
+                            agent._stale_warned = True
+                            await hub.broadcast_event("agent_stale_warning", f"Agent {agent.name} has had no output for {int(silence)}s", agent_id, agent.name)
 
                 # Health score
                 try:
@@ -5173,6 +5307,9 @@ async def output_capture_loop(app: web.Application) -> None:
                     new_status = await manager.detect_status(agent_id)
                     if new_status != agent.status:
                         old_status = agent.status
+                        # Plan approved: clear plan_mode when agent goes waiting → working
+                        if agent.plan_mode and old_status == "waiting" and new_status == "working":
+                            agent.plan_mode = False
                         agent.set_status(new_status)
                         agent.updated_at = datetime.now(timezone.utc).isoformat()
                         log.debug(f"Agent {agent_id} status: {old_status} -> {new_status}")
@@ -5221,6 +5358,10 @@ async def output_capture_loop(app: web.Application) -> None:
                             await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
                 except Exception as e:
                     log.debug(f"Status detection error for {agent_id}: {e}")
+
+            # Prune _seen_conflicts for agents that no longer exist
+            active_ids = set(manager.agents.keys())
+            _seen_conflicts = {k for k in _seen_conflicts if k[1] <= active_ids}
 
         except Exception as e:
             log.error(f"Output capture loop error: {e}")
@@ -5686,7 +5827,16 @@ def main() -> None:
     print(f"  Max agents: {config.max_agents}")
     print()
 
-    web.run_app(app, host=config.host, port=config.port, print=None)
+    try:
+        web.run_app(app, host=config.host, port=config.port, print=None)
+    except OSError as e:
+        if "Address already in use" in str(e) or getattr(e, 'errno', None) == 48:
+            log.error(f"Port {config.port} is already in use.")
+            log.error(f"  → Set ASHLAR_PORT=8080 to use a different port")
+            log.error(f"  → On macOS, AirPlay Receiver may use port 5000")
+            log.error(f"    System Settings > General > AirDrop & Handoff > AirPlay Receiver → off")
+            sys.exit(1)
+        raise
 
 
 if __name__ == "__main__":

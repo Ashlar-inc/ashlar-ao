@@ -27,6 +27,8 @@
     --text-primary: #ffffff;
     --text-secondary: rgba(255,255,255,0.6);
     --text-dimmed: rgba(255,255,255,0.35);
+    --text-muted: rgba(255,255,255,0.35);
+    --bg-surface: rgba(255,255,255,0.06);
     --accent: #2563EB;
     --accent-hover: #3B82F6;
     --accent-glow: rgba(37,99,235,0.4);
@@ -596,6 +598,21 @@ body {
 .status-badge.spawning { background: rgba(168,85,247,0.15); color: var(--purple); }
 .status-badge.reading { background: rgba(59,130,246,0.15); color: #60A5FA; }
 
+.plan-mode-indicator {
+    display: none;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--warning);
+    background: var(--warning-subtle);
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 6px;
+}
+.agent-card[data-plan-mode="true"] .plan-mode-indicator { display: inline-block; }
+.agent-card[data-plan-mode="true"] { border-left-color: var(--warning) !important; }
+
 .card-meta {
     font-size: 10px;
     color: var(--text-dimmed);
@@ -861,6 +878,18 @@ body {
     flex-shrink: 0;
 }
 
+.deep-prompt-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    background: var(--warning-subtle);
+    border-bottom: 1px solid var(--warning);
+    font-size: 13px;
+    flex-shrink: 0;
+}
+.deep-prompt-text { flex: 1; color: var(--warning); font-weight: 500; }
+
 .back-btn {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -898,6 +927,9 @@ body {
     display: flex;
     gap: 6px;
 }
+.deep-view.archived-view .deep-actions,
+.deep-view.archived-view .deep-input-bar,
+.deep-view.archived-view .deep-prompt-bar { display: none !important; }
 .deep-action-btn {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -1417,6 +1449,21 @@ body {
 .command-input:focus { border-color: var(--accent); }
 .command-input::placeholder { color: var(--text-dimmed); }
 
+.command-target {
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    flex-shrink: 0;
+    max-width: 120px;
+    display: none;
+}
+.command-target.visible { display: block; }
+.command-target:focus { border-color: var(--accent); outline: none; }
 .command-send-btn {
     background: var(--accent);
     color: white;
@@ -1875,7 +1922,7 @@ body {
 /* ── Project Detail Panel ── */
 .project-detail-panel {
     position: fixed;
-    top: 0; right: 0; bottom: 0;
+    top: 56px; right: 0; bottom: 0;
     width: 440px;
     max-width: 100vw;
     background: var(--bg-primary);
@@ -2961,6 +3008,296 @@ body {
 .config-diff-line.added { background: rgba(34,197,94,0.1); color: #22c55e; }
 .config-diff-line.removed { background: rgba(239,68,68,0.1); color: #ef4444; }
 
+/* ── Ambient Background Gradient ── */
+#ambientGradient {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.35;
+    transition: background 4s ease;
+    background: radial-gradient(ellipse at 50% 0%, rgba(37,99,235,0.2) 0%, transparent 70%);
+}
+
+/* ── Status Filter Chips ── */
+.status-filter-chips {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-shrink: 0;
+}
+.status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    transition: all var(--transition);
+    white-space: nowrap;
+    user-select: none;
+}
+.status-chip:hover { background: var(--bg-card-hover); border-color: var(--border-light); }
+.status-chip.active { border-color: currentColor; }
+.status-chip.active[data-status="all"] { color: var(--text-primary); background: rgba(255,255,255,0.1); }
+.status-chip.active[data-status="working"] { color: var(--accent); background: var(--accent-subtle); }
+.status-chip.active[data-status="waiting"] { color: var(--orange); background: var(--orange-subtle); }
+.status-chip.active[data-status="error"] { color: var(--danger); background: var(--danger-subtle); }
+.status-chip.active[data-status="planning"] { color: var(--warning); background: var(--warning-subtle); }
+.status-chip.active[data-status="idle"] { color: var(--text-dimmed); background: rgba(255,255,255,0.05); }
+.status-chip-count {
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.08);
+}
+.status-chip.active .status-chip-count { background: rgba(255,255,255,0.15); }
+
+/* ── Card Visual Refresh ── */
+.agent-card { position: relative; overflow: hidden; }
+.agent-card .card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }
+.agent-card .card-info-row {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height 0.25s ease, opacity 0.2s ease;
+}
+.agent-card:hover .card-info-row,
+.agent-card:focus-within .card-info-row {
+    max-height: 30px;
+    opacity: 1;
+}
+.agent-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.04) 45%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.04) 55%, transparent 60%);
+    opacity: 0;
+    transform: translateX(-100%);
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    border-radius: inherit;
+}
+.agent-card:hover::after {
+    opacity: 1;
+    transform: translateX(100%);
+    transition: opacity 0.3s ease, transform 0.6s ease;
+}
+@keyframes error-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+    50% { box-shadow: 0 0 20px 4px rgba(239,68,68,0.25); }
+}
+.agent-card[data-status="error"] {
+    animation: error-pulse 2s ease-in-out infinite;
+}
+.agent-card .card-sparkline {
+    transition: opacity 0.3s ease;
+}
+.agent-card[data-status="working"] .card-sparkline,
+.agent-card[data-status="reading"] .card-sparkline {
+    opacity: 1;
+    height: 24px;
+}
+.agent-card[data-status="idle"] .card-sparkline,
+.agent-card[data-status="paused"] .card-sparkline {
+    opacity: 0.3;
+}
+
+/* ── Grid Layout Adaptation ── */
+.agent-grid.grid-large { grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); }
+.agent-grid.grid-standard { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.agent-grid.grid-compact { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.new-agent-card {
+    position: relative;
+}
+.new-agent-card:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(37,99,235,0.05);
+    transform: scale(1.01);
+    border-style: dashed;
+}
+.new-agent-card:hover .plus {
+    transform: scale(1.15);
+    transition: transform 0.2s ease;
+}
+
+/* ── Bulk Select Button ── */
+.bulk-select-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    transition: all var(--transition);
+    font-family: var(--font-sans);
+}
+.bulk-select-btn:hover { background: var(--bg-card-hover); border-color: var(--border-light); }
+.bulk-select-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-subtle); }
+
+/* ── Enhanced Command Bar ── */
+.command-bar-inner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    position: relative;
+}
+.command-target-pill {
+    display: none;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px 3px 10px;
+    border-radius: 14px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--accent-subtle);
+    color: var(--accent);
+    white-space: nowrap;
+    cursor: default;
+    flex-shrink: 0;
+}
+.command-target-pill.system { background: rgba(255,255,255,0.06); color: var(--text-dimmed); }
+.command-target-pill.visible { display: inline-flex; }
+.command-target-pill .pill-close {
+    cursor: pointer;
+    opacity: 0.5;
+    font-size: 13px;
+    line-height: 1;
+    margin-left: 2px;
+}
+.command-target-pill .pill-close:hover { opacity: 1; }
+.command-autocomplete {
+    display: none;
+    position: absolute;
+    bottom: 100%;
+    left: 0; right: 0;
+    margin-bottom: 6px;
+    background: rgba(13,21,32,0.96);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 10;
+    box-shadow: 0 -8px 32px rgba(0,0,0,0.4);
+}
+.command-autocomplete.active { display: block; }
+.command-ac-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-secondary);
+    transition: background 0.1s;
+}
+.command-ac-item:hover, .command-ac-item.selected {
+    background: var(--bg-card-hover);
+    color: var(--text-primary);
+}
+.command-ac-item .ac-icon { flex-shrink: 0; }
+.command-ac-item .ac-name { font-weight: 500; }
+.command-ac-item .ac-hint { font-size: 11px; color: var(--text-dimmed); margin-left: auto; }
+
+/* ── Deep View Activity Feed ── */
+.deep-activity-panel {
+    display: none;
+    height: 100%;
+    overflow-y: auto;
+    padding: 12px 16px;
+}
+.activity-event {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    transition: background 0.15s;
+    cursor: pointer;
+}
+.activity-event:hover { background: var(--bg-card-hover); }
+.activity-icon {
+    flex-shrink: 0;
+    font-size: 14px;
+    width: 22px;
+    text-align: center;
+    padding-top: 1px;
+}
+.activity-body { flex: 1; min-width: 0; }
+.activity-desc {
+    font-size: 12px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.activity-time {
+    font-size: 10px;
+    color: var(--text-dimmed);
+    font-family: var(--font-mono);
+    margin-top: 2px;
+}
+.activity-raw {
+    display: none;
+    margin-top: 6px;
+    padding: 6px 8px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 120px;
+    overflow-y: auto;
+}
+.activity-event.expanded .activity-raw { display: block; }
+.activity-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-dimmed);
+    font-size: 13px;
+}
+.activity-category-header {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dimmed);
+    padding: 12px 10px 4px;
+}
+.activity-stats {
+    display: flex;
+    gap: 12px;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+.activity-stat {
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+}
+.activity-stat .label { color: var(--text-dimmed); font-weight: 400; margin-right: 4px; }
+
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
         animation-duration: 0.01ms !important;
@@ -2968,11 +3305,17 @@ body {
         transition-duration: 0.01ms !important;
     }
     .agent-card { will-change: auto; }
+    .agent-card::after { display: none; }
+    .agent-card[data-status="error"] { animation: none; box-shadow: 0 0 12px 2px rgba(239,68,68,0.2); }
+    #ambientGradient { transition-duration: 0.01ms !important; }
     .deep-view { transition: none; }
 }
 </style>
 </head>
 <body>
+
+<!-- ── Ambient Background Gradient ── -->
+<div id="ambientGradient"></div>
 
 <!-- ── Auth Login Screen ── -->
 <div class="auth-login" id="authLogin" style="display:none">
@@ -3042,6 +3385,15 @@ body {
     <div class="grid-toolbar">
         <input class="grid-search" id="gridSearch" placeholder="Filter agents..." oninput="filterAgentGridDebounced(this.value)" aria-label="Filter agents">
         <span class="grid-search-count" id="gridSearchCount"></span>
+        <div class="status-filter-chips" id="statusFilterChips">
+            <button class="status-chip active" data-status="all" onclick="setStatusFilter('all')">All</button>
+            <button class="status-chip" data-status="working" onclick="setStatusFilter('working')">Working <span class="status-chip-count" id="chipCountWorking">0</span></button>
+            <button class="status-chip" data-status="waiting" onclick="setStatusFilter('waiting')">Waiting <span class="status-chip-count" id="chipCountWaiting">0</span></button>
+            <button class="status-chip" data-status="error" onclick="setStatusFilter('error')">Error <span class="status-chip-count" id="chipCountError">0</span></button>
+            <button class="status-chip" data-status="planning" onclick="setStatusFilter('planning')">Planning <span class="status-chip-count" id="chipCountPlanning">0</span></button>
+            <button class="status-chip" data-status="idle" onclick="setStatusFilter('idle')">Idle <span class="status-chip-count" id="chipCountIdle">0</span></button>
+        </div>
+        <button class="bulk-select-btn" id="bulkSelectBtn" onclick="toggleBulkMode()" title="Select agents (⌘⇧S)">☑ Select</button>
         <div class="view-toggle">
             <button class="view-toggle-btn active" id="viewGridBtn" onclick="setViewMode('grid')" title="Card grid">▦</button>
             <button class="view-toggle-btn" id="viewTableBtn" onclick="setViewMode('table')" title="Table view">☰</button>
@@ -3190,6 +3542,7 @@ body {
             <button class="deep-action-btn danger" onclick="deepKill()">Kill</button>
         </div>
     </div>
+    <div id="deepPromptBar" class="deep-prompt-bar" style="display:none"></div>
     <div class="terminal-toolbar" id="terminalToolbar">
         <button class="terminal-toolbar-btn active" id="toolbarAutoScroll" onclick="toggleAutoScroll()">↓ Auto-scroll</button>
         <button class="terminal-toolbar-btn" id="toolbarLineWrap" onclick="toggleLineWrap()">⇔ Wrap</button>
@@ -3198,12 +3551,17 @@ body {
         <div class="toolbar-spacer"></div>
         <div class="follow-indicator" id="followIndicator" style="display:none">FOLLOWING</div>
     </div>
-    <div class="deep-tab-bar" id="deepTabBar" style="display:none">
+    <div class="deep-tab-bar" id="deepTabBar">
         <button class="deep-tab active" id="deepTabTerminal" onclick="switchDeepTab('terminal')">Terminal</button>
+        <button class="deep-tab" id="deepTabActivity" onclick="switchDeepTab('activity')">Activity</button>
         <button class="deep-tab" id="deepTabScratchpad" onclick="switchDeepTab('scratchpad')">Scratchpad</button>
     </div>
     <div class="deep-terminal-wrap">
         <div class="deep-terminal" id="deepTerminal"></div>
+        <div class="deep-activity-panel" id="deepActivityPanel">
+            <div class="activity-stats" id="activityStats"></div>
+            <div id="activityFeedContent"><div class="activity-empty">No activity detected yet</div></div>
+        </div>
         <div class="deep-scratchpad-panel" id="deepScratchpadPanel" style="display:none">
             <div class="scratchpad-header">
                 <h4 style="margin:0;color:var(--text-primary)">Project Scratchpad</h4>
@@ -3289,8 +3647,17 @@ body {
     <button class="voice-btn" id="voiceBtn" onmousedown="startVoice()" onmouseup="stopVoice()" aria-label="Push to talk">🎤</button>
     <span class="voice-status" id="voiceStatus">PTT Ready</span>
     <div class="voice-transcript" id="voiceTranscript"></div>
-    <input class="command-input" id="commandInput" placeholder="Type a command or message..."
-           onkeydown="handleCommandKey(event)">
+    <select class="command-target" id="commandTarget" title="Target agent" style="display:none"><option value="">All</option></select>
+    <div class="command-bar-inner">
+        <span class="command-target-pill" id="commandTargetPill">
+            <span class="pill-arrow">→</span>
+            <span class="pill-label" id="pillLabel">System</span>
+            <span class="pill-close" onclick="clearCommandTarget(event)">✕</span>
+        </span>
+        <input class="command-input" id="commandInput" placeholder="Type a command or message... (@ agent, / command)"
+               oninput="handleCommandInput(event)" onkeydown="handleCommandKey(event)">
+        <div class="command-autocomplete" id="commandAutocomplete"></div>
+    </div>
     <button class="command-send-btn" onclick="sendCommand()">Send</button>
 </div>
 
@@ -3491,7 +3858,7 @@ body {
 </div>
 
 <!-- ── Edit Agent Modal ── -->
-<div class="overlay" id="editAgentOverlay" onclick="if(event.target===this)closeEditAgent()">
+<div class="modal-overlay" id="editAgentOverlay" onclick="if(event.target===this)closeEditAgent()">
     <div class="edit-agent-dialog">
         <h3 style="margin:0 0 16px;font-size:16px;font-weight:700;letter-spacing:-0.02em">Edit Agent</h3>
         <label class="form-label">Name</label>
@@ -3508,7 +3875,7 @@ body {
 </div>
 
 <!-- ── Activity Timeline ── -->
-<div class="overlay" id="timelineOverlay" onclick="if(event.target===this)closeTimeline()" style="display:none">
+<div class="modal-overlay" id="timelineOverlay" onclick="if(event.target===this)closeTimeline()">
     <div class="timeline-panel">
         <div class="timeline-header">
             <h3 style="margin:0;font-weight:700;letter-spacing:-0.02em">Activity Timeline</h3>
@@ -3534,7 +3901,7 @@ body {
 </div>
 
 <!-- ── Pipeline Graph View ── -->
-<div class="overlay" id="pipelineOverlay" onclick="if(event.target===this)closePipeline()" style="display:none">
+<div class="modal-overlay" id="pipelineOverlay" onclick="if(event.target===this)closePipeline()">
     <div class="pipeline-panel">
         <div class="pipeline-header">
             <h3 style="margin:0;font-weight:700;letter-spacing:-0.02em" id="pipelineName">Pipeline</h3>
@@ -3606,6 +3973,9 @@ const state = {
     commandHistory: new Map(),
     tableSortCol: 'name',
     tableSortAsc: true,
+    statusFilter: 'all',
+    commandTargetId: null,
+    acIndex: -1,
 };
 
 const ROLE_INFO = {
@@ -3937,7 +4307,7 @@ class AshlarSocket {
             this.reconnectAttempts = 0;
             const banner = document.getElementById('connectionBanner');
             banner.classList.remove('active');
-            banner.textContent = 'Disconnected — reconnecting...';
+            banner.textContent = '';
             showToast('Connected to Ashlar', 'success');
         };
 
@@ -4010,6 +4380,12 @@ async function handleSync(data) {
     }
     renderProjectSelector();
     renderAgentGrid();
+    updateStatusFilterChips();
+    updateAmbientGradient();
+    updateGridLayout();
+    if (state.statusFilter !== 'all' || gridSearchQuery) {
+        filterAgentGrid(gridSearchQuery);
+    }
     if (state.viewMode === 'table') renderAgentTable();
     updateTabTitle();
     // Fetch active workflow runs
@@ -4215,7 +4591,18 @@ let renderScheduled = false;
 function scheduleRender() {
     if (!renderScheduled) {
         renderScheduled = true;
-        requestAnimationFrame(() => { renderScheduled = false; renderAgentGrid(); updateProjectMetricsBadge(); });
+        requestAnimationFrame(() => {
+            renderScheduled = false;
+            renderAgentGrid();
+            updateProjectMetricsBadge();
+            updateStatusFilterChips();
+            updateAmbientGradient();
+            updateGridLayout();
+            // Re-apply filter after render (renderAgentGrid resets card visibility)
+            if (state.statusFilter !== 'all' || gridSearchQuery) {
+                filterAgentGrid(gridSearchQuery);
+            }
+        });
     }
 }
 
@@ -4227,8 +4614,16 @@ let cardStaggerCount = 0;
 function renderAgentGrid() {
     const grid = document.getElementById('agentGrid');
     const emptyState = document.getElementById('emptyState');
+    updateCommandTarget();
 
     if (state.agents.size === 0) {
+        if (!state.connected) {
+            emptyState.innerHTML = '<div style="text-align:center;padding:80px 20px">' +
+                '<div style="font-size:32px;animation:skeleton-pulse 1.5s infinite">▣</div>' +
+                '<p style="color:var(--text-dimmed);margin-top:16px;font-size:14px">Connecting to Ashlar...</p></div>';
+        } else if (!emptyState.querySelector('.empty-illustration')) {
+            emptyState.innerHTML = EMPTY_STATE_HTML;
+        }
         emptyState.style.display = '';
         cardElements.forEach(el => el.remove());
         cardElements.clear();
@@ -4294,6 +4689,7 @@ function createAgentCard(agent) {
         <div class="card-header">
             <span class="card-icon"></span>
             <span class="card-name"></span>
+            <span class="plan-mode-indicator">PLAN</span>
             <span class="card-health" title="Health" role="img" aria-label="Agent health"></span>
             <span class="card-message-badge" id="msgBadge-${agent.id}" aria-label="Unread messages"></span>
             <span class="card-conflict-badge"></span>
@@ -4345,13 +4741,16 @@ function createAgentCard(agent) {
 
 function updateAgentCard(card, agent) {
     card.dataset.status = agent.status;
+    card.dataset.planMode = agent.plan_mode ? 'true' : 'false';
     const roleColor = agent.role_color || ROLE_INFO[agent.role]?.color || '#64748B';
     card.style.borderLeftColor = roleColor;
 
     card.dataset.roleColor = roleColor;
 
     card.querySelector('.card-icon').textContent = agent.role_icon || ROLE_INFO[agent.role]?.icon || '🤖';
-    card.querySelector('.card-name').textContent = agent.name;
+    const nameEl = card.querySelector('.card-name');
+    nameEl.textContent = agent.name;
+    nameEl.title = agent.name;
     card.querySelector('.card-dir').textContent = shortenPath(agent.working_dir);
     card.querySelector('.card-summary').textContent = (agent.status === 'error' && agent.error_message)
         ? agent.error_message
@@ -4559,9 +4958,15 @@ function updateAgentCard(card, agent) {
         }
     }
 
-    // Status badge
+    // Status badge — plan-mode aware text
     const badge = card.querySelector('.status-badge');
-    badge.textContent = agent.status;
+    if (agent.plan_mode && agent.status === 'planning') {
+        badge.textContent = 'planning...';
+    } else if (agent.plan_mode && agent.status === 'waiting') {
+        badge.textContent = 'plan ready';
+    } else {
+        badge.textContent = agent.status;
+    }
     badge.className = `status-badge ${agent.status}`;
 
     // Meta: memory + time + output rate + restart indicator
@@ -4603,7 +5008,8 @@ async function killAgent(id) {
     const agent = state.agents.get(id);
     const name = agent?.name || id;
     const ok = await confirmAction('Kill Agent', `Terminate "${name}"? This cannot be undone.`, 'Kill', { icon: '💀' });
-    if (ok) socket.send({ type: 'kill', agent_id: id });
+    if (ok) { socket.send({ type: 'kill', agent_id: id }); return true; }
+    return false;
 }
 
 function pauseResumeAgent(id) {
@@ -4618,6 +5024,12 @@ function pauseResumeAgent(id) {
 function openSpawnDialog() {
     document.getElementById('spawnOverlay').classList.add('active');
     state.view = 'spawn';
+
+    // Reset form fields (prevents stale data from clone)
+    document.getElementById('spawnName').value = '';
+    document.getElementById('spawnTask').value = '';
+    document.getElementById('spawnDir').value = '';
+    state.selectedRole = state.config.default_role || 'general';
 
     const roleGrid = document.getElementById('roleGrid');
     if (!roleGrid.children.length) {
@@ -4638,6 +5050,10 @@ function openSpawnDialog() {
             roleGrid.appendChild(opt);
         }
     }
+    // Reset role selection to default
+    roleGrid.querySelectorAll('.role-option').forEach(o => {
+        o.classList.toggle('selected', o.dataset.role === state.selectedRole);
+    });
 
     // Load recent dirs
     const datalist = document.getElementById('recentDirs');
@@ -4691,6 +5107,11 @@ async function spawnAgent() {
     const projectId = document.getElementById('spawnProject').value || undefined;
     const backend = document.getElementById('spawnBackend').value || undefined;
 
+    if (!task) {
+        showToast('Task is required', 'warning');
+        return;
+    }
+
     const spawnBtn = document.querySelector('.spawn-dialog .btn-primary');
     const origText = spawnBtn?.textContent;
     if (spawnBtn) { spawnBtn.textContent = 'Spawning...'; spawnBtn.disabled = true; }
@@ -4724,7 +5145,8 @@ async function spawnAgent() {
             errEl.className = 'spawn-error';
             errEl.style.cssText = 'color:#f87171;background:rgba(248,113,113,.1);padding:8px 12px;border-radius:8px;margin-top:8px;font-size:13px;border:1px solid rgba(248,113,113,.2)';
             errEl.textContent = data.error || 'Spawn failed';
-            document.querySelector('.spawn-dialog .dialog-body')?.appendChild(errEl);
+            const actions = document.querySelector('.spawn-dialog .dialog-actions');
+            if (actions) actions.parentNode.insertBefore(errEl, actions);
             return;
         }
 
@@ -4745,7 +5167,8 @@ async function spawnAgent() {
         errEl.className = 'spawn-error';
         errEl.style.cssText = 'color:#f87171;background:rgba(248,113,113,.1);padding:8px 12px;border-radius:8px;margin-top:8px;font-size:13px;border:1px solid rgba(248,113,113,.2)';
         errEl.textContent = 'Network error — is the server running?';
-        document.querySelector('.spawn-dialog .dialog-body')?.appendChild(errEl);
+        const actions = document.querySelector('.spawn-dialog .dialog-actions');
+            if (actions) actions.parentNode.insertBefore(errEl, actions);
     } finally {
         if (spawnBtn) { spawnBtn.textContent = origText; spawnBtn.disabled = false; }
     }
@@ -4805,22 +5228,28 @@ function openDeepView(agentId) {
 
     setTimeout(() => document.getElementById('deepInput').focus(), 100);
 
-    // Set up scratchpad tab if agent has a project
+    // Tab bar always visible (Activity tab available for all agents)
     const tabBar = document.getElementById('deepTabBar');
+    tabBar.style.display = '';
+    // Set up scratchpad tab if agent has a project
     const scratchpadPanel = document.getElementById('deepScratchpadPanel');
+    const activityPanel = document.getElementById('deepActivityPanel');
+    const tabScratchpad = document.getElementById('deepTabScratchpad');
     if (agent.project_id) {
-        tabBar.style.display = '';
         _scratchpadProjectId = agent.project_id;
+        tabScratchpad.style.display = '';
     } else {
-        tabBar.style.display = 'none';
         _scratchpadProjectId = null;
+        tabScratchpad.style.display = 'none';
     }
     // Always reset to terminal tab
     scratchpadPanel.style.display = 'none';
+    activityPanel.style.display = 'none';
     terminal.style.display = '';
     document.getElementById('terminalToolbar').style.display = '';
     document.getElementById('deepTabTerminal').classList.add('active');
-    document.getElementById('deepTabScratchpad').classList.remove('active');
+    document.getElementById('deepTabActivity').classList.remove('active');
+    tabScratchpad.classList.remove('active');
 }
 
 function updateDeepViewHeader(agent) {
@@ -4868,6 +5297,25 @@ function updateDeepViewHeader(agent) {
 
     const pauseBtn = document.getElementById('deepPauseBtn');
     pauseBtn.textContent = agent.status === 'paused' ? '▶ Resume' : '⏸ Pause';
+
+    // Prompt bar for waiting agents
+    const deepPromptBar = document.getElementById('deepPromptBar');
+    if (deepPromptBar) {
+        if (agent.needs_input) {
+            const isPlan = agent.plan_mode;
+            const promptText = isPlan
+                ? (agent.input_prompt || 'Plan ready for review.')
+                : (agent.input_prompt || 'Agent is waiting for input.');
+            const approveLabel = isPlan ? 'Approve Plan' : 'Approve';
+            deepPromptBar.innerHTML =
+                '<span class="deep-prompt-text">' + escapeHtml(promptText) + '</span>' +
+                '<button class="btn btn-primary btn-sm" onclick="sendDeepPromptResponse(\'yes\')">' + approveLabel + '</button>' +
+                '<button class="btn btn-secondary btn-sm" onclick="sendDeepPromptResponse(\'no\')">Reject</button>';
+            deepPromptBar.style.display = '';
+        } else {
+            deepPromptBar.style.display = 'none';
+        }
+    }
 }
 
 function appendDeepOutput(lines) {
@@ -4900,7 +5348,7 @@ function closeDeepView() {
         terminal.removeEventListener('scroll', terminal._ashlarScrollHandler);
         terminal._ashlarScrollHandler = null;
     }
-    document.getElementById('deepView').classList.remove('active');
+    document.getElementById('deepView').classList.remove('active', 'archived-view');
     closeDeepSearch();
     state.focusedAgentId = null;
     state.view = 'grid';
@@ -4959,10 +5407,16 @@ function deepCopyOutput() {
     navigator.clipboard.writeText(text).then(() => showToast('Output copied to clipboard', 'success'));
 }
 
-function deepKill() {
+async function deepKill() {
     if (!state.focusedAgentId) return;
-    killAgent(state.focusedAgentId);
-    closeDeepView();
+    const killed = await killAgent(state.focusedAgentId);
+    if (killed) closeDeepView();
+}
+
+function sendDeepPromptResponse(msg) {
+    if (!state.focusedAgentId) return;
+    socket.send({ type: 'send', agent_id: state.focusedAgentId, message: msg });
+    showToast('Response sent', 'success');
 }
 
 async function restartAgent(id) {
@@ -5151,8 +5605,14 @@ function _virtualSearchScrollTo(terminal, matchIdx) {
                 const mark = document.createElement('mark');
                 mark.className = 'search-hl';
                 mark.style.cssText = 'background:rgba(37,99,235,0.4);color:white;border-radius:2px';
-                range.surroundContents(mark);
-                mark.scrollIntoView({ block: 'center' });
+                try {
+                    range.surroundContents(mark);
+                    mark.scrollIntoView({ block: 'center' });
+                } catch (e) {
+                    // Range crosses element boundary (ANSI color spans) — scroll without highlighting
+                    const node = range.startContainer.parentElement;
+                    if (node) node.scrollIntoView({ block: 'center' });
+                }
                 break;
             }
             pos = end;
@@ -5205,16 +5665,26 @@ function openInteraction(agentId) {
     const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
     document.getElementById('interactionIcon').textContent = agent.role_icon || info.icon;
     document.getElementById('interactionName').textContent = agent.name;
-    document.getElementById('interactionQuestion').textContent = agent.input_prompt || 'Agent is waiting for your response.';
     document.getElementById('interactionInput').value = '';
 
-    // Smart buttons: detect yes/no pattern
-    const prompt = (agent.input_prompt || '').toLowerCase();
     const actionsEl = document.getElementById('interactionActions');
-    if (prompt.includes('yes/no') || prompt.includes('y/n') || prompt.includes('proceed') || prompt.includes('approve')) {
-        actionsEl.innerHTML = '<button class="btn btn-primary" onclick="sendInteraction(\'yes\')" style="flex:1">Yes, proceed</button><button class="btn btn-secondary" onclick="sendInteraction(\'no\')" style="flex:1">No</button>';
+    if (agent.plan_mode) {
+        // Plan-mode: show plan review actions
+        document.getElementById('interactionQuestion').textContent =
+            agent.input_prompt || 'Agent has prepared a plan. Review and approve or reject.';
+        actionsEl.innerHTML =
+            '<button class="btn btn-primary" onclick="sendInteraction(\'yes\')" style="flex:1">\u2713 Approve Plan</button>' +
+            '<button class="btn btn-secondary" onclick="sendInteraction(\'no, please revise\')" style="flex:1">\u270E Revise</button>' +
+            '<button class="btn btn-secondary" onclick="closeInteraction();openDeepView(state.interactionAgentId)" style="flex:1">\uD83D\uDC41 View Plan</button>';
     } else {
-        actionsEl.innerHTML = '<button class="btn btn-primary" onclick="sendInteraction(\'yes\')" style="flex:1">Approve</button><button class="btn btn-secondary" onclick="sendInteraction(\'no\')" style="flex:1">Reject</button>';
+        document.getElementById('interactionQuestion').textContent = agent.input_prompt || 'Agent is waiting for your response.';
+        // Smart buttons: detect yes/no pattern
+        const prompt = (agent.input_prompt || '').toLowerCase();
+        if (prompt.includes('yes/no') || prompt.includes('y/n') || prompt.includes('proceed') || prompt.includes('approve')) {
+            actionsEl.innerHTML = '<button class="btn btn-primary" onclick="sendInteraction(\'yes\')" style="flex:1">Yes, proceed</button><button class="btn btn-secondary" onclick="sendInteraction(\'no\')" style="flex:1">No</button>';
+        } else {
+            actionsEl.innerHTML = '<button class="btn btn-primary" onclick="sendInteraction(\'yes\')" style="flex:1">Approve</button><button class="btn btn-secondary" onclick="sendInteraction(\'no\')" style="flex:1">Reject</button>';
+        }
     }
 
     document.getElementById('interactionOverlay').classList.add('active');
@@ -5229,14 +5699,18 @@ function closeInteraction() {
 
 function sendInteraction(msg) {
     if (!state.interactionAgentId) return;
+    const agentName = state.agents.get(state.interactionAgentId)?.name || state.interactionAgentId;
     socket.send({ type: 'send', agent_id: state.interactionAgentId, message: msg });
+    showToast(`Response sent to ${escapeHtml(agentName)}`, 'success');
     closeInteraction();
 }
 
 function sendCustomInteraction() {
     const msg = document.getElementById('interactionInput').value.trim();
     if (!msg || !state.interactionAgentId) return;
+    const agentName = state.agents.get(state.interactionAgentId)?.name || state.interactionAgentId;
     socket.send({ type: 'send', agent_id: state.interactionAgentId, message: msg });
+    showToast(`Response sent to ${escapeHtml(agentName)}`, 'success');
     closeInteraction();
 }
 
@@ -5473,25 +5947,189 @@ function resumeAll() { for (const [id, a] of state.agents) { if (a.status === 'p
 
 // ── Command Bar ──
 
+const COMMAND_SLASH_COMMANDS = [
+    { cmd: 'spawn', desc: 'Spawn a new agent', icon: '+' },
+    { cmd: 'kill', desc: 'Kill an agent', icon: '✕' },
+    { cmd: 'pause', desc: 'Pause an agent', icon: '⏸' },
+    { cmd: 'resume', desc: 'Resume an agent', icon: '▶' },
+    { cmd: 'status', desc: 'Show fleet status', icon: '📊' },
+    { cmd: 'help', desc: 'Show keyboard shortcuts', icon: '?' },
+];
+
 function handleCommandKey(e) {
+    const ac = document.getElementById('commandAutocomplete');
+    const isAcActive = ac.classList.contains('active');
+
+    if (isAcActive) {
+        const items = ac.querySelectorAll('.command-ac-item');
+        if (e.key === 'ArrowDown') { e.preventDefault(); state.acIndex = Math.min(state.acIndex + 1, items.length - 1); highlightAcItem(items); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); state.acIndex = Math.max(state.acIndex - 1, 0); highlightAcItem(items); return; }
+        if (e.key === 'Tab' || e.key === 'Enter') {
+            e.preventDefault();
+            const sel = items[state.acIndex >= 0 ? state.acIndex : 0];
+            if (sel) selectAcItem(sel);
+            return;
+        }
+        if (e.key === 'Escape') { e.preventDefault(); closeAutocomplete(); return; }
+    }
+
     if (e.key === 'Enter') { e.preventDefault(); sendCommand(); }
+}
+
+function handleCommandInput(e) {
+    const input = document.getElementById('commandInput');
+    const val = input.value;
+
+    // Detect @mention
+    const atMatch = val.match(/@(\w*)$/);
+    if (atMatch) {
+        const query = atMatch[1].toLowerCase();
+        const matches = [...state.agents.values()].filter(a =>
+            a.name.toLowerCase().includes(query) || a.id.includes(query)
+        ).slice(0, 8);
+        if (matches.length) {
+            showAutocomplete(matches.map(a => ({
+                icon: ROLE_INFO[a.role]?.icon || '🤖',
+                name: a.name,
+                hint: a.status,
+                value: a.id,
+                type: 'agent',
+            })));
+            return;
+        }
+    }
+
+    // Detect /command
+    const slashMatch = val.match(/^\/(\w*)$/);
+    if (slashMatch) {
+        const query = slashMatch[1].toLowerCase();
+        const matches = COMMAND_SLASH_COMMANDS.filter(c => c.cmd.includes(query));
+        if (matches.length) {
+            showAutocomplete(matches.map(c => ({
+                icon: c.icon,
+                name: '/' + c.cmd,
+                hint: c.desc,
+                value: c.cmd,
+                type: 'command',
+            })));
+            return;
+        }
+    }
+
+    closeAutocomplete();
+}
+
+function showAutocomplete(items) {
+    const ac = document.getElementById('commandAutocomplete');
+    state.acIndex = 0;
+    ac.innerHTML = items.map((item, i) =>
+        `<div class="command-ac-item${i === 0 ? ' selected' : ''}" data-value="${escapeHtml(item.value)}" data-type="${item.type}" onclick="selectAcItem(this)">` +
+        `<span class="ac-icon">${item.icon}</span>` +
+        `<span class="ac-name">${escapeHtml(item.name)}</span>` +
+        `<span class="ac-hint">${escapeHtml(item.hint)}</span></div>`
+    ).join('');
+    ac.classList.add('active');
+}
+
+function closeAutocomplete() {
+    document.getElementById('commandAutocomplete').classList.remove('active');
+    state.acIndex = -1;
+}
+
+function highlightAcItem(items) {
+    items.forEach((el, i) => el.classList.toggle('selected', i === state.acIndex));
+    if (items[state.acIndex]) items[state.acIndex].scrollIntoView({ block: 'nearest' });
+}
+
+function selectAcItem(el) {
+    const input = document.getElementById('commandInput');
+    const type = el.dataset.type;
+    const value = el.dataset.value;
+
+    if (type === 'agent') {
+        // Set target pill, strip @mention from input
+        setCommandTarget(value);
+        input.value = input.value.replace(/@\w*$/, '').trim();
+    } else if (type === 'command') {
+        const cmd = value;
+        input.value = '';
+        closeAutocomplete();
+        // Execute slash commands
+        if (cmd === 'spawn') openSpawnDialog();
+        else if (cmd === 'status') showToast(`Fleet: ${state.agents.size} agents, ${[...state.agents.values()].filter(a => a.needs_input).length} waiting`, 'info');
+        else if (cmd === 'help') openCheatsheet();
+        else if (cmd === 'kill' || cmd === 'pause' || cmd === 'resume') {
+            if (state.commandTargetId) {
+                socket.send({ type: cmd, agent_id: state.commandTargetId });
+                showToast(`${cmd} sent to ${escapeHtml(state.agents.get(state.commandTargetId)?.name || state.commandTargetId)}`, 'info');
+            } else {
+                showToast(`Select a target agent first with @name`, 'warning');
+            }
+        }
+        return;
+    }
+    closeAutocomplete();
+    input.focus();
+}
+
+function setCommandTarget(agentId) {
+    state.commandTargetId = agentId;
+    const pill = document.getElementById('commandTargetPill');
+    const agent = state.agents.get(agentId);
+    if (agent) {
+        document.getElementById('pillLabel').textContent = agent.name;
+        pill.classList.remove('system');
+        pill.classList.add('visible');
+    }
+    // Also sync the hidden select
+    const sel = document.getElementById('commandTarget');
+    if (sel) sel.value = agentId;
+}
+
+function clearCommandTarget(e) {
+    if (e) e.stopPropagation();
+    state.commandTargetId = null;
+    const pill = document.getElementById('commandTargetPill');
+    pill.classList.remove('visible');
+    const sel = document.getElementById('commandTarget');
+    if (sel) sel.value = '';
 }
 
 function sendCommand() {
     const input = document.getElementById('commandInput');
     const msg = input.value.trim();
     if (!msg) return;
+    closeAutocomplete();
 
-    const targetId = state.focusedAgentId || (state.agents.size === 1 ? [...state.agents.keys()][0] : null);
+    const targetId = state.focusedAgentId || state.commandTargetId || (state.agents.size === 1 ? [...state.agents.keys()][0] : null);
     if (targetId) {
         socket.send({ type: 'send', agent_id: targetId, message: msg });
-        showToast(`Sent to ${state.agents.get(targetId)?.name || targetId}`, 'info');
+        showToast(`Sent to ${escapeHtml(state.agents.get(targetId)?.name || targetId)}`, 'info');
     } else if (state.agents.size > 1) {
-        showToast('Select an agent first (click a card)', 'warning');
+        showToast('Pick a target agent with @name', 'warning');
     } else {
         showToast('No agents running', 'info');
     }
     input.value = '';
+}
+
+function updateCommandTarget() {
+    // Keep the hidden select in sync for backwards compatibility
+    const sel = document.getElementById('commandTarget');
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">Target...</option>';
+    for (const [id, a] of state.agents) {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = a.name || id;
+        sel.appendChild(opt);
+    }
+    if (prev && state.agents.has(prev)) sel.value = prev;
+
+    // Update pill if target agent was removed
+    if (state.commandTargetId && !state.agents.has(state.commandTargetId)) {
+        clearCommandTarget();
+    }
 }
 
 // ── Keyboard Shortcuts ──
@@ -5513,8 +6151,8 @@ document.addEventListener('keydown', (e) => {
         if (document.getElementById('msgPanelOverlay').classList.contains('active')) { closeMsgPanel(); return; }
         if (document.getElementById('attentionQueueOverlay').classList.contains('active')) { closeAttentionQueue(); return; }
         if (document.getElementById('interactionOverlay').classList.contains('active')) { closeInteraction(); return; }
-        if (document.getElementById('timelineOverlay').style.display !== 'none') { closeTimeline(); return; }
-        if (document.getElementById('pipelineOverlay').style.display !== 'none') { closePipeline(); return; }
+        if (document.getElementById('timelineOverlay').classList.contains('active')) { closeTimeline(); return; }
+        if (document.getElementById('pipelineOverlay').classList.contains('active')) { closePipeline(); return; }
         if (document.getElementById('handoffOverlay').classList.contains('active')) { closeHandoff(); return; }
         return;
     }
@@ -5545,6 +6183,24 @@ document.addEventListener('keydown', (e) => {
     // Cmd+F — search in deep view
     if (e.metaKey && e.key === 'f' && state.view === 'deep') { e.preventDefault(); openDeepSearch(); return; }
 
+    // Cmd+Shift+S — toggle bulk select mode
+    if (e.metaKey && e.shiftKey && e.key === 'S') {
+        e.preventDefault();
+        toggleBulkMode();
+        return;
+    }
+
+    // Cmd+A — select all visible agents in bulk mode
+    if (e.metaKey && e.key === 'a' && !e.shiftKey && document.getElementById('agentGrid').classList.contains('bulk-mode')) {
+        e.preventDefault();
+        for (const [id] of state.agents) {
+            const card = cardElements.get(id);
+            if (card && card.style.display !== 'none') selectedAgents.add(id);
+        }
+        updateBulkUI();
+        return;
+    }
+
     // Cmd+Shift+A — open attention queue
     if (e.metaKey && e.shiftKey && e.key === 'A') {
         e.preventDefault();
@@ -5573,7 +6229,7 @@ document.addEventListener('keydown', (e) => {
     if (e.metaKey && e.key === 't' && !e.shiftKey) {
         e.preventDefault();
         const overlay = document.getElementById('timelineOverlay');
-        overlay.style.display === 'none' ? openTimeline() : closeTimeline();
+        overlay.classList.contains('active') ? closeTimeline() : openTimeline();
         return;
     }
 
@@ -5784,10 +6440,10 @@ function closeHistory() {
 
 function showHistoryDetail(item) {
     closeHistory();
-    // Show output in a temporary deep view
+    // Show output in a temporary deep view (read-only)
     const info = ROLE_INFO[item.role] || ROLE_INFO.general;
     const dv = document.getElementById('deepView');
-    dv.classList.add('active');
+    dv.classList.add('active', 'archived-view');
     state.view = 'deep';
     state.focusedAgentId = null;
     document.getElementById('deepIcon').textContent = info.icon;
@@ -6195,6 +6851,145 @@ function updateTabTitle() {
     } else {
         document.title = 'Ashlar AO';
     }
+    updateFavicon(agents, waiting, active);
+}
+
+// ── Dynamic Favicon ──
+
+let _faviconCanvas = null;
+let _faviconLastColor = '';
+
+function updateFavicon(agents, waiting, active) {
+    let color;
+    const hasError = agents.some(a => a.status === 'error');
+    if (hasError) color = '#EF4444';
+    else if (waiting > 0) color = '#F97316';
+    else if (active > 0) color = '#2563EB';
+    else if (agents.length > 0) color = '#64748B';
+    else color = '#F97316'; // default Ashlar orange
+
+    if (color === _faviconLastColor) return;
+    _faviconLastColor = color;
+
+    if (!_faviconCanvas) _faviconCanvas = document.createElement('canvas');
+    _faviconCanvas.width = 32;
+    _faviconCanvas.height = 32;
+    const ctx = _faviconCanvas.getContext('2d');
+
+    // Background
+    ctx.clearRect(0, 0, 32, 32);
+    ctx.beginPath();
+    ctx.roundRect(0, 0, 32, 32, 6);
+    ctx.fillStyle = '#0D1520';
+    ctx.fill();
+
+    // "A" letterform
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(16, 6);
+    ctx.lineTo(8, 26);
+    ctx.lineTo(12, 26);
+    ctx.lineTo(14, 21);
+    ctx.lineTo(18, 21);
+    ctx.lineTo(20, 26);
+    ctx.lineTo(24, 26);
+    ctx.closePath();
+    ctx.fill();
+    // Inner cutout
+    ctx.fillStyle = '#0D1520';
+    ctx.beginPath();
+    ctx.moveTo(16, 14);
+    ctx.lineTo(13.5, 20);
+    ctx.lineTo(18.5, 20);
+    ctx.closePath();
+    ctx.fill();
+
+    // Status dot (bottom-right)
+    ctx.beginPath();
+    ctx.arc(26, 26, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#0D1520';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(26, 26, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+
+    const link = document.querySelector('link[rel="icon"]');
+    if (link) link.href = _faviconCanvas.toDataURL('image/png');
+}
+
+// ── Ambient Background Gradient ──
+
+let _lastAmbientKey = '';
+
+function updateAmbientGradient() {
+    const el = document.getElementById('ambientGradient');
+    if (!el) return;
+
+    const agents = [...state.agents.values()];
+    const hasError = agents.some(a => a.status === 'error');
+    const hasWaiting = agents.some(a => a.needs_input);
+    const hasWorking = agents.some(a => ['working', 'reading', 'spawning'].includes(a.status));
+    const hasPlanning = agents.some(a => a.status === 'planning');
+
+    let key, gradient;
+    if (hasError) {
+        key = 'error';
+        gradient = 'radial-gradient(ellipse at 50% 0%, rgba(239,68,68,0.25) 0%, rgba(239,68,68,0.05) 40%, transparent 70%)';
+    } else if (hasWaiting) {
+        key = 'waiting';
+        gradient = 'radial-gradient(ellipse at 50% 0%, rgba(249,115,22,0.22) 0%, rgba(245,158,11,0.05) 40%, transparent 70%)';
+    } else if (hasWorking || hasPlanning) {
+        key = 'working';
+        gradient = 'radial-gradient(ellipse at 50% 0%, rgba(37,99,235,0.22) 0%, rgba(139,92,246,0.06) 40%, transparent 70%)';
+    } else {
+        key = 'idle';
+        gradient = 'radial-gradient(ellipse at 50% 0%, rgba(100,116,139,0.1) 0%, transparent 60%)';
+    }
+
+    if (key === _lastAmbientKey) return;
+    _lastAmbientKey = key;
+    el.style.background = gradient;
+}
+
+// ── Status Filter Chips ──
+
+function updateStatusFilterChips() {
+    const agents = [...state.agents.values()];
+    const counts = { working: 0, waiting: 0, error: 0, planning: 0, idle: 0 };
+
+    for (const a of agents) {
+        if (a.needs_input) counts.waiting++;
+        else if (a.status === 'error') counts.error++;
+        else if (a.status === 'planning') counts.planning++;
+        else if (['working', 'reading', 'spawning'].includes(a.status)) counts.working++;
+        else counts.idle++;
+    }
+
+    document.getElementById('chipCountWorking').textContent = counts.working;
+    document.getElementById('chipCountWaiting').textContent = counts.waiting;
+    document.getElementById('chipCountError').textContent = counts.error;
+    document.getElementById('chipCountPlanning').textContent = counts.planning;
+    document.getElementById('chipCountIdle').textContent = counts.idle;
+}
+
+function setStatusFilter(status) {
+    state.statusFilter = status;
+    document.querySelectorAll('.status-chip').forEach(chip => {
+        chip.classList.toggle('active', chip.dataset.status === status);
+    });
+    filterAgentGrid(gridSearchQuery);
+}
+
+// ── Grid Layout Adaptation ──
+
+function updateGridLayout() {
+    const grid = document.getElementById('agentGrid');
+    const count = state.agents.size;
+    grid.classList.remove('grid-large', 'grid-standard', 'grid-compact');
+    if (count <= 2) grid.classList.add('grid-large');
+    else if (count <= 4) grid.classList.add('grid-standard');
+    else grid.classList.add('grid-compact');
 }
 
 // ── Attention Badge + Queue ──
@@ -6259,6 +7054,10 @@ function renderAttentionQueue() {
         const icon = agent.role_icon || info.icon;
         const elapsed = agent.updated_at ? timeAgo(agent.updated_at) : '';
 
+        const isPlan = agent.plan_mode;
+        const questionText = isPlan ? 'Plan ready for review' : escapeHtml(agent.input_prompt || 'Waiting for input...');
+        const approveLabel = isPlan ? 'Approve Plan' : 'Approve';
+
         const item = document.createElement('div');
         item.className = 'aq-item';
         item.dataset.agentId = agent.id;
@@ -6266,11 +7065,12 @@ function renderAttentionQueue() {
             <div class="aq-item-header">
                 <span class="aq-item-icon">${icon}</span>
                 <span class="aq-item-name">${escapeHtml(agent.name)}</span>
+                ${isPlan ? '<span class="plan-mode-indicator" style="display:inline-block">PLAN</span>' : ''}
                 <span class="aq-item-time">${elapsed}</span>
             </div>
-            <div class="aq-item-question">${escapeHtml(agent.input_prompt || 'Waiting for input...')}</div>
+            <div class="aq-item-question">${questionText}</div>
             <div class="aq-item-actions">
-                <button class="btn btn-primary" onclick="respondToAgent('${agent.id}','yes')">Approve</button>
+                <button class="btn btn-primary" onclick="respondToAgent('${agent.id}','yes')">${approveLabel}</button>
                 <button class="btn btn-secondary" onclick="respondToAgent('${agent.id}','no')">Reject</button>
                 <input class="aq-item-input" placeholder="Custom..." onkeydown="if(event.key==='Enter'){respondToAgent('${agent.id}',this.value);this.value=''}">
             </div>
@@ -6389,8 +7189,8 @@ function updateMetricsDropdown() {
     } else {
         agents.forEach(a => {
             html += `<tr>
-                <td>${a.role_icon || '🤖'} ${a.name}</td>
-                <td>${a.status}</td>
+                <td>${a.role_icon || '🤖'} ${escapeHtml(a.name)}</td>
+                <td>${escapeHtml(a.status)}</td>
                 <td>${Math.round(a.memory_mb || 0)} MB</td>
                 <td>${Math.round((a.context_pct || 0) * 100)}%</td>
             </tr>`;
@@ -6620,11 +7420,11 @@ function editWorkflow(wfId) {
     let html = `
         <div style="margin-bottom:12px">
             <label class="form-label">Name</label>
-            <input class="settings-input" id="wfName" type="text" style="width:100%" value="${wf?.name || ''}" placeholder="e.g., Security Audit">
+            <input class="settings-input" id="wfName" type="text" style="width:100%" value="${escapeHtml(wf?.name || '')}" placeholder="e.g., Security Audit">
         </div>
         <div style="margin-bottom:12px">
             <label class="form-label">Description</label>
-            <input class="settings-input" id="wfDesc" type="text" style="width:100%" value="${wf?.description || ''}" placeholder="What this workflow does">
+            <input class="settings-input" id="wfDesc" type="text" style="width:100%" value="${escapeHtml(wf?.description || '')}" placeholder="What this workflow does">
         </div>
         <label class="form-label">Agents</label>
         <div id="wfAgentsList">`;
@@ -6716,11 +7516,11 @@ function duplicateWorkflow(wfId) {
     let html = `
         <div style="margin-bottom:12px">
             <label class="form-label">Name</label>
-            <input class="settings-input" id="wfName" type="text" style="width:100%" value="${original.name} (copy)" placeholder="e.g., Security Audit">
+            <input class="settings-input" id="wfName" type="text" style="width:100%" value="${escapeHtml(original.name)} (copy)" placeholder="e.g., Security Audit">
         </div>
         <div style="margin-bottom:12px">
             <label class="form-label">Description</label>
-            <input class="settings-input" id="wfDesc" type="text" style="width:100%" value="${original.description || ''}" placeholder="What this workflow does">
+            <input class="settings-input" id="wfDesc" type="text" style="width:100%" value="${escapeHtml(original.description || '')}" placeholder="What this workflow does">
         </div>
         <label class="form-label">Agents</label>
         <div id="wfAgentsList">`;
@@ -6991,8 +7791,11 @@ async function deepRegenSummary() {
 const selectedAgents = new Set();
 
 function toggleBulkMode() {
-    document.getElementById('agentGrid').classList.toggle('bulk-mode');
-    if (!document.getElementById('agentGrid').classList.contains('bulk-mode')) clearBulkSelection();
+    const grid = document.getElementById('agentGrid');
+    grid.classList.toggle('bulk-mode');
+    const btn = document.getElementById('bulkSelectBtn');
+    btn.classList.toggle('active', grid.classList.contains('bulk-mode'));
+    if (!grid.classList.contains('bulk-mode')) clearBulkSelection();
 }
 
 function toggleAgentSelection(agentId, e) {
@@ -7114,16 +7917,35 @@ function filterAgentGridDebounced(query) {
     _gridSearchTimer = setTimeout(() => filterAgentGrid(query), 150);
 }
 
+function agentMatchesStatusFilter(agent, filter) {
+    if (filter === 'all') return true;
+    if (filter === 'waiting') return agent.needs_input;
+    if (filter === 'error') return agent.status === 'error' && !agent.needs_input;
+    if (filter === 'planning') return agent.status === 'planning' && !agent.needs_input;
+    if (filter === 'working') return ['working', 'reading', 'spawning'].includes(agent.status) && !agent.needs_input;
+    if (filter === 'idle') return ['idle', 'paused'].includes(agent.status) && !agent.needs_input;
+    return true;
+}
+
 function filterAgentGrid(query) {
     gridSearchQuery = (query || '').toLowerCase().trim();
     const grid = document.getElementById('agentGrid');
+    const statusFilter = state.statusFilter || 'all';
     let visible = 0, total = 0;
+    const hasFilter = gridSearchQuery || statusFilter !== 'all';
 
     for (const [id, agent] of state.agents) {
         const card = cardElements.get(id);
         if (!card) continue;
         total++;
 
+        // Status filter dimension
+        if (!agentMatchesStatusFilter(agent, statusFilter)) {
+            card.style.display = 'none';
+            continue;
+        }
+
+        // Text search dimension
         if (!gridSearchQuery) {
             card.style.display = '';
             visible++;
@@ -7144,7 +7966,7 @@ function filterAgentGrid(query) {
     }
 
     const countEl = document.getElementById('gridSearchCount');
-    if (gridSearchQuery) {
+    if (hasFilter) {
         countEl.textContent = `${visible}/${total}`;
         countEl.style.display = '';
     } else {
@@ -7152,7 +7974,7 @@ function filterAgentGrid(query) {
     }
 
     const filterEmpty = document.getElementById('filterEmptyState');
-    if (gridSearchQuery && visible === 0 && total > 0) {
+    if (hasFilter && visible === 0 && total > 0) {
         filterEmpty.style.display = '';
     } else {
         filterEmpty.style.display = 'none';
@@ -7166,7 +7988,7 @@ let timelineRefreshTimer = null;
 function openTimeline() {
     if (timelineRefreshTimer) { clearInterval(timelineRefreshTimer); timelineRefreshTimer = null; }
     const overlay = document.getElementById('timelineOverlay');
-    overlay.style.display = '';
+    overlay.classList.add('active');
     // Populate agent filter
     const agentFilter = document.getElementById('timelineAgentFilter');
     const currentVal = agentFilter.value;
@@ -7184,7 +8006,7 @@ function openTimeline() {
 }
 
 function closeTimeline() {
-    document.getElementById('timelineOverlay').style.display = 'none';
+    document.getElementById('timelineOverlay').classList.remove('active');
     if (timelineRefreshTimer) { clearInterval(timelineRefreshTimer); timelineRefreshTimer = null; }
 }
 
@@ -7246,7 +8068,7 @@ function openPipeline(runId) {
     currentPipelineRunId = runId || null;
     if (pipelineRefreshTimer) { clearInterval(pipelineRefreshTimer); pipelineRefreshTimer = null; }
     const overlay = document.getElementById('pipelineOverlay');
-    overlay.style.display = '';
+    overlay.classList.add('active');
     if (runId) {
         refreshPipelineGraph(runId);
         pipelineRefreshTimer = setInterval(() => refreshPipelineGraph(runId), 3000);
@@ -7257,7 +8079,7 @@ function openPipeline(runId) {
 }
 
 function closePipeline() {
-    document.getElementById('pipelineOverlay').style.display = 'none';
+    document.getElementById('pipelineOverlay').classList.remove('active');
     if (pipelineRefreshTimer) { clearInterval(pipelineRefreshTimer); pipelineRefreshTimer = null; }
     currentPipelineRunId = null;
 }
@@ -7405,7 +8227,7 @@ function setViewMode(mode) {
     document.getElementById('viewGridBtn').classList.toggle('active', mode === 'grid');
     document.getElementById('viewTableBtn').classList.toggle('active', mode === 'table');
     document.getElementById('agentGrid').style.display = mode === 'grid' ? '' : 'none';
-    document.getElementById('agentTable').style.display = mode === 'table' ? '' : 'none';
+    document.getElementById('agentTable').style.display = mode === 'table' ? 'table' : 'none';
     if (mode === 'table') renderAgentTable();
 }
 
@@ -7598,6 +8420,13 @@ async function cloneAgent(id) {
     // Set backend
     const backendSel = document.getElementById('spawnBackend');
     if (backendSel) backendSel.value = agent.backend || 'claude-code';
+    // Set model, tools, plan mode
+    const modelSel = document.getElementById('spawnModel');
+    if (modelSel) modelSel.value = agent.model || '';
+    const toolsInput = document.getElementById('spawnTools');
+    if (toolsInput) toolsInput.value = (agent.tools_allowed || []).join(', ');
+    const planToggle = document.getElementById('planModeToggle');
+    if (planToggle) planToggle.classList.toggle('active', !!agent.plan_mode);
 }
 
 // ── Agent Presets (B1) ──
@@ -7850,24 +8679,35 @@ function renderScratchpadTab(entries) {
 function switchDeepTab(tab) {
     const terminal = document.getElementById('deepTerminal');
     const scratchpad = document.getElementById('deepScratchpadPanel');
+    const activityPanel = document.getElementById('deepActivityPanel');
     const tabTerminal = document.getElementById('deepTabTerminal');
     const tabScratchpad = document.getElementById('deepTabScratchpad');
+    const tabActivity = document.getElementById('deepTabActivity');
     const toolbar = document.getElementById('terminalToolbar');
     const searchBar = document.getElementById('deepSearchBar');
 
+    // Hide all panels
+    terminal.style.display = 'none';
+    scratchpad.style.display = 'none';
+    activityPanel.style.display = 'none';
+    toolbar.style.display = 'none';
+    closeDeepSearch();
+    searchBar.style.display = 'none';
+    tabTerminal.classList.remove('active');
+    tabScratchpad.classList.remove('active');
+    tabActivity.classList.remove('active');
+
     if (tab === 'terminal') {
         terminal.style.display = '';
-        scratchpad.style.display = 'none';
         toolbar.style.display = '';
         searchBar.style.display = '';
         tabTerminal.classList.add('active');
-        tabScratchpad.classList.remove('active');
+    } else if (tab === 'activity') {
+        activityPanel.style.display = 'block';
+        tabActivity.classList.add('active');
+        if (state.focusedAgentId) renderActivityFeed(state.focusedAgentId);
     } else {
-        terminal.style.display = 'none';
         scratchpad.style.display = '';
-        toolbar.style.display = 'none';
-        searchBar.style.display = 'none';
-        tabTerminal.classList.remove('active');
         tabScratchpad.classList.add('active');
         if (_scratchpadProjectId) refreshScratchpad();
     }
@@ -7877,6 +8717,97 @@ async function refreshScratchpad() {
     if (!_scratchpadProjectId) return;
     const entries = await loadScratchpad(_scratchpadProjectId);
     renderScratchpadTab(entries);
+}
+
+// ── Activity Feed ──
+
+const ACTIVITY_PATTERNS = [
+    { pattern: /Read\(\s*["']?([^"'\s,)]+)/, icon: '📖', label: line => { const m = line.match(/Read\(\s*["']?([^"'\s,)]+)/); return `Read ${m?.[1] || 'file'}`; }, cat: 'files' },
+    { pattern: /(?:Edit|Write)\(\s*["']?([^"'\s,)]+)/, icon: '✏️', label: line => { const m = line.match(/(?:Edit|Write)\(\s*["']?([^"'\s,)]+)/); return `Edited ${m?.[1] || 'file'}`; }, cat: 'files' },
+    { pattern: /(?:Glob|Grep|LS)\(/, icon: '🔍', label: () => 'Searching codebase', cat: 'search' },
+    { pattern: /Bash\(\s*["']?(.{1,60})/, icon: '💻', label: line => { const m = line.match(/Bash\(\s*["']?(.{1,60})/); return `$ ${m?.[1]?.replace(/["'].*/, '') || 'command'}`; }, cat: 'commands' },
+    { pattern: /(\d+)\s+(?:tests?\s+)?pass(?:ed|ing)?/i, icon: '✅', label: line => { const m = line.match(/(\d+)\s+(?:tests?\s+)?pass/i); return `${m?.[1] || ''} tests passed`; }, cat: 'tests' },
+    { pattern: /(\d+)\s+(?:tests?\s+)?fail(?:ed|ing)?/i, icon: '❌', label: line => { const m = line.match(/(\d+)\s+(?:tests?\s+)?fail/i); return `${m?.[1] || ''} tests failed`; }, cat: 'tests' },
+    { pattern: /<thinking>|Let me (?:think|analyze|plan)/i, icon: '💭', label: () => 'Thinking...', cat: 'thinking' },
+    { pattern: /(?:error|exception|traceback)/i, icon: '🚨', label: line => { const m = line.match(/(?:Error|Exception|Traceback)[:\s]*(.{0,50})/i); return m?.[1]?.trim() || 'Error detected'; }, cat: 'errors' },
+    { pattern: /(?:installing|npm install|pip install|yarn add)/i, icon: '📦', label: line => { const m = line.match(/(?:installing|npm install|pip install|yarn add)\s+(.{0,40})/i); return `Installing ${m?.[1] || 'dependencies'}`; }, cat: 'commands' },
+    { pattern: /(?:changes committed|git commit)/i, icon: '📝', label: () => 'Committed changes', cat: 'git' },
+    { pattern: /Tool Result:/, icon: '🔧', label: () => 'Tool executed', cat: 'tools' },
+];
+
+const _activityCache = new Map(); // agentId → { lastIdx, events[] }
+
+function parseActivityFromOutput(agentId) {
+    const agent = state.agents.get(agentId);
+    if (!agent) return [];
+
+    const lines = agent._outputBuffer || [];
+    let cache = _activityCache.get(agentId);
+    if (!cache) { cache = { lastIdx: 0, events: [] }; _activityCache.set(agentId, cache); }
+
+    // Only scan new lines
+    for (let i = cache.lastIdx; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line || !line.trim()) continue;
+        const stripped = line.replace(/\x1b\[[0-9;]*m/g, '');
+
+        for (const pat of ACTIVITY_PATTERNS) {
+            if (pat.pattern.test(stripped)) {
+                cache.events.push({
+                    icon: pat.icon,
+                    desc: pat.label(stripped),
+                    raw: stripped.trim().slice(0, 200),
+                    cat: pat.cat,
+                    lineIdx: i,
+                    time: new Date(),
+                });
+                break; // one event per line
+            }
+        }
+    }
+    cache.lastIdx = lines.length;
+    return cache.events;
+}
+
+function renderActivityFeed(agentId) {
+    const events = parseActivityFromOutput(agentId);
+    const container = document.getElementById('activityFeedContent');
+    const statsEl = document.getElementById('activityStats');
+
+    if (!events.length) {
+        container.innerHTML = '<div class="activity-empty">No activity detected yet — events appear as the agent reads, edits, and runs commands</div>';
+        statsEl.innerHTML = '';
+        return;
+    }
+
+    // Stats summary
+    const cats = {};
+    for (const ev of events) { cats[ev.cat] = (cats[ev.cat] || 0) + 1; }
+    const statLabels = { files: '📄 Files', commands: '💻 Commands', tests: '🧪 Tests', errors: '🚨 Errors', search: '🔍 Searches', thinking: '💭 Thinking', git: '📝 Git', tools: '🔧 Tools' };
+    statsEl.innerHTML = Object.entries(cats).map(([cat, count]) =>
+        `<span class="activity-stat"><span class="label">${statLabels[cat] || cat}</span>${count}</span>`
+    ).join('');
+
+    // Events in reverse chronological order (most recent first), limited to 200
+    const recent = events.slice(-200).reverse();
+    container.innerHTML = recent.map((ev, i) =>
+        `<div class="activity-event" onclick="this.classList.toggle('expanded')">` +
+        `<span class="activity-icon">${ev.icon}</span>` +
+        `<div class="activity-body">` +
+        `<div class="activity-desc">${escapeHtml(ev.desc)}</div>` +
+        `<div class="activity-time">${formatActivityTime(ev.time)}</div>` +
+        `<div class="activity-raw">${escapeHtml(ev.raw)}</div>` +
+        `</div></div>`
+    ).join('');
+}
+
+function formatActivityTime(date) {
+    const now = new Date();
+    const diff = Math.floor((now - date) / 1000);
+    if (diff < 5) return 'just now';
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 async function addScratchpadEntry() {
@@ -8152,6 +9083,7 @@ if (_origBuildWfRow) {
     };
 }
 
+const EMPTY_STATE_HTML = document.getElementById('emptyState').innerHTML;
 socket.connect();
 renderAgentGrid();
 

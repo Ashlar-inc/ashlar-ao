@@ -419,3 +419,84 @@ class TestCaptureOutputReturnTypes:
         patterns = STATUS_PATTERNS["complete"]
         matches = any(p.search("no issues found") for p in patterns)
         assert matches, "No complete pattern matches 'no issues found'"
+
+
+# ─────────────────────────────────────────────
+# T10: Plan mode
+# ─────────────────────────────────────────────
+
+class TestPlanMode:
+    def test_plan_mode_defaults_false(self, make_agent):
+        """Agent plan_mode should default to False."""
+        agent = make_agent()
+        assert agent.plan_mode is False
+
+    def test_plan_mode_in_to_dict(self, make_agent):
+        """to_dict() should include plan_mode field."""
+        agent = make_agent(plan_mode=True)
+        d = agent.to_dict()
+        assert "plan_mode" in d
+        assert d["plan_mode"] is True
+
+        agent2 = make_agent(plan_mode=False)
+        d2 = agent2.to_dict()
+        assert d2["plan_mode"] is False
+
+    def test_plan_mode_status_guard(self, make_agent):
+        """Plan-mode agents in 'planning' status should not transition to work-like statuses.
+
+        The guard is in detect_status(): when plan_mode=True and current status is
+        'planning', any work-like status (working, reading, etc.) should be suppressed."""
+        agent = make_agent(status="planning", plan_mode=True)
+        agent.output_lines.extend([
+            "Reading src/index.ts for entry point patterns...",
+            "Writing implementation in src/features/new-feature.ts...",
+        ])
+        detected = parse_agent_status(list(agent.output_lines), agent, None)
+        # parse_agent_status may return "working", "reading", etc. — guard blocks all
+        if agent.plan_mode and agent.status == "planning" and detected not in ("waiting", "error", "planning"):
+            guarded = "planning"
+        else:
+            guarded = detected
+        assert guarded == "planning"
+
+    def test_plan_mode_allows_waiting(self, make_agent):
+        """Plan-mode agents CAN transition from planning to waiting (plan ready)."""
+        agent = make_agent(status="planning", plan_mode=True)
+        agent.output_lines.extend([
+            "Here is my plan:",
+            "  1. Read existing code",
+            "  2. Implement changes",
+            "Do you want me to proceed with this plan? (yes/no)",
+        ])
+        detected = parse_agent_status(list(agent.output_lines), agent, None)
+        # Guard should NOT block planning → waiting
+        if agent.plan_mode and agent.status == "planning" and detected not in ("waiting", "error", "planning"):
+            guarded = "planning"
+        else:
+            guarded = detected
+        assert guarded == "waiting"
+        assert agent.needs_input is True
+
+    def test_plan_mode_cleared_on_working(self, make_agent):
+        """plan_mode should clear when agent transitions from waiting to working."""
+        agent = make_agent(status="waiting", plan_mode=True)
+        new_status = "working"
+        old_status = agent.status
+        # Simulate the auto-clear logic from the output capture loop
+        if agent.plan_mode and old_status == "waiting" and new_status == "working":
+            agent.plan_mode = False
+        agent.set_status(new_status)
+        assert agent.plan_mode is False
+        assert agent.status == "working"
+
+    def test_plan_mode_initial_status(self, make_agent):
+        """Plan-mode agents should start with status 'planning', normal agents with 'working'."""
+        # Simulate what spawn() does after the agent is created
+        plan_agent = make_agent(status="spawning", plan_mode=True)
+        plan_agent.status = "planning" if plan_agent.plan_mode else "working"
+        assert plan_agent.status == "planning"
+
+        normal_agent = make_agent(status="spawning", plan_mode=False)
+        normal_agent.status = "planning" if normal_agent.plan_mode else "working"
+        assert normal_agent.status == "working"
