@@ -3850,6 +3850,7 @@ body {
         <div class="cheatsheet-row"><span class="desc">Approve first waiting</span><span class="keys"><span class="kbd">⌘⇧A</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Pause/resume focused</span><span class="keys"><span class="kbd">⌘⇧P</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Kill focused</span><span class="keys"><span class="kbd">⌘⇧K</span></span></div>
+        <div class="cheatsheet-row"><span class="desc">Bulk select mode</span><span class="keys"><span class="kbd">⌘⇧S</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Search in terminal</span><span class="keys"><span class="kbd">⌘F</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Settings</span><span class="keys"><span class="kbd">⌘,</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Show this cheatsheet</span><span class="keys"><span class="kbd">?</span></span></div>
@@ -5209,6 +5210,11 @@ function openDeepView(agentId) {
     document.getElementById('toolbarLineWrap').classList.remove('active');
 
     const terminal = document.getElementById('deepTerminal');
+    // Defensive: clean up scroll handler from previous agent before reuse
+    if (terminal._ashlarScrollHandler) {
+        terminal.removeEventListener('scroll', terminal._ashlarScrollHandler);
+        terminal._ashlarScrollHandler = null;
+    }
     terminal.innerHTML = '';
     terminal.style.whiteSpace = 'pre-wrap';
     terminal.style.wordWrap = 'break-word';
@@ -8689,7 +8695,7 @@ function renderScratchpadTab(entries) {
         return;
     }
     let html = '';
-    entries.forEach(e => {
+    entries.forEach((e, idx) => {
         const safeKey = (e.key || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         const safeVal = (e.value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         const safeBy = (e.set_by || '-').replace(/&/g, '&amp;').replace(/</g, '&lt;');
@@ -8698,12 +8704,25 @@ function renderScratchpadTab(entries) {
             <span class="scratchpad-val" title="${safeVal}">${safeVal}</span>
             <span class="scratchpad-by">${safeBy}</span>
             <div class="scratchpad-actions">
-                <button onclick="editScratchpadEntry('${safeKey}', '${safeVal}')">Edit</button>
-                <button class="danger" onclick="deleteScratchpadEntry('${safeKey}')">Delete</button>
+                <button data-sp-action="edit" data-sp-idx="${idx}">Edit</button>
+                <button class="danger" data-sp-action="delete" data-sp-idx="${idx}">Delete</button>
             </div>
         </div>`;
     });
     container.innerHTML = html;
+    // Event delegation — avoids XSS via inline onclick in HTML attributes
+    // Remove previous delegate before adding new one (prevents listener stacking)
+    if (container._spDelegate) container.removeEventListener('click', container._spDelegate);
+    container._spDelegate = function(ev) {
+        const btn = ev.target.closest('[data-sp-action]');
+        if (!btn) return;
+        const idx = parseInt(btn.dataset.spIdx, 10);
+        const entry = entries[idx];
+        if (!entry) return;
+        if (btn.dataset.spAction === 'edit') editScratchpadEntry(entry.key, entry.value);
+        else if (btn.dataset.spAction === 'delete') deleteScratchpadEntry(entry.key);
+    };
+    container.addEventListener('click', container._spDelegate);
 }
 
 function switchDeepTab(tab) {
