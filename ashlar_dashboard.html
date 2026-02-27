@@ -169,9 +169,9 @@ body {
 }
 .logo-text {
     font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 2px;
-    color: var(--text-secondary);
+    font-weight: 700;
+    letter-spacing: 2.5px;
+    color: var(--text-primary);
     text-transform: uppercase;
 }
 
@@ -226,7 +226,7 @@ body {
 .metrics-bar {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
     flex-shrink: 0;
 }
 
@@ -248,15 +248,16 @@ body {
 .metric-value.yellow { color: var(--warning); }
 .metric-value.red { color: var(--danger); }
 
-.intelligence-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.intelligence-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; vertical-align: middle; }
 .intelligence-dot.connected { background: var(--success); }
 .intelligence-dot.disabled { background: var(--text-tertiary); }
 .intelligence-dot.error { background: var(--danger); }
 
 .cpu-sparkline {
-    width: 60px;
-    height: 22px;
+    width: 72px;
+    height: 24px;
     flex-shrink: 0;
+    opacity: 0.8;
 }
 
 .attention-badge {
@@ -451,10 +452,10 @@ body {
     transform: translateY(-2px);
 }
 
-.agent-card[data-status="working"] { animation: fadeUp 0.4s ease-out backwards, subtle-glow 3s ease-in-out infinite; }
-.agent-card[data-status="waiting"] { border-left-color: var(--orange) !important; animation: fadeUp 0.4s ease-out backwards, waiting-glow 2s ease-in-out infinite; }
+.agent-card[data-status="working"] { animation: fadeUp 0.4s ease-out backwards; box-shadow: inset 2px 0 8px -4px var(--accent); }
+.agent-card[data-status="waiting"] { border-left-color: var(--orange) !important; animation: fadeUp 0.4s ease-out backwards; background: color-mix(in srgb, var(--orange) 3%, var(--bg-surface)); }
 .agent-card[data-status="planning"] { border-left-color: var(--warning) !important; }
-.agent-card[data-status="error"] { border-left-color: var(--danger) !important; }
+.agent-card[data-status="error"] { border-left-color: var(--danger) !important; background: color-mix(in srgb, var(--danger) 4%, var(--bg-surface)); }
 .agent-card[data-status="paused"] { opacity: 0.45; filter: grayscale(0.3); cursor: default; }
 .agent-card[data-status="paused"]:hover { opacity: 0.75; filter: grayscale(0.1); cursor: pointer; }
 .agent-card[data-status="idle"] { border-left-color: var(--text-tertiary) !important; opacity: 0.6; }
@@ -500,13 +501,13 @@ body {
 .card-icon { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--radius-sm); font-size: 16px; flex-shrink: 0; }
 .card-icon .lucide { color: inherit; }
 .card-name {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
 }
 .card-menu-btn {
     background: none;
@@ -715,23 +716,24 @@ body {
 
 .status-badge {
     font-family: var(--font-mono);
-    font-size: 10px;
-    font-weight: 600;
+    font-size: 9px;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 2px 8px;
+    letter-spacing: 0.8px;
+    padding: 3px 8px;
     border-radius: var(--radius-xs);
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    line-height: 1.1;
+    line-height: 1;
 }
 .status-badge::before {
     content: '';
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
     background: currentColor;
+    flex-shrink: 0;
 }
 .status-badge.working { background: var(--accent-subtle); color: var(--accent-hover); }
 .status-badge.planning { background: var(--warning-subtle); color: var(--warning); }
@@ -766,9 +768,15 @@ body {
     font-size: 10px;
     color: var(--text-tertiary);
     display: flex;
-    gap: 8px;
+    gap: 6px;
     align-items: center;
     font-family: var(--font-mono);
+    letter-spacing: -0.2px;
+}
+.card-meta span:not(:last-child)::after {
+    content: '·';
+    margin-left: 6px;
+    opacity: 0.4;
 }
 
 /* New Agent Card */
