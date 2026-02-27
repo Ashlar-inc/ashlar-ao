@@ -4497,6 +4497,13 @@ function handleAgentRemoved(agentId) {
         localStorage.setItem('ashlar_pinned', JSON.stringify([...state.pinnedAgents]));
     }
     if (state.view === 'deep' && state.focusedAgentId === agentId) closeDeepView();
+    if (state.commandTargetId === agentId) clearCommandTarget();
+    if (state.interactionAgentId === agentId) closeInteraction();
+    // Close card menu if open for this agent
+    if (activeMenu) {
+        const menuEl = document.getElementById(`menu-${agentId}`);
+        if (menuEl && activeMenu === menuEl) { activeMenu.classList.remove('open'); activeMenu = null; }
+    }
     // Auto-close project panel if this was the last agent in the project
     if (state._projectDetailId) {
         const projAgents = [...state.agents.values()].filter(a => a.project_id === state._projectDetailId);
@@ -5324,6 +5331,7 @@ function openDeepView(agentId) {
 }
 
 function updateDeepViewHeader(agent) {
+    if (!agent) return;
     const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
     document.getElementById('deepIcon').textContent = agent.role_icon || info.icon;
     document.getElementById('deepName').textContent = agent.name;
@@ -5768,6 +5776,8 @@ function closeInteraction() {
     releaseFocus();
     document.getElementById('interactionOverlay').classList.remove('active');
     state.interactionAgentId = null;
+    const inp = document.getElementById('interactionInput');
+    if (inp) inp.value = '';
 }
 
 function sendInteraction(msg) {

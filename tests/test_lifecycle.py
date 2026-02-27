@@ -500,3 +500,123 @@ class TestPlanMode:
         normal_agent = make_agent(status="spawning", plan_mode=False)
         normal_agent.status = "planning" if normal_agent.plan_mode else "working"
         assert normal_agent.status == "working"
+
+
+# ─────────────────────────────────────────────
+# T12: Database degraded-mode null guards
+# ─────────────────────────────────────────────
+
+class TestDatabaseDegradedMode:
+    def test_save_agent_returns_on_no_db(self, make_agent):
+        """save_agent should return early when _db is None."""
+        db = ashlar_server.Database.__new__(ashlar_server.Database)
+        db._db = None
+        agent = make_agent(status="working")
+        # Should not raise
+        asyncio.run(db.save_agent(agent))
+
+    def test_get_agent_history_returns_empty_on_no_db(self):
+        """get_agent_history should return [] when _db is None."""
+        db = ashlar_server.Database.__new__(ashlar_server.Database)
+        db._db = None
+        result = asyncio.run(db.get_agent_history())
+        assert result == []
+
+    def test_get_agent_history_count_returns_zero_on_no_db(self):
+        """get_agent_history_count should return 0 when _db is None."""
+        db = ashlar_server.Database.__new__(ashlar_server.Database)
+        db._db = None
+        result = asyncio.run(db.get_agent_history_count())
+        assert result == 0
+
+    def test_get_agent_history_item_returns_none_on_no_db(self):
+        """get_agent_history_item should return None when _db is None."""
+        db = ashlar_server.Database.__new__(ashlar_server.Database)
+        db._db = None
+        result = asyncio.run(db.get_agent_history_item("abc1"))
+        assert result is None
+
+    def test_save_project_returns_on_no_db(self):
+        """save_project should return early when _db is None."""
+        db = ashlar_server.Database.__new__(ashlar_server.Database)
+        db._db = None
+        asyncio.run(db.save_project({"id": "p1", "name": "test", "path": "/tmp"}))
+
+    def test_get_projects_returns_empty_on_no_db(self):
+        """get_projects should return [] when _db is None."""
+        db = ashlar_server.Database.__new__(ashlar_server.Database)
+        db._db = None
+        result = asyncio.run(db.get_projects())
+        assert result == []
+
+    def test_delete_project_returns_false_on_no_db(self):
+        """delete_project should return False when _db is None."""
+        db = ashlar_server.Database.__new__(ashlar_server.Database)
+        db._db = None
+        result = asyncio.run(db.delete_project("p1"))
+        assert result is False
+
+    def test_save_workflow_returns_on_no_db(self):
+        """save_workflow should return early when _db is None."""
+        db = ashlar_server.Database.__new__(ashlar_server.Database)
+        db._db = None
+        asyncio.run(db.save_workflow({"id": "w1", "name": "test"}))
+
+    def test_get_workflows_returns_empty_on_no_db(self):
+        """get_workflows should return [] when _db is None."""
+        db = ashlar_server.Database.__new__(ashlar_server.Database)
+        db._db = None
+        result = asyncio.run(db.get_workflows())
+        assert result == []
+
+
+# ─────────────────────────────────────────────
+# T13: Resume uses set_status
+# ─────────────────────────────────────────────
+
+class TestResumeSetStatus:
+    def test_resume_uses_set_status(self, make_agent):
+        """resume() should use set_status() not direct assignment for monotonic guard."""
+        agent = make_agent(status="paused")
+        manager = MagicMock(spec=ashlar_server.AgentManager)
+        manager.agents = {agent.id: agent}
+        manager._tmux_send_keys = AsyncMock()
+        asyncio.run(ashlar_server.AgentManager.resume(manager, agent.id))
+        assert agent.status == "working"
+        # set_status updates _status_updated_at — verify it was bumped
+        assert agent._status_updated_at > 0
+
+    def test_resume_clears_input_state(self, make_agent):
+        """resume() should clear needs_input and input_prompt."""
+        agent = make_agent(status="paused")
+        agent.needs_input = True
+        agent.input_prompt = "Some prompt"
+        manager = MagicMock(spec=ashlar_server.AgentManager)
+        manager.agents = {agent.id: agent}
+        manager._tmux_send_keys = AsyncMock()
+        asyncio.run(ashlar_server.AgentManager.resume(manager, agent.id))
+        assert agent.needs_input is False
+        assert agent.input_prompt is None
+
+
+# ─────────────────────────────────────────────
+# T14: Backend inject_role_prompt config
+# ─────────────────────────────────────────────
+
+class TestInjectRolePrompt:
+    def test_inject_role_prompt_defaults_true(self):
+        """BackendConfig.inject_role_prompt should default to True."""
+        bc = BackendConfig(command="test")
+        assert bc.inject_role_prompt is True
+
+    def test_inject_role_prompt_in_to_dict(self):
+        """to_dict should include inject_role_prompt."""
+        bc = BackendConfig(command="test", inject_role_prompt=False)
+        d = bc.to_dict()
+        assert "inject_role_prompt" in d
+        assert d["inject_role_prompt"] is False
+
+    def test_claude_code_has_plan_mode_flag(self):
+        """claude-code backend should have plan_mode_flag set."""
+        cc = KNOWN_BACKENDS["claude-code"]
+        assert cc.plan_mode_flag == "--permission-mode plan"

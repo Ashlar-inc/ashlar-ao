@@ -1437,10 +1437,9 @@ class AgentManager:
 
         msg = message or agent.task or "continue"
         await self._tmux_send_keys(agent.tmux_session, msg)
-        agent.status = "working"
+        agent.set_status("working")
         agent.needs_input = False
         agent.input_prompt = None
-        agent.updated_at = datetime.now(timezone.utc).isoformat()
         log.info(f"Resumed agent {agent_id}")
         return True
 
@@ -2861,6 +2860,8 @@ class Database:
     # ── Agent History ──
 
     async def save_agent(self, agent: Agent) -> None:
+        if not self._db:
+            return
         completed_at = datetime.now(timezone.utc).isoformat()
         created = agent.created_at or completed_at
         try:
@@ -2886,6 +2887,8 @@ class Database:
         await self._db.commit()
 
     async def get_agent_history(self, limit: int = 50, offset: int = 0) -> list[dict]:
+        if not self._db:
+            return []
         async with self._db.execute(
             "SELECT * FROM agents_history ORDER BY completed_at DESC LIMIT ? OFFSET ?",
             (limit, offset),
@@ -2894,11 +2897,15 @@ class Database:
             return [dict(r) for r in rows]
 
     async def get_agent_history_count(self) -> int:
+        if not self._db:
+            return 0
         async with self._db.execute("SELECT COUNT(*) FROM agents_history") as cur:
             row = await cur.fetchone()
             return row[0] if row else 0
 
     async def get_agent_history_item(self, agent_id: str) -> dict | None:
+        if not self._db:
+            return None
         async with self._db.execute(
             "SELECT * FROM agents_history WHERE id = ?", (agent_id,)
         ) as cur:
@@ -2908,6 +2915,8 @@ class Database:
     # ── Projects ──
 
     async def save_project(self, project: dict) -> None:
+        if not self._db:
+            return
         now = datetime.now(timezone.utc).isoformat()
         await self._db.execute(
             """INSERT OR REPLACE INTO projects (id, name, path, description, created_at, updated_at)
@@ -2918,11 +2927,15 @@ class Database:
         await self._db.commit()
 
     async def get_projects(self) -> list[dict]:
+        if not self._db:
+            return []
         async with self._db.execute("SELECT * FROM projects ORDER BY name") as cur:
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
 
     async def delete_project(self, project_id: str) -> bool:
+        if not self._db:
+            return False
         async with self._db.execute("DELETE FROM projects WHERE id = ?", (project_id,)) as cur:
             await self._db.commit()
             return cur.rowcount > 0
@@ -2930,6 +2943,8 @@ class Database:
     # ── Workflows ──
 
     async def save_workflow(self, workflow: dict) -> None:
+        if not self._db:
+            return
         now = datetime.now(timezone.utc).isoformat()
         agents_json = workflow.get("agents_json", "")
         if isinstance(agents_json, list):
@@ -2943,6 +2958,8 @@ class Database:
         await self._db.commit()
 
     async def get_workflows(self) -> list[dict]:
+        if not self._db:
+            return []
         async with self._db.execute("SELECT * FROM workflows ORDER BY name") as cur:
             rows = await cur.fetchall()
             result = []
