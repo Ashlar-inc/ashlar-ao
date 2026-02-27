@@ -421,6 +421,7 @@ class BackendConfig:
     supports_model_select: bool = False
     # Automation
     auto_approve_flag: str = ""
+    plan_mode_flag: str = ""  # CLI flag to enable plan/review mode (e.g. "--permission-mode plan")
     # Status detection overrides (merge with defaults)
     status_patterns: dict[str, list[str]] = field(default_factory=dict)
     # Cost rates (per 1K tokens)
@@ -441,6 +442,7 @@ class BackendConfig:
             "supports_session_resume": self.supports_session_resume,
             "supports_model_select": self.supports_model_select,
             "auto_approve_flag": self.auto_approve_flag,
+            "plan_mode_flag": self.plan_mode_flag,
             "cost_input_per_1k": self.cost_input_per_1k,
             "cost_output_per_1k": self.cost_output_per_1k,
             "context_window": self.context_window,
@@ -458,6 +460,7 @@ KNOWN_BACKENDS: dict[str, BackendConfig] = {
         supports_session_resume=True,
         supports_model_select=True,
         auto_approve_flag="--dangerously-skip-permissions",
+        plan_mode_flag="--permission-mode plan",
         status_patterns={
             "working": [r"⎿", r"Tool Use:", r"Bash:"],
             "waiting": [r"Do you want to proceed", r"Allow once", r"Allow always"],
@@ -1081,11 +1084,11 @@ class AgentManager:
             if tools and bc.supports_tool_restriction:
                 cmd_parts.extend(["--allowedTools", ",".join(tools)])
 
-            # Plan mode: use --permission-mode plan (incompatible with auto-approve)
-            if plan_mode and backend == "claude-code":
+            # Plan mode: use backend-specific plan flag (incompatible with auto-approve)
+            if plan_mode and bc.plan_mode_flag:
                 if bc.auto_approve_flag and bc.auto_approve_flag in cmd_parts:
                     cmd_parts.remove(bc.auto_approve_flag)
-                cmd_parts.extend(["--permission-mode", "plan"])
+                cmd_parts.extend(bc.plan_mode_flag.split())
 
             # System prompt injection (role context + predecessor output)
             role_obj = BUILTIN_ROLES.get(role, BUILTIN_ROLES["general"])
@@ -1109,8 +1112,8 @@ class AgentManager:
             # Wait for CLI to start up
             await asyncio.sleep(3)
 
-            # Prepare task text — plan-mode prefix for non-claude-code backends
-            if plan_mode and backend != "claude-code":
+            # Prepare task text — plan-mode prefix for backends without native plan flag
+            if plan_mode and not bc.plan_mode_flag:
                 task_to_send = (
                     "IMPORTANT: Create a detailed plan for the following task. "
                     "DO NOT execute any changes. Present your plan and ask for approval.\n\n"
@@ -1565,11 +1568,11 @@ class AgentManager:
                 if saved_tools and bc.supports_tool_restriction:
                     cmd_parts.extend(["--allowedTools", ",".join(saved_tools)])
 
-                # Plan mode: use --permission-mode plan (incompatible with auto-approve)
-                if saved_plan_mode and saved_backend == "claude-code":
+                # Plan mode: use backend-specific plan flag (incompatible with auto-approve)
+                if saved_plan_mode and bc.plan_mode_flag:
                     if bc.auto_approve_flag and bc.auto_approve_flag in cmd_parts:
                         cmd_parts.remove(bc.auto_approve_flag)
-                    cmd_parts.extend(["--permission-mode", "plan"])
+                    cmd_parts.extend(bc.plan_mode_flag.split())
 
                 # Rebuild system prompt from role + saved extra
                 role_obj = BUILTIN_ROLES.get(saved_role, BUILTIN_ROLES["general"])
@@ -1580,8 +1583,8 @@ class AgentManager:
                 await self._tmux_send_keys(session_name, cmd)
                 await asyncio.sleep(3)
 
-                # Prepare task text — plan-mode prefix for non-claude-code backends
-                if saved_plan_mode and saved_backend != "claude-code":
+                # Prepare task text — plan-mode prefix for backends without native plan flag
+                if saved_plan_mode and not bc.plan_mode_flag:
                     task_to_send = (
                         "IMPORTANT: Create a detailed plan for the following task. "
                         "DO NOT execute any changes. Present your plan and ask for approval.\n\n"
@@ -3629,8 +3632,9 @@ async def spawn_agent(request: web.Request) -> web.Response:
     backend = data.get("backend", "claude-code")
     if not isinstance(backend, str):
         return web.json_response({"error": "backend must be a string"}, status=400)
-    if backend not in KNOWN_BACKENDS:
-        return web.json_response({"error": f"Unknown backend '{backend}'. Available: {', '.join(KNOWN_BACKENDS.keys())}"}, status=400)
+    valid_backends = set(KNOWN_BACKENDS.keys()) | set(request.app["config"].backends.keys())
+    if backend not in valid_backends:
+        return web.json_response({"error": f"Unknown backend '{backend}'. Available: {', '.join(sorted(valid_backends))}"}, status=400)
 
     working_dir = data.get("working_dir")
     if working_dir is not None and not isinstance(working_dir, str):
@@ -4615,8 +4619,9 @@ async def create_preset(request: web.Request) -> web.Response:
     if role not in BUILTIN_ROLES:
         return web.json_response({"error": f"Invalid role '{role}'. Valid roles: {', '.join(BUILTIN_ROLES.keys())}"}, status=400)
     backend = data.get("backend", "claude-code")
-    if backend not in KNOWN_BACKENDS:
-        return web.json_response({"error": f"Invalid backend '{backend}'. Valid backends: {', '.join(KNOWN_BACKENDS.keys())}"}, status=400)
+    valid_backends = set(KNOWN_BACKENDS.keys()) | set(request.app["config"].backends.keys())
+    if backend not in valid_backends:
+        return web.json_response({"error": f"Invalid backend '{backend}'. Valid backends: {', '.join(sorted(valid_backends))}"}, status=400)
 
     preset = {
         "id": uuid.uuid4().hex[:8],
@@ -4661,8 +4666,9 @@ async def update_preset(request: web.Request) -> web.Response:
 
     if updated.get("role") and updated["role"] not in BUILTIN_ROLES:
         return web.json_response({"error": f"Invalid role '{updated['role']}'. Valid roles: {', '.join(BUILTIN_ROLES.keys())}"}, status=400)
-    if updated.get("backend") and updated["backend"] not in KNOWN_BACKENDS:
-        return web.json_response({"error": f"Invalid backend '{updated['backend']}'. Valid backends: {', '.join(KNOWN_BACKENDS.keys())}"}, status=400)
+    valid_backends = set(KNOWN_BACKENDS.keys()) | set(request.app["config"].backends.keys())
+    if updated.get("backend") and updated["backend"] not in valid_backends:
+        return web.json_response({"error": f"Invalid backend '{updated['backend']}'. Valid backends: {', '.join(sorted(valid_backends))}"}, status=400)
 
     try:
         await db.save_preset(updated)
