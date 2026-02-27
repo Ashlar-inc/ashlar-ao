@@ -158,7 +158,7 @@ DEFAULT_CONFIG = {
     "agents": {
         "max_concurrent": 16,
         "default_role": "general",
-        "default_working_dir": "~/Projects",
+        "default_working_dir": os.getcwd(),
         "output_capture_interval_sec": 1.0,
         "memory_limit_mb": 2048,
         "default_backend": "claude-code",
@@ -314,8 +314,11 @@ def load_config(has_claude: bool = True) -> Config:
     voice = raw.get("voice", {})
     llm = raw.get("llm", {})
 
-    default_wd = agents.get("default_working_dir", "~/Projects")
+    default_wd = agents.get("default_working_dir", os.getcwd())
     default_wd = os.path.expanduser(default_wd)
+    if not os.path.isdir(default_wd):
+        log.warning(f"default_working_dir {default_wd!r} does not exist, using server CWD")
+        default_wd = os.getcwd()
 
     # Validate config values — warn and use defaults for invalid entries
     def _validate(value, validator, default, name):
@@ -4827,6 +4830,7 @@ async def system_metrics(request: web.Request) -> web.Response:
         "llm_enabled": config.llm_enabled,
         "bg_task_health": request.app.get("bg_task_health", {}),
     }
+    data["server_cwd"] = os.getcwd()
     return web.json_response(data)
 
 
