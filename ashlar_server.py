@@ -512,6 +512,244 @@ KNOWN_BACKENDS: dict[str, BackendConfig] = {
 }
 
 
+# ── Extension Discovery (Skills, MCP Servers, Plugins) ──
+
+@dataclass
+class SkillInfo:
+    """A Claude Code slash-command skill discovered from filesystem."""
+    name: str              # e.g. "commit" or "gsd/add-phase"
+    description: str
+    source: str            # "user" (global) or "project"
+    file_path: str         # absolute path to the .md file
+    argument_hint: str = ""
+    allowed_tools: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "source": self.source,
+            "file_path": self.file_path,
+            "argument_hint": self.argument_hint,
+            "allowed_tools": self.allowed_tools,
+        }
+
+
+@dataclass
+class MCPServerInfo:
+    """An MCP server discovered from settings.json or .mcp.json."""
+    name: str
+    server_type: str       # "stdio" | "http" | "sse" | "unknown"
+    url_or_command: str    # URL for http/sse, command for stdio
+    source: str            # "user" (global) or project path
+    args: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "type": self.server_type,
+            "url_or_command": self.url_or_command,
+            "source": self.source,
+            "args": self.args,
+        }
+
+
+@dataclass
+class PluginInfo:
+    """A Claude Code plugin discovered from settings.json."""
+    name: str              # e.g. "frontend-design@claude-plugins-official"
+    provider: str          # e.g. "claude-plugins-official"
+    enabled: bool
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "provider": self.provider,
+            "enabled": self.enabled,
+        }
+
+
+class ExtensionScanner:
+    """Scans the filesystem for Claude Code skills, MCP servers, and plugins.
+    Results are cached in memory and refreshed on demand."""
+
+    def __init__(self) -> None:
+        self.skills: list[SkillInfo] = []
+        self.mcp_servers: list[MCPServerInfo] = []
+        self.plugins: list[PluginInfo] = []
+        self._scanned_at: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "skills": [s.to_dict() for s in self.skills],
+            "mcp_servers": [m.to_dict() for m in self.mcp_servers],
+            "plugins": [p.to_dict() for p in self.plugins],
+            "scanned_at": self._scanned_at,
+        }
+
+    def scan(self, project_dirs: list[str] | None = None) -> dict:
+        """Full filesystem scan. Returns to_dict() result."""
+        self.skills = self._scan_skills(project_dirs or [])
+        self.mcp_servers = self._scan_mcp_servers(project_dirs or [])
+        self.plugins = self._scan_plugins()
+        self._scanned_at = datetime.now(timezone.utc).isoformat()
+        log.info(
+            f"Extension scan: {len(self.skills)} skills, "
+            f"{len(self.mcp_servers)} MCP servers, {len(self.plugins)} plugins"
+        )
+        return self.to_dict()
+
+    def _scan_skills(self, project_dirs: list[str]) -> list[SkillInfo]:
+        """Scan for .md skill files in user global + project dirs."""
+        skills: list[SkillInfo] = []
+        # User global: ~/.claude/commands/**/*.md
+        global_dir = Path.home() / ".claude" / "commands"
+        if global_dir.is_dir():
+            skills.extend(self._scan_skill_dir(global_dir, "user"))
+        # Per-project: {project}/.claude/commands/**/*.md
+        for pdir in project_dirs:
+            proj_cmd_dir = Path(pdir) / ".claude" / "commands"
+            if proj_cmd_dir.is_dir():
+                skills.extend(self._scan_skill_dir(proj_cmd_dir, pdir))
+        return skills
+
+    def _scan_skill_dir(self, base_dir: Path, source: str) -> list[SkillInfo]:
+        """Scan a single commands directory for .md skill files."""
+        results: list[SkillInfo] = []
+        try:
+            for md_file in sorted(base_dir.rglob("*.md")):
+                if not md_file.is_file():
+                    continue
+                # Build skill name: relative to base_dir, without extension
+                rel = md_file.relative_to(base_dir)
+                name = str(rel.with_suffix(""))  # e.g. "commit" or "gsd/add-phase"
+                # Parse YAML frontmatter
+                desc, arg_hint, allowed = self._parse_skill_frontmatter(md_file)
+                results.append(SkillInfo(
+                    name=name,
+                    description=desc,
+                    source=source,
+                    file_path=str(md_file),
+                    argument_hint=arg_hint,
+                    allowed_tools=allowed,
+                ))
+        except Exception as e:
+            log.warning(f"Error scanning skills in {base_dir}: {e}")
+        return results
+
+    @staticmethod
+    def _parse_skill_frontmatter(path: Path) -> tuple[str, str, str]:
+        """Parse YAML frontmatter from a skill .md file.
+        Returns (description, argument_hint, allowed_tools)."""
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            return ("", "", "")
+        if not text.startswith("---"):
+            return ("", "", "")
+        end = text.find("---", 3)
+        if end < 0:
+            return ("", "", "")
+        frontmatter = text[3:end].strip()
+        try:
+            meta = yaml.safe_load(frontmatter) or {}
+        except Exception:
+            return ("", "", "")
+        desc = str(meta.get("description", ""))
+        arg_hint = str(meta.get("argument-hint", ""))
+        allowed = str(meta.get("allowed-tools", ""))
+        return (desc, arg_hint, allowed)
+
+    def _scan_mcp_servers(self, project_dirs: list[str]) -> list[MCPServerInfo]:
+        """Scan for MCP server configurations."""
+        servers: list[MCPServerInfo] = []
+        # Global: ~/.claude/settings.json → mcpServers
+        settings_path = Path.home() / ".claude" / "settings.json"
+        if settings_path.is_file():
+            servers.extend(self._parse_mcp_from_settings(settings_path, "user"))
+        # Per-project: {project}/.mcp.json
+        for pdir in project_dirs:
+            mcp_path = Path(pdir) / ".mcp.json"
+            if mcp_path.is_file():
+                servers.extend(self._parse_mcp_from_file(mcp_path, pdir))
+        return servers
+
+    def _parse_mcp_from_settings(self, path: Path, source: str) -> list[MCPServerInfo]:
+        """Parse mcpServers from a settings.json file."""
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            mcp_section = data.get("mcpServers", {})
+            return self._parse_mcp_dict(mcp_section, source)
+        except Exception as e:
+            log.warning(f"Error parsing MCP from {path}: {e}")
+            return []
+
+    def _parse_mcp_from_file(self, path: Path, source: str) -> list[MCPServerInfo]:
+        """Parse an .mcp.json file."""
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            mcp_section = data.get("mcpServers", data)
+            return self._parse_mcp_dict(mcp_section, source)
+        except Exception as e:
+            log.warning(f"Error parsing MCP from {path}: {e}")
+            return []
+
+    @staticmethod
+    def _parse_mcp_dict(mcp_dict: dict, source: str) -> list[MCPServerInfo]:
+        """Convert a mcpServers dict to list of MCPServerInfo."""
+        results: list[MCPServerInfo] = []
+        if not isinstance(mcp_dict, dict):
+            return results
+        for name, cfg in mcp_dict.items():
+            if not isinstance(cfg, dict):
+                continue
+            # Determine type
+            stype = cfg.get("type", "unknown")
+            if stype == "stdio":
+                url_or_cmd = cfg.get("command", "")
+                args = cfg.get("args", [])
+            elif stype in ("http", "sse"):
+                url_or_cmd = cfg.get("url", "")
+                args = []
+            else:
+                url_or_cmd = cfg.get("command", cfg.get("url", ""))
+                args = cfg.get("args", [])
+            results.append(MCPServerInfo(
+                name=name,
+                server_type=stype,
+                url_or_command=url_or_cmd,
+                source=source,
+                args=args if isinstance(args, list) else [],
+            ))
+        return results
+
+    def _scan_plugins(self) -> list[PluginInfo]:
+        """Scan for enabled plugins from settings.json."""
+        settings_path = Path.home() / ".claude" / "settings.json"
+        if not settings_path.is_file():
+            return []
+        try:
+            data = json.loads(settings_path.read_text(encoding="utf-8"))
+            plugins_section = data.get("enabledPlugins", {})
+            if not isinstance(plugins_section, dict):
+                return []
+            results: list[PluginInfo] = []
+            for full_name, enabled in plugins_section.items():
+                # Parse "name@provider" format
+                parts = full_name.split("@", 1)
+                short_name = parts[0]
+                provider = parts[1] if len(parts) > 1 else "unknown"
+                results.append(PluginInfo(
+                    name=short_name,
+                    provider=provider,
+                    enabled=bool(enabled),
+                ))
+            return results
+        except Exception as e:
+            log.warning(f"Error scanning plugins: {e}")
+            return []
+
+
 @dataclass
 class Role:
     key: str
@@ -1770,17 +2008,29 @@ class AgentManager:
         bc = self.backend_configs.get(agent.backend)
         ctx_window = bc.context_window if bc else 200_000
         char_ratio = bc.char_to_token_ratio if bc else 3.5
-        # Include base context: task + system prompt + overhead (compute once, reuse)
-        base_chars = len(agent.task or '') + len(agent.system_prompt or '') + 1750  # tool/overhead
-        total_context_chars = agent._total_chars + base_chars
-        agent.context_pct = min(1.0, (total_context_chars / char_ratio) / ctx_window)
+        # Base context includes: system prompt (~8K tokens for Claude Code),
+        # tool definitions (~12K tokens), task description, and per-turn overhead.
+        # Claude Code's context includes both input AND output in the conversation window.
+        system_overhead_tokens = 20_000 if agent.backend == "claude-code" else 5_000
+        task_tokens = len(agent.task or '') / char_ratio
+        prompt_tokens = len(agent.system_prompt or '') / char_ratio
+        # Output chars become BOTH output tokens AND input tokens in the next turn
+        # (conversation history is re-sent each turn), so effective multiplier is ~1.8x
+        output_tokens = agent._total_chars / char_ratio
+        effective_tokens = system_overhead_tokens + task_tokens + prompt_tokens + (output_tokens * 1.8)
+        agent.context_pct = min(1.0, effective_tokens / ctx_window)
+
+        # Override with parsed context indicators from output (more accurate)
+        parsed_ctx = self._detect_context_from_output(new_lines, agent.backend)
+        if parsed_ctx is not None:
+            agent.context_pct = parsed_ctx
 
         # Token/cost estimation (approximate — marked as estimates in API)
         # Use same char_ratio for consistency with context calculation
         tokens_est = int(chars_added / char_ratio)
         agent.tokens_output += tokens_est
-        # Input tokens: base context + fraction of output (agent reads its own output)
-        agent.tokens_input = int(base_chars / char_ratio) + int(agent.tokens_output * 0.3)
+        # Input tokens: base context + conversation history (output re-read on each turn)
+        agent.tokens_input = int(system_overhead_tokens + task_tokens + prompt_tokens) + int(agent.tokens_output * 0.8)
         # Compute cost from backend config rates
         if bc:
             agent.estimated_cost_usd = (
@@ -1789,6 +2039,40 @@ class AgentManager:
             )
 
         return new_lines
+
+    # ── Context Patterns ──
+    _CONTEXT_PATTERNS = [
+        re.compile(r"context.*?(\d+(?:\.\d+)?)\s*%", re.IGNORECASE),
+        re.compile(r"(\d+(?:\.\d+)?)%\s*(?:of\s+)?context", re.IGNORECASE),
+        re.compile(r"(\d+)[Kk]\s*(?:of\s+)?(\d+)[Kk]\s*tokens"),
+        re.compile(r"compacting\s+conversation", re.IGNORECASE),
+        re.compile(r"context\s+window.*?(\d+)", re.IGNORECASE),
+    ]
+
+    def _detect_context_from_output(self, lines: list[str], backend: str) -> float | None:
+        """Parse output lines for context window indicators.
+        Returns a float 0.0-1.0 if detected, None if no indicator found."""
+        if backend != "claude-code":
+            return None
+        for line in lines:
+            # Check for compaction first (near-full context)
+            if re.search(r"compacting\s+conversation", line, re.IGNORECASE):
+                return 0.95
+            # Percentage pattern: "context 73%" or "73% context"
+            m = re.search(r"context.*?(\d+(?:\.\d+)?)\s*%", line, re.IGNORECASE)
+            if m:
+                return min(1.0, float(m.group(1)) / 100.0)
+            m = re.search(r"(\d+(?:\.\d+)?)%\s*(?:of\s+)?context", line, re.IGNORECASE)
+            if m:
+                return min(1.0, float(m.group(1)) / 100.0)
+            # Token ratio: "142K of 200K tokens" or "142K/200K"
+            m = re.search(r"(\d+)[Kk]\s*(?:of|/)\s*(\d+)[Kk]", line)
+            if m:
+                used = float(m.group(1))
+                total = float(m.group(2))
+                if total > 0:
+                    return min(1.0, used / total)
+        return None
 
     async def detect_status(self, agent_id: str) -> str:
         """Analyze recent output to detect agent's current status."""
@@ -3413,6 +3697,8 @@ class WebSocketHub:
                 presets = await self.db.get_presets()
             except Exception:
                 presets = []
+            scanner: ExtensionScanner = request.app.get("extension_scanner")
+            extensions_data = scanner.to_dict() if scanner else {"skills": [], "mcp_servers": [], "plugins": [], "scanned_at": ""}
             await ws.send_json({
                 "type": "sync",
                 "agents": [a.to_dict() for a in list(self.agent_manager.agents.values())],
@@ -3421,6 +3707,7 @@ class WebSocketHub:
                 "presets": presets,
                 "config": self.config.to_dict(),
                 "backends": backends_info,
+                "extensions": extensions_data,
                 "db_ready": request.app.get("db_ready", False),
                 "db_available": request.app.get("db_available", True),
             })
@@ -3565,6 +3852,8 @@ class WebSocketHub:
                     d["name"] = name
                     backends_info[name] = d
                 app = getattr(self, 'app', None)
+                scanner2: ExtensionScanner | None = app.get("extension_scanner") if app else None
+                ext_data = scanner2.to_dict() if scanner2 else {"skills": [], "mcp_servers": [], "plugins": [], "scanned_at": ""}
                 await ws.send_json({
                     "type": "sync",
                     "agents": [a.to_dict() for a in list(self.agent_manager.agents.values())],
@@ -3573,6 +3862,7 @@ class WebSocketHub:
                     "presets": presets,
                     "config": self.config.to_dict(),
                     "backends": backends_info,
+                    "extensions": ext_data,
                     "db_ready": app.get("db_ready", False) if app else False,
                     "db_available": app.get("db_available", True) if app else True,
                 })
@@ -4995,6 +5285,41 @@ async def import_config(request: web.Request) -> web.Response:
     return web.json_response({"status": "imported", "changes": diff})
 
 
+# ── Extension Discovery endpoints ──
+
+async def get_extensions(request: web.Request) -> web.Response:
+    """GET /api/extensions — return cached extension scan results."""
+    if r := _check_rate(request, cost=1):
+        return r
+    scanner: ExtensionScanner = request.app["extension_scanner"]
+    return web.json_response(scanner.to_dict())
+
+
+async def refresh_extensions(request: web.Request) -> web.Response:
+    """POST /api/extensions/refresh — re-scan filesystem for extensions."""
+    if r := _check_rate(request, cost=3, rate=1, burst=5):
+        return r
+    scanner: ExtensionScanner = request.app["extension_scanner"]
+    # Gather project dirs from DB + active agents
+    project_dirs: set[str] = set()
+    db: Database = request.app["db"]
+    if db:
+        try:
+            projects = await db.get_projects()
+            for p in projects:
+                pdir = p.get("path", "")
+                if pdir:
+                    project_dirs.add(pdir)
+        except Exception:
+            pass
+    manager: AgentManager = request.app["agent_manager"]
+    for agent in list(manager.agents.values()):
+        if agent.working_dir:
+            project_dirs.add(agent.working_dir)
+    result = scanner.scan(list(project_dirs))
+    return web.json_response(result)
+
+
 # ── History endpoints ──
 
 async def list_history(request: web.Request) -> web.Response:
@@ -5828,6 +6153,11 @@ def create_app(config: Config) -> web.Application:
     else:
         log.info("LLM summaries disabled (set XAI_API_KEY and llm.enabled in config)")
 
+    # Extension Scanner — initial scan at startup
+    scanner = ExtensionScanner()
+    scanner.scan()  # Initial scan with no project dirs (DB not ready yet)
+    app["extension_scanner"] = scanner
+
     # Routes
     app.router.add_get("/", serve_dashboard)
     app.router.add_get("/logo.png", serve_logo)
@@ -5902,6 +6232,10 @@ def create_app(config: Config) -> web.Application:
     # REST API — Config Import/Export
     app.router.add_get("/api/config/export", export_config)
     app.router.add_post("/api/config/import", import_config)
+
+    # REST API — Extensions
+    app.router.add_get("/api/extensions", get_extensions)
+    app.router.add_post("/api/extensions/refresh", refresh_extensions)
 
     # CORS
     cors = aiohttp_cors.setup(app, defaults={

@@ -10,47 +10,105 @@
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* ─────────────────────────────────────────────
-   Design System — Glassmorphic Dark Theme
-   Matching Ashlar landing page: #0D1520 + #2563EB
+   Design System — Refined Dark
+   Deep indigo palette with layered surfaces
    ───────────────────────────────────────────── */
 
 :root {
-    --bg-primary: #0D1520;
-    --bg-secondary: rgba(255,255,255,0.03);
-    --bg-card: rgba(255,255,255,0.05);
-    --bg-card-hover: rgba(255,255,255,0.08);
-    --bg-elevated: rgba(255,255,255,0.07);
-    --bg-input: rgba(255,255,255,0.06);
-    --border: rgba(255,255,255,0.1);
-    --border-light: rgba(255,255,255,0.15);
-    --border-focus: rgba(37,99,235,0.5);
-    --text-primary: #ffffff;
-    --text-secondary: rgba(255,255,255,0.6);
-    --text-dimmed: rgba(255,255,255,0.5);
-    --text-muted: rgba(255,255,255,0.5);
-    --bg-surface: rgba(255,255,255,0.06);
-    --accent: #2563EB;
-    --accent-hover: #3B82F6;
-    --accent-glow: rgba(37,99,235,0.4);
-    --accent-subtle: rgba(37,99,235,0.15);
+    /* Backgrounds — layered depth */
+    --bg-page: #0A0F1A;
+    --bg-surface: #0E1525;
+    --bg-elevated: #131B2E;
+    --bg-overlay: #182038;
+    --bg-input: #0C1220;
+
+    /* Text — 4-level hierarchy */
+    --text-primary: #EDEEF0;
+    --text-secondary: #8B919E;
+    --text-tertiary: #5C6370;
+    --text-disabled: #3A3F4B;
+
+    /* Borders — 3 levels */
+    --border-subtle: rgba(255,255,255,0.06);
+    --border-default: rgba(255,255,255,0.10);
+    --border-strong: rgba(255,255,255,0.16);
+    --border-focus: rgba(99,102,241,0.5);
+
+    /* Accent — indigo */
+    --accent: #6366F1;
+    --accent-hover: #818CF8;
+    --accent-muted: rgba(99,102,241,0.25);
+    --accent-subtle: rgba(99,102,241,0.12);
+
+    /* Semantic colors */
     --success: #22C55E;
-    --success-subtle: rgba(34,197,94,0.15);
-    --warning: #F59E0B;
-    --warning-subtle: rgba(245,158,11,0.15);
+    --success-subtle: rgba(34,197,94,0.12);
+    --warning: #EAB308;
+    --warning-subtle: rgba(234,179,8,0.12);
     --danger: #EF4444;
-    --danger-subtle: rgba(239,68,68,0.15);
+    --danger-subtle: rgba(239,68,68,0.12);
     --orange: #F97316;
-    --orange-subtle: rgba(249,115,22,0.15);
+    --orange-subtle: rgba(249,115,22,0.12);
     --purple: #A855F7;
     --cyan: #06B6D4;
+
+    /* Status colors */
+    --status-working: #6366F1;
+    --status-planning: #EAB308;
+    --status-waiting: #F97316;
+    --status-error: #EF4444;
+    --status-idle: #5C6370;
+    --status-reading: #3B82F6;
+    --status-spawning: #8B919E;
+    --status-paused: #5C6370;
+
+    /* Role colors as CSS vars */
+    --role-frontend: #8B5CF6;
+    --role-backend: #3B82F6;
+    --role-devops: #F97316;
+    --role-tester: #22C55E;
+    --role-reviewer: #EAB308;
+    --role-security: #EF4444;
+    --role-architect: #06B6D4;
+    --role-docs: #A855F7;
+    --role-general: #64748B;
+
+    /* Spacing — 4px base grid */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-6: 24px;
+    --sp-8: 32px;
+    --sp-10: 40px;
+    --sp-12: 48px;
+    --sp-16: 64px;
+
+    /* Typography */
     --font-sans: 'Instrument Sans', -apple-system, system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
-    --radius-sm: 8px;
-    --radius-md: 12px;
-    --radius-lg: 16px;
-    --radius-xl: 20px;
-    --transition: 0.2s ease;
-    --transition-slow: 0.3s ease;
+
+    /* Radii */
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 16px;
+
+    /* Transitions */
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --duration-fast: 0.12s;
+    --duration-normal: 0.2s;
+    --duration-slow: 0.35s;
+    --transition: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    --transition-slow: 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+
+    /* Shadows — deep darks, no colored glows */
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.15);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.2);
+    --shadow-lg: 0 12px 32px rgba(0,0,0,0.4), 0 4px 12px rgba(0,0,0,0.25);
+    --shadow-xl: 0 24px 64px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.3);
 }
 
 /* ── Z-Index Scale ──
@@ -384,7 +442,7 @@ body {
 }
 .agent-card:hover {
     border-color: var(--border-light);
-    background: var(--bg-card-hover);
+    background: var(--bg-elevated);
     transform: translateY(-1px);
 }
 
@@ -518,6 +576,23 @@ body {
     transition: all var(--transition);
 }
 .card-respond-btn:hover { background: #EA580C; }
+.card-quick-actions {
+    display: none; gap: 6px; margin-bottom: 6px;
+}
+.card-quick-btn {
+    flex: 1; padding: 5px 10px; border: none; border-radius: 6px;
+    font-size: 11px; font-weight: 600; cursor: pointer; transition: var(--transition);
+    font-family: var(--font-sans);
+}
+.card-quick-btn.approve {
+    background: var(--success); color: white;
+}
+.card-quick-btn.approve:hover { filter: brightness(1.1); }
+.card-quick-btn.reject {
+    background: var(--bg-elevated); color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+.card-quick-btn.reject:hover { background: var(--danger); color: white; border-color: var(--danger); }
 
 .progress-bar {
     height: 3px;
@@ -547,35 +622,83 @@ body {
 .context-bar-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     margin-bottom: 10px;
+    position: relative;
 }
 .context-bar {
-    height: 3px;
-    background: rgba(255,255,255,0.06);
-    border-radius: 2px;
+    height: 6px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
     overflow: hidden;
     flex: 1;
+    position: relative;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
 }
 .context-bar-fill {
     height: 100%;
-    border-radius: 2px;
-    transition: transform 0.5s ease, background 0.5s ease;
+    border-radius: 3px;
+    transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1), background 0.6s ease, box-shadow 0.6s ease;
     transform-origin: left;
+    position: relative;
+}
+.context-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(180deg, rgba(255,255,255,0.2) 0%, transparent 100%);
+    border-radius: 3px;
 }
 .context-bar-fill.high { animation: ctx-pulse 1.5s ease-in-out infinite; }
-@keyframes ctx-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
-.context-text {
+@keyframes ctx-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+.context-pct-label {
     font-size: 10px;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
+    min-width: 28px;
+    text-align: right;
+    letter-spacing: -0.3px;
+    transition: color 0.5s ease;
+}
+.context-pct-label.low { color: #4ADE80; }
+.context-pct-label.medium { color: #FBBF24; }
+.context-pct-label.high { color: #F87171; }
+.context-text {
+    font-size: 9px;
     color: var(--text-dimmed);
     white-space: nowrap;
     font-family: 'JetBrains Mono', monospace;
     display: none;
+    opacity: 0.7;
 }
 .context-text.visible { display: inline; }
-.context-text.warning { color: #EF4444; }
+.context-text.warning { color: #EF4444; opacity: 1; }
 .context-warn-icon { display: none; font-size: 11px; }
 .context-warn-icon.visible { display: inline; }
+
+/* Deep view context bar */
+.deep-context-stat { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.deep-context-bar {
+    width: 80px; height: 5px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
+    overflow: hidden;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+}
+.deep-context-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1), background 0.6s ease;
+    position: relative;
+}
+.deep-context-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(180deg, rgba(255,255,255,0.2) 0%, transparent 100%);
+    border-radius: 3px;
+}
 
 .card-footer {
     display: flex;
@@ -735,7 +858,7 @@ body {
     text-align: center;
     transition: all var(--transition);
 }
-.role-option:hover { border-color: var(--border-light); background: var(--bg-card-hover); transform: translateY(-1px); }
+.role-option:hover { border-color: var(--border-light); background: var(--bg-elevated); transform: translateY(-1px); }
 .role-option:active { transform: scale(0.97); }
 .role-option.selected { border-color: var(--accent); background: var(--accent-subtle); box-shadow: 0 0 20px rgba(37,99,235,0.15), inset 0 0 0 1px rgba(37,99,235,0.1); transform: translateY(-2px); }
 .role-option .role-icon { font-size: 24px; margin-bottom: 4px; }
@@ -857,7 +980,7 @@ body {
     color: var(--text-secondary);
     border: 1px solid var(--border);
 }
-.btn-secondary:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+.btn-secondary:hover { background: var(--bg-elevated); color: var(--text-primary); }
 
 /* ── Deep View (Full Terminal) ── */
 
@@ -909,7 +1032,7 @@ body {
     gap: 4px;
     transition: all var(--transition);
 }
-.back-btn:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+.back-btn:hover { background: var(--bg-elevated); color: var(--text-primary); }
 
 .deep-agent-info {
     display: flex;
@@ -946,7 +1069,7 @@ body {
     font-family: var(--font-sans);
     transition: all var(--transition);
 }
-.deep-action-btn:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+.deep-action-btn:hover { background: var(--bg-elevated); color: var(--text-primary); }
 .deep-action-btn.danger:hover { background: var(--danger-subtle); color: var(--danger); }
 
 .deep-terminal-wrap { flex: 1; position: relative; overflow: hidden; }
@@ -1015,7 +1138,7 @@ body {
     transition: all var(--transition);
     z-index: 5;
 }
-.jump-to-bottom:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+.jump-to-bottom:hover { background: var(--bg-elevated); color: var(--text-primary); }
 .jump-to-bottom.visible { display: block; animation: jumpPulse 2s ease-in-out infinite; }
 @keyframes jumpPulse { 0%,100% { box-shadow: 0 2px 8px rgba(0,0,0,0.3); } 50% { box-shadow: 0 2px 16px rgba(37,99,235,0.3); } }
 
@@ -1190,6 +1313,14 @@ body {
     font-family: var(--font-mono);
 }
 
+.aq-item-preview {
+    font-size: 11px; font-family: var(--font-mono);
+    color: var(--text-dimmed); line-height: 1.4;
+    background: var(--bg-card); border-radius: var(--radius-sm);
+    padding: 6px 8px; margin-bottom: 6px;
+    max-height: 48px; overflow: hidden;
+    border-left: 2px solid var(--border);
+}
 .aq-item-question {
     font-size: 12px;
     color: var(--text-secondary);
@@ -1348,8 +1479,8 @@ body {
     color: var(--text-secondary);
     transition: all var(--transition);
 }
-.palette-item:hover { background: var(--bg-card-hover); color: var(--text-primary); }
-.palette-item.selected { background: var(--bg-card-hover); color: var(--text-primary); transform: translateX(4px); box-shadow: inset 3px 0 0 var(--accent); }
+.palette-item:hover { background: var(--bg-elevated); color: var(--text-primary); }
+.palette-item.selected { background: var(--bg-elevated); color: var(--text-primary); transform: translateX(4px); box-shadow: inset 3px 0 0 var(--accent); }
 .palette-item:active { transform: scale(0.99); }
 .palette-item-icon { font-size: 16px; width: 24px; text-align: center; flex-shrink: 0; }
 .palette-item-label { flex: 1; }
@@ -1720,6 +1851,103 @@ body {
     background: var(--success-subtle); color: var(--success);
 }
 
+/* ── Extensions Panel ── */
+.btn-extensions {
+    background: none; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text-secondary); cursor: pointer; padding: 4px 8px; font-size: 16px;
+    transition: var(--transition); line-height: 1;
+}
+.btn-extensions:hover { border-color: var(--accent); color: var(--text-primary); background: var(--bg-elevated); }
+.extensions-overlay {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+    display: none; place-items: center;
+}
+.extensions-overlay.active { display: grid; }
+.extensions-panel {
+    background: var(--bg-primary); border: 1px solid var(--border);
+    border-radius: var(--radius-xl); padding: 24px;
+    width: min(640px, 92vw); max-height: 80vh;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    display: flex; flex-direction: column;
+}
+.ext-header {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;
+}
+.ext-header h3 { margin: 0; font-size: 18px; color: var(--text-primary); }
+.ext-header-actions { display: flex; gap: 8px; align-items: center; }
+.ext-close-btn {
+    background: none; border: none; color: var(--text-dimmed); font-size: 22px;
+    cursor: pointer; padding: 0 4px; line-height: 1;
+}
+.ext-close-btn:hover { color: var(--text-primary); }
+.ext-tabs {
+    display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--border);
+    padding-bottom: 0;
+}
+.ext-tab {
+    background: none; border: none; border-bottom: 2px solid transparent;
+    color: var(--text-dimmed); cursor: pointer; padding: 8px 16px; font-size: 13px;
+    font-weight: 500; transition: var(--transition);
+}
+.ext-tab:hover { color: var(--text-secondary); }
+.ext-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.ext-search {
+    width: 100%; padding: 8px 12px; font-size: 13px; margin-bottom: 12px;
+    background: var(--bg-input); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text-primary);
+    font-family: var(--font-mono);
+}
+.ext-search:focus { outline: none; border-color: var(--border-focus); }
+.ext-content {
+    flex: 1; overflow-y: auto; min-height: 200px; max-height: 50vh;
+}
+.ext-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; margin-bottom: 4px;
+    border-radius: var(--radius-md); transition: var(--transition);
+}
+.ext-item:hover { background: var(--bg-elevated); }
+.ext-item-icon {
+    width: 32px; height: 32px; border-radius: var(--radius-sm);
+    background: var(--bg-card); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0;
+}
+.ext-item-info { flex: 1; min-width: 0; }
+.ext-item-name {
+    font-size: 13px; font-weight: 600; color: var(--text-primary);
+    font-family: var(--font-mono);
+}
+.ext-item-desc {
+    font-size: 11px; color: var(--text-dimmed); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ext-item-badge {
+    font-size: 9px; padding: 2px 6px; border-radius: 8px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    color: var(--text-dimmed); text-transform: uppercase; letter-spacing: 0.5px;
+    flex-shrink: 0;
+}
+.ext-item-badge.user { background: var(--accent-subtle); color: var(--accent); border-color: var(--accent); }
+.ext-item-badge.project { background: var(--success-subtle); color: var(--success); border-color: var(--success); }
+.ext-item-badge.enabled { background: var(--success-subtle); color: var(--success); border-color: var(--success); }
+.ext-item-badge.disabled { background: var(--bg-card); color: var(--text-dimmed); }
+.ext-item-action {
+    background: var(--accent); color: white; border: none; border-radius: var(--radius-sm);
+    padding: 4px 10px; font-size: 11px; cursor: pointer; font-weight: 600;
+    transition: var(--transition); flex-shrink: 0;
+}
+.ext-item-action:hover { filter: brightness(1.1); }
+.ext-item-action:disabled { opacity: 0.4; cursor: not-allowed; }
+.ext-footer {
+    padding-top: 10px; border-top: 1px solid var(--border); margin-top: 8px;
+    font-size: 11px; color: var(--text-dimmed);
+}
+.ext-empty {
+    text-align: center; padding: 40px 20px; color: var(--text-dimmed); font-size: 13px;
+}
+
 /* ── Workflow Editor ── */
 .wf-editor-overlay {
     position: fixed; inset: 0; z-index: 200;
@@ -1768,7 +1996,7 @@ body {
     border-radius: var(--radius-md); cursor: pointer;
     transition: var(--transition);
 }
-.wf-list-item:hover { background: var(--bg-card-hover); border-color: var(--border-light); }
+.wf-list-item:hover { background: var(--bg-elevated); border-color: var(--border-light); }
 .wf-list-item .wf-name { flex: 1; font-size: 14px; color: var(--text-primary); }
 .wf-list-item .wf-desc { font-size: 11px; color: var(--text-dimmed); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wf-list-item .wf-count { font-size: 11px; color: var(--text-dimmed); }
@@ -1909,9 +2137,9 @@ body {
 }
 
 /* Context bar gradient coloring */
-.context-bar-fill.low { background: linear-gradient(90deg, #22C55E, #4ADE80); }
-.context-bar-fill.medium { background: linear-gradient(90deg, #F59E0B, #FBBF24); }
-.context-bar-fill.high { background: linear-gradient(90deg, #EF4444, #F87171); }
+.context-bar-fill.low { background: linear-gradient(90deg, #059669, #22C55E, #4ADE80); box-shadow: 0 0 6px rgba(34, 197, 94, 0.3); }
+.context-bar-fill.medium { background: linear-gradient(90deg, #D97706, #F59E0B, #FBBF24); box-shadow: 0 0 8px rgba(245, 158, 11, 0.35); }
+.context-bar-fill.high { background: linear-gradient(90deg, #DC2626, #EF4444, #F87171); box-shadow: 0 0 10px rgba(239, 68, 68, 0.4); }
 
 /* ── Deep View Slide Transition ── */
 .deep-view {
@@ -2231,7 +2459,7 @@ body {
 }
 .terminal-toolbar-btn:hover {
     color: var(--text-primary);
-    background: var(--bg-card-hover);
+    background: var(--bg-elevated);
     border-color: var(--border-light);
 }
 .terminal-toolbar-btn.active {
@@ -2409,7 +2637,7 @@ body {
     display: flex; align-items: center; gap: 6px;
     color: var(--text-secondary);
 }
-.msg-agent-chip:hover { border-color: var(--border-light); background: var(--bg-card-hover); }
+.msg-agent-chip:hover { border-color: var(--border-light); background: var(--bg-elevated); }
 .msg-agent-chip.selected {
     border-color: var(--accent);
     background: var(--accent-subtle);
@@ -3047,7 +3275,7 @@ body {
     white-space: nowrap;
     user-select: none;
 }
-.status-chip:hover { background: var(--bg-card-hover); border-color: var(--border-light); }
+.status-chip:hover { background: var(--bg-elevated); border-color: var(--border-light); }
 .status-chip.active { border-color: currentColor; }
 .status-chip.active[data-status="all"] { color: var(--text-primary); background: rgba(255,255,255,0.1); }
 .status-chip.active[data-status="working"] { color: var(--accent); background: var(--accent-subtle); }
@@ -3153,7 +3381,7 @@ body {
     transition: all var(--transition);
     font-family: var(--font-sans);
 }
-.bulk-select-btn:hover { background: var(--bg-card-hover); border-color: var(--border-light); }
+.bulk-select-btn:hover { background: var(--bg-elevated); border-color: var(--border-light); }
 .bulk-select-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-subtle); }
 
 /* ── Enhanced Command Bar ── */
@@ -3204,6 +3432,7 @@ body {
     box-shadow: 0 -8px 32px rgba(0,0,0,0.4);
 }
 .command-autocomplete.active { display: block; }
+.deep-autocomplete { left: 0; right: 60px; }
 .command-ac-item {
     display: flex;
     align-items: center;
@@ -3215,7 +3444,7 @@ body {
     transition: background 0.1s;
 }
 .command-ac-item:hover, .command-ac-item.selected {
-    background: var(--bg-card-hover);
+    background: var(--bg-elevated);
     color: var(--text-primary);
 }
 .command-ac-item .ac-icon { flex-shrink: 0; }
@@ -3238,7 +3467,7 @@ body {
     transition: background 0.15s;
     cursor: pointer;
 }
-.activity-event:hover { background: var(--bg-card-hover); }
+.activity-event:hover { background: var(--bg-elevated); }
 .activity-icon {
     flex-shrink: 0;
     font-size: 14px;
@@ -3376,6 +3605,7 @@ body {
             <div id="notifList"></div>
         </div>
     </div>
+    <button class="btn-extensions" onclick="toggleExtensionsPanel()" title="Extensions (⌘E)" aria-label="Extensions">🧩</button>
     <button class="btn-new-agent" onclick="openSpawnDialog()">
         <span>+</span> New Agent
     </button>
@@ -3530,7 +3760,7 @@ body {
         <div class="deep-stats">
             <div><span class="metric-label">Status </span><span class="deep-stat-value" id="deepStatus"></span></div>
             <div><span class="metric-label">Phase </span><span class="deep-stat-value" id="deepPhase"></span></div>
-            <div><span class="metric-label">Context </span><span class="deep-stat-value" id="deepContext"></span></div>
+            <div class="deep-context-stat"><span class="metric-label">Context </span><span class="deep-stat-value" id="deepContext"></span><div class="deep-context-bar"><div class="deep-context-bar-fill" id="deepContextFill"></div></div></div>
             <div><span class="metric-label">Memory </span><span class="deep-stat-value" id="deepMemory"></span></div>
             <div><span class="metric-label">Health </span><span class="deep-stat-value" id="deepHealth"></span></div>
             <div><span class="metric-label">Time </span><span class="deep-stat-value" id="deepTime"></span></div>
@@ -3590,10 +3820,11 @@ body {
         </div>
         <button class="jump-to-bottom" id="jumpToBottom" onclick="scrollDeepToBottom()">↓ Jump to bottom</button>
     </div>
-    <div class="deep-input-bar">
+    <div class="deep-input-bar" style="position:relative">
         <input class="deep-input" id="deepInput" placeholder="Type a message to this agent..."
-               onkeydown="handleDeepInputKey(event)">
+               onkeydown="handleDeepInputKey(event)" oninput="handleDeepInputInput(event)">
         <button class="deep-send-btn" onclick="sendDeepMessage()">Send</button>
+        <div class="command-autocomplete deep-autocomplete" id="deepAutocomplete"></div>
     </div>
 </div>
 
@@ -3769,6 +4000,27 @@ body {
             <button class="btn btn-secondary" onclick="closeSettings()">Cancel</button>
             <button class="btn btn-primary" onclick="saveSettings()">Save</button>
         </div>
+    </div>
+</div>
+
+<!-- ── Extensions Panel ── -->
+<div class="extensions-overlay" id="extensionsOverlay" onclick="if(event.target===this)closeExtensionsPanel()">
+    <div class="extensions-panel">
+        <div class="ext-header">
+            <h3>🧩 Extensions</h3>
+            <div class="ext-header-actions">
+                <button class="btn btn-secondary btn-sm" onclick="refreshExtensions()" title="Re-scan filesystem">↻ Refresh</button>
+                <button class="ext-close-btn" onclick="closeExtensionsPanel()" aria-label="Close">&times;</button>
+            </div>
+        </div>
+        <div class="ext-tabs">
+            <button class="ext-tab active" data-tab="skills" onclick="switchExtTab('skills')">Skills</button>
+            <button class="ext-tab" data-tab="mcp" onclick="switchExtTab('mcp')">MCP Servers</button>
+            <button class="ext-tab" data-tab="plugins" onclick="switchExtTab('plugins')">Plugins</button>
+        </div>
+        <input class="ext-search" id="extSearch" placeholder="Filter..." oninput="filterExtensions(this.value)">
+        <div class="ext-content" id="extContent"></div>
+        <div class="ext-footer" id="extFooter"></div>
     </div>
 </div>
 
@@ -3982,6 +4234,10 @@ const state = {
     statusFilter: 'all',
     commandTargetId: null,
     acIndex: -1,
+    extensions: { skills: [], mcp_servers: [], plugins: [], scanned_at: '' },
+    extTab: 'skills',
+    extFilter: '',
+    aqDismissedAt: 0,
 };
 
 const ROLE_INFO = {
@@ -4391,6 +4647,7 @@ async function handleSync(data) {
     state.workflows = data.workflows || [];
     state.presets = data.presets || [];
     state.backends = data.backends || {};
+    if (data.extensions) state.extensions = data.extensions;
     // Clean stale pinned agents that no longer exist
     let pinsChanged = false;
     state.pinnedAgents.forEach(id => {
@@ -4755,11 +5012,12 @@ function createAgentCard(agent) {
         <div class="card-summary"></div>
         <div class="card-input-section">
             <div class="card-input-prompt"></div>
+            <div class="card-quick-actions"></div>
             <button class="card-respond-btn" onclick="event.stopPropagation();openInteraction('${agent.id}')">Respond</button>
         </div>
         <div class="progress-bar" role="progressbar" aria-label="Task progress"><div class="progress-bar-fill"></div></div>
         <canvas class="card-sparkline" width="160" height="20"></canvas>
-        <div class="context-bar-row"><div class="context-bar" role="progressbar" aria-label="Context window usage"><div class="context-bar-fill"></div></div><span class="context-warn-icon" title="High context usage">&#9888;</span><span class="context-text"></span></div>
+        <div class="context-bar-row"><div class="context-bar" role="progressbar" aria-label="Context window usage"><div class="context-bar-fill"></div></div><span class="context-pct-label low">0%</span><span class="context-warn-icon" title="High context usage">&#9888;</span><span class="context-text"></span></div>
         <span class="card-pin-indicator">📌</span>
         <div class="card-footer">
             <span class="status-badge"></span>
@@ -4848,11 +5106,28 @@ function updateAgentCard(card, agent) {
     ].filter(Boolean).join(' · ');
     healthEl.title = healthDetails;
 
-    // Input prompt
+    // Input prompt with inline quick-response buttons
     const inputSection = card.querySelector('.card-input-section');
     if (agent.needs_input && agent.input_prompt) {
         inputSection.style.display = 'block';
         card.querySelector('.card-input-prompt').textContent = agent.input_prompt;
+        const quickActions = card.querySelector('.card-quick-actions');
+        const respondBtn = card.querySelector('.card-respond-btn');
+        const prompt = (agent.input_prompt || '').toLowerCase();
+        const isYesNo = /\b(yes|no|y\/n)\b/.test(prompt) || /\?\s*$/.test(prompt);
+        const isApprove = /\b(approve|proceed|confirm|allow|accept)\b/.test(prompt) || (agent.plan_mode && agent.status === 'waiting');
+        if (isYesNo || isApprove) {
+            const aid = agent.id;
+            if (isApprove) {
+                quickActions.innerHTML = `<button class="card-quick-btn approve" onclick="event.stopPropagation();quickRespond('${aid}','yes')">Approve</button><button class="card-quick-btn reject" onclick="event.stopPropagation();quickRespond('${aid}','no')">Reject</button>`;
+            } else {
+                quickActions.innerHTML = `<button class="card-quick-btn approve" onclick="event.stopPropagation();quickRespond('${aid}','yes')">Yes</button><button class="card-quick-btn reject" onclick="event.stopPropagation();quickRespond('${aid}','no')">No</button>`;
+            }
+            quickActions.style.display = 'flex';
+        } else {
+            quickActions.innerHTML = '';
+            quickActions.style.display = 'none';
+        }
     } else {
         inputSection.style.display = 'none';
     }
@@ -4871,28 +5146,39 @@ function updateAgentCard(card, agent) {
     const phase = agent.phase || agent.status;
     progFill.className = 'progress-bar-fill ' + (phaseMap[phase] || '');
 
-    // Context bar with gradient + token count
-    const pct = Math.round((agent.context_pct || 0) * 100);
+    // Context bar — shows % remaining (like Claude Code)
+    const usedPct = Math.round((agent.context_pct || 0) * 100);
+    const remainPct = Math.max(0, 100 - usedPct);
+    // Color based on remaining: green=plenty, yellow=getting low, red=critical
+    const ctxLevel = remainPct > 50 ? 'low' : remainPct > 20 ? 'medium' : 'high';
     const ctxBar = card.querySelector('.context-bar');
     const fill = card.querySelector('.context-bar-fill');
-    fill.style.transform = `scaleX(${pct / 100})`;
-    fill.className = 'context-bar-fill ' + (pct < 50 ? 'low' : pct < 80 ? 'medium' : 'high');
-    ctxBar.setAttribute('aria-valuenow', pct);
+    fill.style.transform = `scaleX(${Math.max(usedPct, 1) / 100})`;
+    fill.className = 'context-bar-fill ' + ctxLevel;
+    ctxBar.setAttribute('aria-valuenow', remainPct);
     ctxBar.setAttribute('aria-valuemin', '0');
     ctxBar.setAttribute('aria-valuemax', '100');
-    // Token count text (visible at >=50%)
+    // Percentage remaining label — always visible
+    const pctLabel = card.querySelector('.context-pct-label');
+    if (pctLabel) {
+        pctLabel.textContent = `${remainPct}%`;
+        pctLabel.className = 'context-pct-label ' + ctxLevel;
+    }
+    // Token count text — always visible
     const ctxText = card.querySelector('.context-text');
     const ctxWarn = card.querySelector('.context-warn-icon');
     if (ctxText) {
         const ctxWindow = agent.context_window || 200000;
         const ctxWindowK = Math.round(ctxWindow / 1000);
-        const usedK = Math.round((agent.context_pct || 0) * ctxWindowK);
-        ctxText.textContent = usedK + 'K / ' + ctxWindowK + 'K';
-        ctxText.className = 'context-text' + (pct >= 50 ? ' visible' : '') + (pct >= 80 ? ' warning' : '');
-        ctxBar.title = `Context window: ~${usedK},000 of ${ctxWindow.toLocaleString()} tokens used`;
+        const usedTokens = Math.round((agent.context_pct || 0) * ctxWindow);
+        const remainTokens = ctxWindow - usedTokens;
+        const remainK = (remainTokens / 1000).toFixed(1);
+        ctxText.textContent = `${remainK}K / ${ctxWindowK}K left`;
+        ctxText.className = 'context-text visible' + (remainPct <= 20 ? ' warning' : '');
+        ctxBar.title = `${remainPct}% remaining — ~${remainTokens.toLocaleString()} of ${ctxWindow.toLocaleString()} tokens left`;
     }
     if (ctxWarn) {
-        ctxWarn.className = 'context-warn-icon' + (pct >= 80 ? ' visible' : '');
+        ctxWarn.className = 'context-warn-icon' + (remainPct <= 20 ? ' visible' : '');
     }
 
     // Message badge
@@ -5347,7 +5633,27 @@ function updateDeepViewHeader(agent) {
     const phaseColors = { planning: 'var(--warning)', reading: '#3B82F6', implementing: 'var(--success)', testing: 'var(--cyan)', complete: '#10B981' };
     phaseEl.style.color = phaseColors[agent.phase] || 'var(--text-dimmed)';
 
-    document.getElementById('deepContext').textContent = `${Math.round((agent.context_pct || 0) * 100)}%`;
+    const ctxUsedPct = Math.round((agent.context_pct || 0) * 100);
+    const ctxRemainPct = Math.max(0, 100 - ctxUsedPct);
+    const ctxWin = agent.context_window || 200000;
+    const ctxRemainTokens = Math.round((1 - (agent.context_pct || 0)) * ctxWin);
+    const ctxRemainK = (ctxRemainTokens / 1000).toFixed(1);
+    const ctxWinK = Math.round(ctxWin / 1000);
+    const deepCtxEl = document.getElementById('deepContext');
+    deepCtxEl.textContent = `${ctxRemainPct}% remaining — ${ctxRemainK}K / ${ctxWinK}K left`;
+    deepCtxEl.style.color = ctxRemainPct <= 20 ? 'var(--danger)' : ctxRemainPct <= 50 ? 'var(--warning)' : '#4ADE80';
+    // Update deep view context bar (fill = used portion)
+    const deepCtxFill = document.getElementById('deepContextFill');
+    if (deepCtxFill) {
+        deepCtxFill.style.width = `${Math.max(ctxUsedPct, 1)}%`;
+        const ctxGrad = ctxRemainPct <= 20 ? 'linear-gradient(90deg, #DC2626, #EF4444, #F87171)' :
+                         ctxRemainPct <= 50 ? 'linear-gradient(90deg, #D97706, #F59E0B, #FBBF24)' :
+                                              'linear-gradient(90deg, #059669, #22C55E, #4ADE80)';
+        deepCtxFill.style.background = ctxGrad;
+        deepCtxFill.style.boxShadow = ctxRemainPct <= 20 ? '0 0 8px rgba(239,68,68,0.4)' :
+                                       ctxRemainPct <= 50 ? '0 0 6px rgba(245,158,11,0.3)' :
+                                                            '0 0 4px rgba(34,197,94,0.25)';
+    }
     document.getElementById('deepMemory').textContent = `${Math.round(agent.memory_mb || 0)} MB`;
 
     // Health score
@@ -5437,10 +5743,28 @@ function closeDeepView() {
 
 let _cmdHistIdx = -1;
 let _cmdHistDraft = '';
+let _deepAcIndex = -1;
+
 function handleDeepInputKey(e) {
     const input = document.getElementById('deepInput');
     const agentId = state.focusedAgentId;
     if (!agentId) return;
+
+    // Deep autocomplete navigation
+    const dac = document.getElementById('deepAutocomplete');
+    if (dac.classList.contains('active')) {
+        const items = dac.querySelectorAll('.command-ac-item');
+        if (e.key === 'ArrowDown') { e.preventDefault(); _deepAcIndex = Math.min(_deepAcIndex + 1, items.length - 1); items.forEach((el, i) => el.classList.toggle('selected', i === _deepAcIndex)); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); _deepAcIndex = Math.max(_deepAcIndex - 1, 0); items.forEach((el, i) => el.classList.toggle('selected', i === _deepAcIndex)); return; }
+        if (e.key === 'Tab' || e.key === 'Enter') {
+            e.preventDefault();
+            const sel = items[_deepAcIndex >= 0 ? _deepAcIndex : 0];
+            if (sel) selectDeepAcItem(sel);
+            return;
+        }
+        if (e.key === 'Escape') { e.preventDefault(); closeDeepAutocomplete(); return; }
+    }
+
     const history = state.commandHistory.get(agentId) || [];
     if (e.key === 'ArrowUp' && !e.shiftKey) {
         e.preventDefault();
@@ -5454,6 +5778,58 @@ function handleDeepInputKey(e) {
         e.preventDefault();
         sendDeepMessage();
     }
+}
+
+function handleDeepInputInput(e) {
+    const val = e.target.value;
+    const slashMatch = val.match(/^\/([^\s]*)$/);
+    if (slashMatch) {
+        const query = slashMatch[1].toLowerCase();
+        const builtinMatches = COMMAND_SLASH_COMMANDS
+            .filter(c => c.cmd.includes(query))
+            .map(c => ({ icon: c.icon, name: '/' + c.cmd, hint: c.desc, value: c.cmd, type: 'command' }));
+        const skillMatches = (state.extensions.skills || [])
+            .filter(s => s.name.toLowerCase().includes(query))
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .slice(0, 10)
+            .map(s => ({ icon: '🧩', name: '/' + s.name, hint: s.description || s.source, value: s.name, type: 'skill' }));
+        const combined = [...builtinMatches, ...skillMatches];
+        if (combined.length) {
+            showDeepAutocomplete(combined);
+            return;
+        }
+    }
+    closeDeepAutocomplete();
+}
+
+function showDeepAutocomplete(items) {
+    const ac = document.getElementById('deepAutocomplete');
+    _deepAcIndex = 0;
+    ac.innerHTML = items.map((item, i) =>
+        `<div class="command-ac-item${i === 0 ? ' selected' : ''}" data-value="${escapeHtml(item.value)}" data-type="${item.type}" onclick="selectDeepAcItem(this)">` +
+        `<span class="ac-icon">${item.icon}</span>` +
+        `<span class="ac-name">${escapeHtml(item.name)}</span>` +
+        `<span class="ac-hint">${escapeHtml(item.hint)}</span></div>`
+    ).join('');
+    ac.classList.add('active');
+}
+
+function closeDeepAutocomplete() {
+    document.getElementById('deepAutocomplete').classList.remove('active');
+    _deepAcIndex = -1;
+}
+
+function selectDeepAcItem(el) {
+    const input = document.getElementById('deepInput');
+    const type = el.dataset.type;
+    const value = el.dataset.value;
+    if (type === 'skill') {
+        input.value = '/' + value + ' ';
+    } else if (type === 'command') {
+        input.value = '/' + value + ' ';
+    }
+    closeDeepAutocomplete();
+    input.focus();
 }
 
 function sendDeepMessage() {
@@ -5738,6 +6114,13 @@ function handleDeepSearchKey(e) {
 
 // ── Inline Interaction ──
 
+function quickRespond(agentId, response) {
+    const agent = state.agents.get(agentId);
+    if (!agent) return;
+    socket.send({ type: 'send', agent_id: agentId, message: response });
+    showToast(`Sent "${response}" to ${agent.name}`, 'success');
+}
+
 function openInteraction(agentId) {
     const agent = state.agents.get(agentId);
     if (!agent) return;
@@ -5914,6 +6297,7 @@ const PALETTE_ACTIONS = [
     { icon: '🔄', label: 'Refresh state', shortcut: '', action: () => { closePalette(); socket.send({ type: 'sync_request' }); } },
     { icon: '☑', label: 'Bulk select mode', shortcut: '', action: () => { closePalette(); toggleBulkMode(); } },
     { icon: '⚠', label: 'Show conflicts', shortcut: '', action: () => { closePalette(); showConflictSummary(); } },
+    { icon: '🧩', label: 'Extensions...', shortcut: '⌘E', action: () => { closePalette(); openExtensionsPanel(); } },
 ];
 
 function openPalette() {
@@ -6082,19 +6466,31 @@ function handleCommandInput(e) {
         }
     }
 
-    // Detect /command
-    const slashMatch = val.match(/^\/(\w*)$/);
+    // Detect /command — merge built-in commands with Claude Code skills
+    const slashMatch = val.match(/^\/([^\s]*)$/);
     if (slashMatch) {
         const query = slashMatch[1].toLowerCase();
-        const matches = COMMAND_SLASH_COMMANDS.filter(c => c.cmd.includes(query));
-        if (matches.length) {
-            showAutocomplete(matches.map(c => ({
-                icon: c.icon,
-                name: '/' + c.cmd,
-                hint: c.desc,
-                value: c.cmd,
-                type: 'command',
-            })));
+        const builtinMatches = COMMAND_SLASH_COMMANDS.filter(c => c.cmd.includes(query)).map(c => ({
+            icon: c.icon,
+            name: '/' + c.cmd,
+            hint: c.desc,
+            value: c.cmd,
+            type: 'command',
+        }));
+        const skillMatches = (state.extensions.skills || [])
+            .filter(s => s.name.toLowerCase().includes(query))
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .slice(0, 10)
+            .map(s => ({
+                icon: '🧩',
+                name: '/' + s.name,
+                hint: s.description || s.source,
+                value: s.name,
+                type: 'skill',
+            }));
+        const combined = [...builtinMatches, ...skillMatches];
+        if (combined.length) {
+            showAutocomplete(combined);
             return;
         }
     }
@@ -6149,6 +6545,12 @@ function selectAcItem(el) {
                 showToast(`Select a target agent first with @name`, 'warning');
             }
         }
+        return;
+    } else if (type === 'skill') {
+        // Send skill as slash command to targeted agent
+        invokeSkillOnAgent(value);
+        input.value = '';
+        closeAutocomplete();
         return;
     }
     closeAutocomplete();
@@ -6230,6 +6632,7 @@ document.addEventListener('keydown', (e) => {
         if (document.getElementById('projectDetailPanel')?.classList.contains('active')) { closeProjectDetail(); return; }
         if (document.getElementById('historyOverlay').classList.contains('active')) { closeHistory(); return; }
         if (document.getElementById('cheatsheetOverlay').classList.contains('active')) { closeCheatsheet(); return; }
+        if (document.getElementById('extensionsOverlay').classList.contains('active')) { closeExtensionsPanel(); return; }
         if (document.getElementById('settingsOverlay').classList.contains('active')) { closeSettings(); return; }
         if (document.getElementById('wfEditorOverlay').classList.contains('active')) { closeWfEditor(); return; }
         if (document.getElementById('wfPickerOverlay').classList.contains('active')) { closeWfPicker(); return; }
@@ -6264,6 +6667,9 @@ document.addEventListener('keydown', (e) => {
 
     // Cmd+, — settings
     if (e.metaKey && e.key === ',') { e.preventDefault(); openSettings(); return; }
+
+    // Cmd+E — extensions
+    if (e.metaKey && e.key === 'e' && !e.shiftKey) { e.preventDefault(); toggleExtensionsPanel(); return; }
 
     // Cmd+F — search in deep view
     if (e.metaKey && e.key === 'f' && state.view === 'deep') { e.preventDefault(); openDeepSearch(); return; }
@@ -6453,7 +6859,7 @@ function updateProjectDetailContent(projectId) {
     document.getElementById('projectDetailActive').textContent = active;
     document.getElementById('projectDetailTotal').textContent = agents.length;
     document.getElementById('projectDetailCost').textContent = '$' + totalCost.toFixed(2);
-    document.getElementById('projectDetailContext').textContent = Math.round(avgCtx * 100) + '%';
+    document.getElementById('projectDetailContext').textContent = Math.max(0, 100 - Math.round(avgCtx * 100)) + '% left';
 
     // Agent list
     const listEl = document.getElementById('projectDetailAgents');
@@ -6539,7 +6945,7 @@ function showHistoryDetail(item) {
     document.getElementById('deepName').textContent = `${item.name} (archived)`;
     document.getElementById('deepRole').textContent = info.name;
     document.getElementById('deepStatus').textContent = item.status || 'completed';
-    document.getElementById('deepContext').textContent = `${Math.round((item.context_pct || 0) * 100)}%`;
+    document.getElementById('deepContext').textContent = `${Math.max(0, 100 - Math.round((item.context_pct || 0) * 100))}% remaining`;
     document.getElementById('deepMemory').textContent = '-';
     document.getElementById('deepTime').textContent = formatDuration(item.duration_sec || 0);
     const terminal = document.getElementById('deepTerminal');
@@ -7088,10 +7494,19 @@ function updateGridLayout() {
 function updateAttentionBadge() {
     const waiting = [...state.agents.values()].filter(a => a.needs_input).length;
     const badge = document.getElementById('attentionBadge');
+    const prevCount = parseInt(badge.textContent) || 0;
     badge.textContent = waiting;
     badge.classList.toggle('active', waiting > 0);
+    // Auto-open attention queue when first agent enters waiting (and user hasn't dismissed recently)
+    const aqOverlay = document.getElementById('attentionQueueOverlay');
+    if (waiting > 0 && prevCount === 0 && !aqOverlay.classList.contains('active')) {
+        const now = Date.now();
+        if (now - (state.aqDismissedAt || 0) > 30000) { // 30s cooldown after dismiss
+            openAttentionQueue();
+        }
+    }
     // Also refresh the queue if it's open
-    if (document.getElementById('attentionQueueOverlay').classList.contains('active')) {
+    if (aqOverlay.classList.contains('active')) {
         renderAttentionQueue();
     }
 }
@@ -7108,6 +7523,7 @@ function openAttentionQueue() {
 
 function closeAttentionQueue() {
     document.getElementById('attentionQueueOverlay').classList.remove('active');
+    state.aqDismissedAt = Date.now();
 }
 
 function escapeHtml(str) {
@@ -7149,6 +7565,16 @@ function renderAttentionQueue() {
         const questionText = isPlan ? 'Plan ready for review' : escapeHtml(agent.input_prompt || 'Waiting for input...');
         const approveLabel = isPlan ? 'Approve Plan' : 'Approve';
 
+        // Get last few meaningful output lines for context preview
+        const outputLines = (agent._outputBuffer || agent.output_lines || []);
+        const meaningfulLines = outputLines
+            .filter(l => l.trim() && !/^[\s─╭╰│┌┐└┘]+$/.test(l))
+            .slice(-3)
+            .map(l => escapeHtml(l.length > 100 ? l.slice(0, 100) + '...' : l));
+        const outputPreview = meaningfulLines.length
+            ? `<div class="aq-item-preview">${meaningfulLines.join('<br>')}</div>`
+            : '';
+
         const item = document.createElement('div');
         item.className = 'aq-item';
         item.dataset.agentId = agent.id;
@@ -7159,6 +7585,7 @@ function renderAttentionQueue() {
                 ${isPlan ? '<span class="plan-mode-indicator" style="display:inline-block">PLAN</span>' : ''}
                 <span class="aq-item-time">${elapsed}</span>
             </div>
+            ${outputPreview}
             <div class="aq-item-question">${questionText}</div>
             <div class="aq-item-actions">
                 <button class="btn btn-primary" onclick="respondToAgent('${agent.id}','yes')">${approveLabel}</button>
@@ -7178,8 +7605,17 @@ function respondToAgent(agentId, message) {
     // Remove the item from the list immediately
     const item = document.querySelector(`.aq-item[data-agent-id="${agentId}"]`);
     if (item) item.remove();
-    // Update badge
-    setTimeout(updateAttentionBadge, 300);
+    // Auto-advance: focus next waiting agent's input, or close queue if none left
+    setTimeout(() => {
+        const remaining = document.querySelectorAll('.aq-item');
+        if (remaining.length > 0) {
+            const nextInput = remaining[0].querySelector('.aq-item-input');
+            if (nextInput) nextInput.focus();
+        } else {
+            closeAttentionQueue();
+        }
+        updateAttentionBadge();
+    }, 300);
 }
 
 async function bulkApproveAll() {
@@ -7283,7 +7719,7 @@ function updateMetricsDropdown() {
                 <td>${a.role_icon || '🤖'} ${escapeHtml(a.name)}</td>
                 <td>${escapeHtml(a.status)}</td>
                 <td>${Math.round(a.memory_mb || 0)} MB</td>
-                <td>${Math.round((a.context_pct || 0) * 100)}%</td>
+                <td>${Math.max(0, 100 - Math.round((a.context_pct || 0) * 100))}% left</td>
             </tr>`;
         });
     }
@@ -7390,6 +7826,154 @@ async function resetSettings() {
 function closeSettings() {
     releaseFocus();
     document.getElementById('settingsOverlay').classList.remove('active');
+}
+
+// ── Extensions Panel ──
+
+function toggleExtensionsPanel() {
+    const overlay = document.getElementById('extensionsOverlay');
+    if (overlay.classList.contains('active')) {
+        closeExtensionsPanel();
+    } else {
+        openExtensionsPanel();
+    }
+}
+
+function openExtensionsPanel() {
+    const overlay = document.getElementById('extensionsOverlay');
+    overlay.classList.add('active');
+    document.getElementById('extSearch').value = '';
+    state.extFilter = '';
+    renderExtensionsContent();
+    document.getElementById('extSearch').focus();
+}
+
+function closeExtensionsPanel() {
+    document.getElementById('extensionsOverlay').classList.remove('active');
+}
+
+function switchExtTab(tab) {
+    state.extTab = tab;
+    document.querySelectorAll('.ext-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+    state.extFilter = '';
+    document.getElementById('extSearch').value = '';
+    renderExtensionsContent();
+}
+
+function filterExtensions(query) {
+    state.extFilter = query.toLowerCase();
+    renderExtensionsContent();
+}
+
+function renderExtensionsContent() {
+    const content = document.getElementById('extContent');
+    const footer = document.getElementById('extFooter');
+    const filter = state.extFilter;
+    let html = '';
+
+    if (state.extTab === 'skills') {
+        const items = (state.extensions.skills || []).filter(s =>
+            !filter || s.name.toLowerCase().includes(filter) || (s.description || '').toLowerCase().includes(filter)
+        );
+        if (items.length === 0) {
+            html = '<div class="ext-empty">No skills found</div>';
+        } else {
+            items.forEach(s => {
+                const srcBadge = s.source === 'user'
+                    ? '<span class="ext-item-badge user">global</span>'
+                    : '<span class="ext-item-badge project">project</span>';
+                const hasTarget = state.commandTargetId || state.focusedAgentId;
+                html += `<div class="ext-item">
+                    <div class="ext-item-icon">/</div>
+                    <div class="ext-item-info">
+                        <div class="ext-item-name">/${s.name}</div>
+                        <div class="ext-item-desc">${escapeHtml(s.description || 'No description')}</div>
+                    </div>
+                    ${srcBadge}
+                    <button class="ext-item-action" onclick="invokeSkillOnAgent('${escapeHtml(s.name)}')" ${hasTarget ? '' : 'disabled'} title="${hasTarget ? 'Send to targeted agent' : 'No agent targeted'}">Invoke</button>
+                </div>`;
+            });
+        }
+        footer.textContent = `${items.length} skill${items.length !== 1 ? 's' : ''} — scanned ${state.extensions.scanned_at ? new Date(state.extensions.scanned_at).toLocaleTimeString() : 'never'}`;
+    } else if (state.extTab === 'mcp') {
+        const items = (state.extensions.mcp_servers || []).filter(m =>
+            !filter || m.name.toLowerCase().includes(filter) || (m.url_or_command || '').toLowerCase().includes(filter)
+        );
+        if (items.length === 0) {
+            html = '<div class="ext-empty">No MCP servers configured</div>';
+        } else {
+            items.forEach(m => {
+                const typeIcon = m.type === 'stdio' ? '⌨' : m.type === 'http' ? '🌐' : m.type === 'sse' ? '📡' : '❓';
+                const srcBadge = m.source === 'user'
+                    ? '<span class="ext-item-badge user">global</span>'
+                    : '<span class="ext-item-badge project">project</span>';
+                html += `<div class="ext-item">
+                    <div class="ext-item-icon">${typeIcon}</div>
+                    <div class="ext-item-info">
+                        <div class="ext-item-name">${escapeHtml(m.name)}</div>
+                        <div class="ext-item-desc">${escapeHtml(m.type)} — ${escapeHtml(m.url_or_command || 'N/A')}</div>
+                    </div>
+                    ${srcBadge}
+                </div>`;
+            });
+        }
+        footer.textContent = `${items.length} MCP server${items.length !== 1 ? 's' : ''}`;
+    } else if (state.extTab === 'plugins') {
+        const items = (state.extensions.plugins || []).filter(p =>
+            !filter || p.name.toLowerCase().includes(filter) || (p.provider || '').toLowerCase().includes(filter)
+        );
+        if (items.length === 0) {
+            html = '<div class="ext-empty">No plugins found</div>';
+        } else {
+            items.forEach(p => {
+                const statusBadge = p.enabled
+                    ? '<span class="ext-item-badge enabled">enabled</span>'
+                    : '<span class="ext-item-badge disabled">disabled</span>';
+                html += `<div class="ext-item">
+                    <div class="ext-item-icon">🔌</div>
+                    <div class="ext-item-info">
+                        <div class="ext-item-name">${escapeHtml(p.name)}</div>
+                        <div class="ext-item-desc">${escapeHtml(p.provider)}</div>
+                    </div>
+                    ${statusBadge}
+                </div>`;
+            });
+        }
+        footer.textContent = `${items.length} plugin${items.length !== 1 ? 's' : ''}`;
+    }
+
+    content.innerHTML = html;
+}
+
+function invokeSkillOnAgent(skillName) {
+    const targetId = state.commandTargetId || state.focusedAgentId;
+    if (!targetId) {
+        showToast('No agent targeted — focus or @mention an agent first', 'warning');
+        return;
+    }
+    const agent = state.agents.get(targetId);
+    if (!agent) {
+        showToast('Target agent not found', 'error');
+        return;
+    }
+    socket.send({ type: 'send', agent_id: targetId, message: `/${skillName}` });
+    showToast(`Sent /${skillName} to ${agent.name}`, 'success');
+    closeExtensionsPanel();
+}
+
+async function refreshExtensions() {
+    try {
+        const res = await apiFetch('/api/extensions/refresh', { method: 'POST' });
+        if (res.ok) {
+            state.extensions = await res.json();
+            renderExtensionsContent();
+            showToast('Extensions refreshed', 'success');
+        } else {
+            showToast('Failed to refresh extensions', 'error');
+        }
+    } catch (e) {
+        showToast('Extension refresh failed', 'error');
+    }
 }
 
 async function saveSettings() {
@@ -8354,7 +8938,8 @@ function renderAgentTable() {
     tbody.innerHTML = '';
     for (const agent of filtered) {
         const role = ROLE_INFO[agent.role] || ROLE_INFO.general;
-        const pct = Math.round((agent.context_pct || 0) * 100);
+        const usedPctTbl = Math.round((agent.context_pct || 0) * 100);
+        const remainPctTbl = Math.max(0, 100 - usedPctTbl);
         const hs = Math.round((agent.health_score ?? 1) * 100);
         const cost = agent.estimated_cost_usd || 0;
         const tr = document.createElement('tr');
@@ -8367,7 +8952,7 @@ function renderAgentTable() {
             <td>${state.pinnedAgents.has(agent.id) ? '📌 ' : ''}${escapeHtml(agent.name)}</td>
             <td title="${escapeHtml((agent.task || ''))}">${escapeHtml((agent.task || '').substring(0, 60))}</td>
             <td>${agent.phase || '-'}</td>
-            <td>${pct}%</td>
+            <td>${remainPctTbl}% left</td>
             <td>${hs}%</td>
             <td>${agent.files_touched || 0}</td>
             <td>${cost > 0 ? '$' + cost.toFixed(4) : '-'}</td>
