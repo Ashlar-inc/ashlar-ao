@@ -1859,3 +1859,22 @@ class TestIntelligenceDataInToDict:
         assert d["total"] == 24
         assert d["coverage_pct"] == 92.5
         assert d["framework"] == "jest"
+
+
+class TestServerStats:
+    """Verify server-side stats tracking counters."""
+
+    def test_initial_stats_are_zero(self):
+        """New AgentManager should have zero stats."""
+        config = ashlar_server.Config()
+        mgr = ashlar_server.AgentManager(config)
+        assert mgr._total_spawned == 0
+        assert mgr._total_killed == 0
+        assert mgr._total_messages_sent == 0
+
+    def test_start_time_set(self):
+        """AgentManager should record start time."""
+        config = ashlar_server.Config()
+        mgr = ashlar_server.AgentManager(config)
+        assert mgr._start_time > 0
+        assert time.monotonic() - mgr._start_time < 2  # should be very recent

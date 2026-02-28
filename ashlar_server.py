@@ -1278,6 +1278,11 @@ class AgentManager:
         self.file_activity: dict[str, dict[str, str]] = {}  # file_path → {agent_id: operation}
         # Task queue for auto-spawning
         self.task_queue: list[QueuedTask] = []
+        # Server stats
+        self._start_time: float = time.monotonic()
+        self._total_spawned: int = 0
+        self._total_killed: int = 0
+        self._total_messages_sent: int = 0
 
     def _build_backend_configs(self) -> dict[str, BackendConfig]:
         """Build BackendConfig objects from known defaults + user config."""
@@ -1521,6 +1526,7 @@ class AgentManager:
         )
         agent.last_output_time = time.monotonic()
         self.agents[agent_id] = agent
+        self._total_spawned += 1
 
         # Create tmux session
         try:
@@ -1943,6 +1949,7 @@ class AgentManager:
 
         self._cleanup_file_activity(agent_id)
         del self.agents[agent_id]
+        self._total_killed += 1
         return True
 
     async def pause(self, agent_id: str) -> bool:
@@ -2180,6 +2187,7 @@ class AgentManager:
         agent.needs_input = False
         agent.input_prompt = None
         agent.updated_at = datetime.now(timezone.utc).isoformat()
+        self._total_messages_sent += 1
         return True
 
     async def capture_output(self, agent_id: str) -> list[str] | None:
@@ -5162,6 +5170,92 @@ async def health_check(request: web.Request) -> web.Response:
     })
 
 
+async def health_detailed(request: web.Request) -> web.Response:
+    """GET /api/health/detailed — comprehensive server health and stats."""
+    config: Config = request.app["config"]
+    manager: AgentManager = request.app["agent_manager"]
+    hub: WebSocketHub = request.app["ws_hub"]
+    agents = manager.agents
+
+    uptime_s = time.monotonic() - manager._start_time
+    uptime_str = f"{int(uptime_s // 3600)}h{int((uptime_s % 3600) // 60)}m{int(uptime_s % 60)}s"
+
+    total_cost = sum(a.estimated_cost_usd for a in agents.values())
+    total_memory = sum(a.memory_mb for a in agents.values())
+    total_tokens = sum((a.tokens_input or 0) + (a.tokens_output or 0) for a in agents.values())
+    total_tool_invocations = sum(len(a._tool_invocations) for a in agents.values())
+    total_file_operations = sum(len(a._file_operations) for a in agents.values())
+
+    status_counts: dict[str, int] = {}
+    for a in agents.values():
+        status_counts[a.status] = status_counts.get(a.status, 0) + 1
+
+    # Database info
+    db = request.app.get("db")
+    db_size_mb = 0.0
+    if db and hasattr(db, 'db_path'):
+        try:
+            db_size_mb = Path(db.db_path).stat().st_size / (1024 * 1024)
+        except Exception:
+            pass
+
+    # Background task health
+    bg_tasks = request.app.get("_bg_tasks", {})
+    bg_task_status = {}
+    for name, task in bg_tasks.items():
+        if isinstance(task, asyncio.Task):
+            bg_task_status[name] = "running" if not task.done() else "stopped"
+
+    # Process memory (server itself)
+    try:
+        import psutil
+        process = psutil.Process()
+        server_memory_mb = process.memory_info().rss / (1024 * 1024)
+    except Exception:
+        server_memory_mb = 0.0
+
+    return web.json_response({
+        "status": "ok",
+        "uptime": uptime_str,
+        "uptime_seconds": round(uptime_s),
+        "server_memory_mb": round(server_memory_mb, 1),
+        "agents": {
+            "active": len(agents),
+            "total_spawned": manager._total_spawned,
+            "total_killed": manager._total_killed,
+            "total_messages_sent": manager._total_messages_sent,
+            "status_breakdown": status_counts,
+            "total_agent_memory_mb": round(total_memory, 1),
+        },
+        "costs": {
+            "total_cost_usd": round(total_cost, 4),
+            "total_tokens": total_tokens,
+        },
+        "intelligence": {
+            "total_tool_invocations": total_tool_invocations,
+            "total_file_operations": total_file_operations,
+        },
+        "websocket": {
+            "connected_clients": len(hub.clients),
+        },
+        "database": {
+            "available": request.app.get("db_available", True),
+            "size_mb": round(db_size_mb, 2),
+        },
+        "background_tasks": bg_task_status,
+        "llm": {
+            "enabled": config.llm_enabled,
+            "provider": config.llm_provider if config.llm_enabled else None,
+        },
+        "backends": {k: {"available": v.available, "command": v.command} for k, v in manager.backend_configs.items()},
+        "config": {
+            "max_concurrent": config.max_concurrent_agents,
+            "port": config.port,
+            "cost_budget_usd": config.cost_budget_usd,
+        },
+    })
+
+
 async def list_roles(request: web.Request) -> web.Response:
     roles = {k: v.to_dict() for k, v in BUILTIN_ROLES.items()}
     return web.json_response(roles)
@@ -7729,6 +7823,7 @@ def create_app(config: Config) -> web.Application:
 
     # REST API — System
     app.router.add_get("/api/health", health_check)
+    app.router.add_get("/api/health/detailed", health_detailed)
     app.router.add_get("/api/system", system_metrics)
     app.router.add_get("/api/roles", list_roles)
     app.router.add_get("/api/config", get_config)

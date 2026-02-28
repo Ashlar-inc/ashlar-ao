@@ -2558,6 +2558,8 @@ body {
 .bookmark-delete:hover { color: var(--danger); }
 
 /* ── Output Mark/Diff ── */
+.terminal-line.new-highlight { animation: lineHighlight 1.5s ease-out forwards; }
+@keyframes lineHighlight { from { background: rgba(99,102,241,0.12); } to { background: transparent; } }
 .terminal-line.marked-new { background: rgba(99,102,241,0.06); }
 .terminal-line.mark-boundary { border-top: 1px dashed rgba(99,102,241,0.3); position: relative; }
 .terminal-line.mark-boundary::before { content: '⚑ marked'; position: absolute; top: -10px; right: 8px; font-size: 9px; color: var(--accent); font-family: var(--font-mono); opacity: 0.6; }
@@ -4394,6 +4396,12 @@ body {
             <div class="settings-section-title"><span class="settings-section-icon"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg></span> Display</div>
             <div class="settings-row"><span class="settings-label">Voice feedback sounds</span><div class="settings-toggle" id="setVoiceSounds" onclick="this.classList.toggle('active')"></div></div>
             <div class="settings-row"><span class="settings-label">Browser notifications</span><div class="settings-toggle" id="setBrowserNotifs" onclick="this.classList.toggle('active')"></div></div>
+        </div>
+        <div class="settings-section">
+            <div class="settings-section-title"><span class="settings-section-icon">${icon('activity', 16)}</span> Server Health</div>
+            <div id="serverHealthStats" style="font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);line-height:1.8">
+                <span style="color:var(--text-tertiary)">Loading...</span>
+            </div>
         </div>
         <div class="settings-section">
             <div class="settings-section-title"><span class="settings-section-icon"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></span> Import / Export</div>
@@ -6862,6 +6870,8 @@ function updateDeepViewHeader(agent) {
     }
 }
 
+let _newLinesSinceScroll = 0;
+
 function appendDeepOutput(lines) {
     const terminal = document.getElementById('deepTerminal');
     if (!terminal) return;
@@ -6870,20 +6880,33 @@ function appendDeepOutput(lines) {
     const frag = document.createDocumentFragment();
     for (const line of lines) {
         const div = document.createElement('div');
-        div.className = 'terminal-line';
+        div.className = 'terminal-line' + (deepAutoScroll ? '' : ' new-highlight');
         div.innerHTML = ansiToHtml(line);
         frag.appendChild(div);
     }
     terminal.appendChild(frag);
     // Auto-scroll if following
-    if (deepAutoScroll) terminal.scrollTop = terminal.scrollHeight;
+    if (deepAutoScroll) {
+        terminal.scrollTop = terminal.scrollHeight;
+        _newLinesSinceScroll = 0;
+    } else {
+        _newLinesSinceScroll += lines.length;
+        const jumpBtn = document.getElementById('jumpToBottom');
+        if (jumpBtn) {
+            jumpBtn.textContent = `↓ ${_newLinesSinceScroll} new lines`;
+            jumpBtn.classList.add('visible');
+        }
+    }
 }
 
 function scrollDeepToBottom() {
     const t = document.getElementById('deepTerminal');
     t.scrollTop = t.scrollHeight;
     deepAutoScroll = true;
-    document.getElementById('jumpToBottom').classList.remove('visible');
+    _newLinesSinceScroll = 0;
+    const jumpBtn = document.getElementById('jumpToBottom');
+    jumpBtn.textContent = '↓ Jump to bottom';
+    jumpBtn.classList.remove('visible');
 }
 
 function closeDeepView() {
@@ -9523,8 +9546,40 @@ function openSettings() {
         backendsList.appendChild(row);
     }
 
+    // Fetch server health stats
+    fetchServerHealth();
+
     document.getElementById('settingsOverlay').classList.add('active');
     trapFocus(document.getElementById('settingsOverlay'));
+}
+
+async function fetchServerHealth() {
+    const el = document.getElementById('serverHealthStats');
+    if (!el) return;
+    try {
+        const res = await apiFetch('/api/health/detailed');
+        if (!res.ok) { el.innerHTML = '<span style="color:var(--danger)">Failed to load</span>'; return; }
+        const h = await res.json();
+        const rows = [
+            `Uptime: <strong>${h.uptime}</strong>`,
+            `Server memory: <strong>${h.server_memory_mb} MB</strong>`,
+            `Active agents: <strong>${h.agents.active}</strong> &nbsp;|&nbsp; Spawned: <strong>${h.agents.total_spawned}</strong> &nbsp;|&nbsp; Killed: <strong>${h.agents.total_killed}</strong>`,
+            `Messages sent: <strong>${h.agents.total_messages_sent}</strong>`,
+            `Total cost: <strong>$${h.costs.total_cost_usd.toFixed(4)}</strong> &nbsp;|&nbsp; Tokens: <strong>${h.costs.total_tokens.toLocaleString()}</strong>`,
+            `Tool calls: <strong>${h.intelligence.total_tool_invocations}</strong> &nbsp;|&nbsp; File ops: <strong>${h.intelligence.total_file_operations}</strong>`,
+            `WebSocket clients: <strong>${h.websocket.connected_clients}</strong>`,
+            `Database: <strong>${h.database.available ? 'OK' : 'Unavailable'}</strong> (${h.database.size_mb} MB)`,
+            `LLM: <strong>${h.llm.enabled ? h.llm.provider : 'Disabled'}</strong>`,
+        ];
+        // Background tasks
+        const bgParts = Object.entries(h.background_tasks || {}).map(([name, status]) =>
+            `<span style="color:${status === 'running' ? 'var(--success)' : 'var(--danger)'}">${name}: ${status}</span>`
+        );
+        if (bgParts.length) rows.push(`Tasks: ${bgParts.join(' &nbsp;|&nbsp; ')}`);
+        el.innerHTML = rows.map(r => `<div>${r}</div>`).join('');
+    } catch (e) {
+        el.innerHTML = '<span style="color:var(--text-tertiary)">Could not reach server</span>';
+    }
 }
 
 async function resetSettings() {
