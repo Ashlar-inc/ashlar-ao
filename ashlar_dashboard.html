@@ -1159,6 +1159,7 @@ body {
     margin-bottom: 24px;
 }
 .role-option {
+    position: relative;
     background: var(--bg-surface);
     border: 2px solid transparent;
     border-radius: var(--radius-md);
@@ -1170,6 +1171,23 @@ body {
 .role-option:hover { border-color: var(--border-strong); background: var(--bg-elevated); transform: translateY(-1px); }
 .role-option:active { transform: scale(0.97); }
 .role-option.selected { border-color: var(--accent); background: var(--accent-subtle); box-shadow: 0 0 20px rgba(99,102,241,0.15), inset 0 0 0 1px rgba(99,102,241,0.1); transform: translateY(-2px); }
+.role-num-badge {
+    position: absolute;
+    top: 3px;
+    right: 4px;
+    font-size: 9px;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: var(--text-tertiary);
+    background: rgba(255,255,255,0.06);
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.role-option.selected .role-num-badge { color: var(--accent); background: rgba(99,102,241,0.15); }
 .role-option .role-icon { font-size: 24px; margin-bottom: 4px; }
 .role-option .role-name { font-size: 11px; color: var(--text-secondary); font-weight: 500; }
 .role-option .role-desc { font-size: 9px; color: var(--text-tertiary); margin-top: 2px; display: none; }
@@ -2925,6 +2943,33 @@ body {
 .tool-filter-chip:hover { background: var(--bg-elevated); border-color: var(--border-default); }
 .tool-filter-chip.active { background: var(--accent-subtle); color: var(--accent); border-color: var(--accent); }
 .terminal-line.tool-dimmed { opacity: 0.15; }
+.highlight-popover {
+    display: none;
+    position: absolute;
+    right: 80px;
+    bottom: 100%;
+    margin-bottom: 4px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: 10px;
+    z-index: 50;
+    box-shadow: var(--shadow-md);
+    width: 280px;
+}
+.highlight-popover.active { display: block; }
+.hl-rule-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0;
+    font-size: 11px;
+    font-family: var(--font-mono);
+}
+.hl-rule-swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+.hl-rule-pattern { flex: 1; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hl-rule-remove { cursor: pointer; color: var(--text-tertiary); font-size: 14px; }
+.hl-rule-remove:hover { color: var(--danger); }
 .terminal-line.truncated { position: relative; }
 .terminal-line.truncated .trunc-fade { display: inline; }
 .terminal-line.truncated .trunc-full { display: none; }
@@ -4861,6 +4906,8 @@ body {
             <div><span class="metric-label">Cost </span><span class="deep-stat-value" id="deepCost">-</span></div>
             <div><span class="metric-label">Tools </span><span class="deep-stat-value" id="deepToolCount">-</span></div>
             <div><span class="metric-label">Tests </span><span class="deep-stat-value" id="deepTestResult">-</span></div>
+            <div><span class="metric-label">Chars </span><span class="deep-stat-value" id="deepCharCount">-</span></div>
+            <div><span class="metric-label">Words </span><span class="deep-stat-value" id="deepWordCount">-</span></div>
             <div><span class="metric-label">Rate </span><canvas class="deep-rate-sparkline" id="deepRateSparkline" width="80" height="20"></canvas></div>
         </div>
         <div class="status-timeline-bar" id="statusTimelineBar"></div>
@@ -4882,6 +4929,10 @@ body {
                     <div class="copy-dropdown-item" onclick="deepExportJSON();closeCopyDropdown()">
                         <span>${icon('code', 14)}</span>
                         <div><div class="copy-fmt-label">JSON</div><div class="copy-fmt-desc">Structured data export</div></div>
+                    </div>
+                    <div class="copy-dropdown-item" onclick="deepCopyRichHTML();closeCopyDropdown()">
+                        <span>${icon('paintbrush', 14)}</span>
+                        <div><div class="copy-fmt-label">Rich HTML</div><div class="copy-fmt-desc">Colors preserved for Slack/Notion</div></div>
                     </div>
                     <div class="copy-dropdown-item" onclick="deepCopySelectedLines();closeCopyDropdown()">
                         <span>${icon('text-select', 14)}</span>
@@ -4911,6 +4962,16 @@ body {
         <button class="terminal-toolbar-btn" id="toolbarTimestamps" onclick="toggleTimestamps()" title="Show line timestamps">⏱ Timestamps</button>
         <button class="terminal-toolbar-btn" id="toolbarDedup" onclick="toggleDedup()" title="Collapse repeated and empty lines">⊞ Dedup</button>
         <button class="terminal-toolbar-btn" id="toolbarToolFilter" onclick="toggleToolFilterBar()" title="Filter by tool type">⚙ Filter</button>
+        <button class="terminal-toolbar-btn" id="toolbarHighlight" onclick="toggleHighlightPopover()" title="Custom highlight rules">✦ Highlight</button>
+        <div class="highlight-popover" id="highlightPopover">
+            <div style="font-size:11px;font-weight:700;color:var(--text-primary);margin-bottom:8px">Custom Highlights</div>
+            <div id="highlightRulesList"></div>
+            <div style="display:flex;gap:4px;margin-top:8px">
+                <input type="text" id="hlPatternInput" placeholder="Regex pattern" style="flex:1;padding:4px 6px;background:var(--bg-input);border:1px solid var(--border-default);border-radius:var(--radius-sm);color:var(--text-primary);font-size:11px;font-family:var(--font-mono)">
+                <input type="color" id="hlColorInput" value="#6366F1" style="width:28px;height:24px;padding:0;border:none;background:none;cursor:pointer">
+                <button onclick="addHighlightRule()" style="padding:4px 8px;background:var(--accent);color:white;border:none;border-radius:var(--radius-sm);font-size:10px;cursor:pointer">Add</button>
+            </div>
+        </div>
         <div class="goto-line-popover" id="gotoLinePopover">
             <label>Line:</label>
             <input type="number" id="gotoLineInput" min="1" placeholder="Line #" />
@@ -8263,14 +8324,18 @@ function openSpawnDialog() {
 
     const roleGrid = document.getElementById('roleGrid');
     if (!roleGrid.children.length) {
+        let roleIdx = 0;
         for (const [key, info] of Object.entries(ROLE_INFO)) {
+            roleIdx++;
             const opt = document.createElement('div');
             opt.className = 'role-option' + (key === state.selectedRole ? ' selected' : '');
             opt.dataset.role = key;
+            opt.dataset.roleIdx = roleIdx;
             opt.setAttribute('role', 'button');
             opt.setAttribute('tabindex', '0');
             opt.onkeydown = (e) => { if (e.key === 'Enter') opt.click(); };
-            opt.innerHTML = `<div class="role-icon">${icon(info.iconKey || 'bot', 16)}</div><div class="role-name">${info.name.split(' ')[0]}</div><div class="role-desc">${info.desc}</div>`;
+            const numBadge = roleIdx <= 9 ? `<span class="role-num-badge">${roleIdx}</span>` : '';
+            opt.innerHTML = `${numBadge}<div class="role-icon">${icon(info.iconKey || 'bot', 16)}</div><div class="role-name">${info.name.split(' ')[0]}</div><div class="role-desc">${info.desc}</div>`;
             opt.onclick = () => {
                 roleGrid.querySelectorAll('.role-option').forEach(o => o.classList.remove('selected'));
                 opt.classList.add('selected');
@@ -8365,6 +8430,13 @@ function openSpawnDialog() {
             if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                 e.preventDefault();
                 spawnAgent();
+                return;
+            }
+            // Number keys 1-9 to select role (when not in text input)
+            if (!['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) && /^[1-9]$/.test(e.key)) {
+                const idx = parseInt(e.key);
+                const opt = roleGrid.querySelector(`.role-option[data-role-idx="${idx}"]`);
+                if (opt) { e.preventDefault(); opt.click(); }
             }
         });
     }
@@ -8922,6 +8994,23 @@ function updateDeepViewHeader(agent) {
         testEl.textContent = '-';
         testEl.style.color = '';
         testEl.title = '';
+    }
+
+    // Character and word count
+    const charEl = document.getElementById('deepCharCount');
+    const wordEl = document.getElementById('deepWordCount');
+    if (charEl && wordEl) {
+        const lines = agent._outputBuffer || agent.output_lines || [];
+        const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+        let totalChars = 0, totalWords = 0;
+        for (const l of lines) {
+            const clean = l.replace(ansiRe, '');
+            totalChars += clean.length;
+            const words = clean.trim().split(/\s+/).filter(w => w);
+            totalWords += words.length;
+        }
+        charEl.textContent = totalChars > 1000000 ? `${(totalChars / 1000000).toFixed(1)}M` : totalChars > 1000 ? `${(totalChars / 1000).toFixed(1)}K` : `${totalChars}`;
+        wordEl.textContent = totalWords > 1000000 ? `${(totalWords / 1000000).toFixed(1)}M` : totalWords > 1000 ? `${(totalWords / 1000).toFixed(1)}K` : `${totalWords}`;
     }
 
     // Output rate sparkline
@@ -9544,6 +9633,34 @@ function deepCopyMarkdown() {
     }).catch(() => {
         showToast('Failed to copy', 'error');
     });
+}
+
+function deepCopyRichHTML() {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const agent = state.agents.get(state.focusedAgentId);
+    const name = agent?.name || 'Agent';
+    // Build HTML with inline styles for rich paste
+    const lines = terminal.querySelectorAll('.terminal-line');
+    let html = `<div style="font-family:'JetBrains Mono',Menlo,monospace;font-size:12px;background:#0A0F1A;color:#EDEEF0;padding:12px;border-radius:8px;">`;
+    html += `<div style="font-size:11px;color:#8B919E;margin-bottom:8px;font-weight:600;">${escapeHtml(name)} — ${lines.length} lines</div>`;
+    for (const line of lines) {
+        if (line.classList.contains('dedup-collapsed') || line.classList.contains('tool-dimmed')) continue;
+        // Use innerHTML to preserve color spans
+        html += `<div style="padding:1px 0;white-space:pre-wrap;word-break:break-word;">${line.innerHTML}</div>`;
+    }
+    html += '</div>';
+    const plainText = terminal.innerText;
+    try {
+        const htmlBlob = new Blob([html], { type: 'text/html' });
+        const textBlob = new Blob([plainText], { type: 'text/plain' });
+        navigator.clipboard.write([
+            new ClipboardItem({ 'text/html': htmlBlob, 'text/plain': textBlob })
+        ]).then(() => showToast('Copied as rich HTML', 'success'));
+    } catch (e) {
+        // Fallback to plain text
+        navigator.clipboard.writeText(plainText).then(() => showToast('Copied as plain text (rich copy not supported)', 'info'));
+    }
 }
 
 async function deepExportJSON() {
@@ -11732,6 +11849,84 @@ function applyTailMode() {
         terminal.prepend(indicator);
     }
     indicator.textContent = `⊟ Tail mode — showing last ${TAIL_LINES} of ${allLines.length} lines`;
+}
+
+// ── Custom Highlight Rules ──
+
+let _highlightRules = JSON.parse(localStorage.getItem('ashlar_hl_rules') || '[]');
+
+function toggleHighlightPopover() {
+    const pop = document.getElementById('highlightPopover');
+    const btn = document.getElementById('toolbarHighlight');
+    const isActive = pop.classList.contains('active');
+    pop.classList.toggle('active', !isActive);
+    btn.classList.toggle('active', !isActive);
+    if (!isActive) renderHighlightRules();
+}
+
+function renderHighlightRules() {
+    const list = document.getElementById('highlightRulesList');
+    if (_highlightRules.length === 0) {
+        list.innerHTML = '<div style="font-size:10px;color:var(--text-tertiary)">No rules yet. Add a regex pattern below.</div>';
+        return;
+    }
+    list.innerHTML = _highlightRules.map((r, i) => `
+        <div class="hl-rule-item">
+            <span class="hl-rule-swatch" style="background:${r.color}"></span>
+            <span class="hl-rule-pattern" title="${escapeHtml(r.pattern)}">${escapeHtml(r.pattern)}</span>
+            <span class="hl-rule-remove" onclick="removeHighlightRule(${i})">&times;</span>
+        </div>
+    `).join('');
+}
+
+function addHighlightRule() {
+    const patternInput = document.getElementById('hlPatternInput');
+    const colorInput = document.getElementById('hlColorInput');
+    const pattern = patternInput.value.trim();
+    if (!pattern) return;
+    try { new RegExp(pattern, 'gi'); } catch (e) { showToast('Invalid regex pattern', 'error'); return; }
+    _highlightRules.push({ pattern, color: colorInput.value });
+    localStorage.setItem('ashlar_hl_rules', JSON.stringify(_highlightRules));
+    patternInput.value = '';
+    renderHighlightRules();
+    applyHighlightRules();
+}
+
+function removeHighlightRule(idx) {
+    _highlightRules.splice(idx, 1);
+    localStorage.setItem('ashlar_hl_rules', JSON.stringify(_highlightRules));
+    renderHighlightRules();
+    applyHighlightRules();
+}
+
+function applyHighlightRules() {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    // Remove existing custom highlights
+    terminal.querySelectorAll('.custom-hl').forEach(el => {
+        el.outerHTML = el.textContent;
+    });
+    if (_highlightRules.length === 0) return;
+    const lines = terminal.querySelectorAll('.terminal-line');
+    for (const line of lines) {
+        for (const rule of _highlightRules) {
+            try {
+                const re = new RegExp(`(${rule.pattern})`, 'gi');
+                const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                const textNodes = [];
+                while (walker.nextNode()) textNodes.push(walker.currentNode);
+                for (const node of textNodes) {
+                    if (node.parentElement.classList?.contains('custom-hl')) continue;
+                    if (re.test(node.textContent)) {
+                        const span = document.createElement('span');
+                        span.innerHTML = node.textContent.replace(re, `<span class="custom-hl" style="background:${rule.color}33;color:${rule.color};border-bottom:1px solid ${rule.color}">$1</span>`);
+                        node.parentNode.replaceChild(span, node);
+                    }
+                }
+            } catch (e) {}
+        }
+    }
+    showToast(`Applied ${_highlightRules.length} highlight rule${_highlightRules.length > 1 ? 's' : ''}`, 'info');
 }
 
 // ── Tool Type Filter ──
