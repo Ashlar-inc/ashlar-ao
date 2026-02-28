@@ -1400,6 +1400,8 @@ class WorkflowRun:
     working_dir: str = ""
     created_at: str = ""
     completed_at: str | None = None
+    stage_timeout_sec: float = 1800.0  # 30 min default per-stage timeout
+    stage_started_at: dict[str, float] = field(default_factory=dict)  # agent_id → monotonic start time
 
     def to_dict(self) -> dict:
         return {
@@ -1416,7 +1418,44 @@ class WorkflowRun:
             "working_dir": self.working_dir,
             "created_at": self.created_at,
             "completed_at": self.completed_at,
+            "stage_timeout_sec": self.stage_timeout_sec,
         }
+
+    @staticmethod
+    def detect_circular_deps(agent_specs: list[dict]) -> list[list[int]] | None:
+        """Detect circular dependencies in workflow spec. Returns list of cycles, or None if DAG is valid."""
+        n = len(agent_specs)
+        adj: dict[int, list[int]] = {i: spec.get("depends_on", []) for i, spec in enumerate(agent_specs)}
+
+        # Validate dep indices are in range
+        for idx, deps in adj.items():
+            for d in deps:
+                if not isinstance(d, int) or d < 0 or d >= n:
+                    return [[idx, d]]  # Invalid dep reference
+
+        # Topological sort via DFS to find cycles
+        WHITE, GRAY, BLACK = 0, 1, 2
+        color = [WHITE] * n
+        cycles: list[list[int]] = []
+
+        def dfs(u: int, path: list[int]) -> None:
+            color[u] = GRAY
+            path.append(u)
+            for v in adj.get(u, []):
+                if color[v] == GRAY:
+                    # Found a cycle: extract cycle from path
+                    cycle_start = path.index(v)
+                    cycles.append(path[cycle_start:] + [v])
+                elif color[v] == WHITE:
+                    dfs(v, path)
+            path.pop()
+            color[u] = BLACK
+
+        for i in range(n):
+            if color[i] == WHITE:
+                dfs(i, [])
+
+        return cycles if cycles else None
 
 
 class AgentManager:
@@ -2703,6 +2742,7 @@ class AgentManager:
                 )
                 wf_run.agent_map[idx] = agent.id
                 wf_run.running_ids.add(agent.id)
+                wf_run.stage_started_at[agent.id] = time.monotonic()
                 agent.workflow_run_id = wf_run.id
                 agent.related_agents = [
                     aid for aid in list(wf_run.running_ids) + list(wf_run.completed_ids)
@@ -2786,6 +2826,21 @@ class AgentManager:
                     wf_run.failed_ids.add(agent_id)
                     return wf_run, "abort"
         return None, "abort"
+
+    def check_stage_timeouts(self) -> list[tuple[WorkflowRun, str, str]]:
+        """Check all running workflow stages for timeouts. Returns list of (wf_run, agent_id, agent_name)."""
+        timed_out: list[tuple[WorkflowRun, str, str]] = []
+        now = time.monotonic()
+        for wf_run in self.workflow_runs.values():
+            if wf_run.status != "running":
+                continue
+            for agent_id in list(wf_run.running_ids):
+                started = wf_run.stage_started_at.get(agent_id)
+                if started and (now - started) > wf_run.stage_timeout_sec:
+                    agent = self.agents.get(agent_id)
+                    agent_name = agent.name if agent else agent_id
+                    timed_out.append((wf_run, agent_id, agent_name))
+        return timed_out
 
     # ── File conflict detection ──
 
@@ -6224,9 +6279,25 @@ async def run_workflow(request: web.Request) -> web.Response:
     has_deps = any(spec.get("depends_on") for spec in agent_specs)
 
     if has_deps:
+        # Check for circular dependencies before starting
+        cycles = WorkflowRun.detect_circular_deps(agent_specs)
+        if cycles:
+            cycle_desc = "; ".join(f"[{' -> '.join(str(c) for c in cycle)}]" for cycle in cycles[:3])
+            return web.json_response({
+                "error": f"Circular dependency detected in workflow: {cycle_desc}",
+                "cycles": cycles[:3],
+            }, status=400)
+
         # DAG pipeline mode — create WorkflowRun and start with root agents
         run_id = uuid.uuid4().hex[:8]
         now = datetime.now(timezone.utc).isoformat()
+        # Per-stage timeout from request or workflow config (default 30 min)
+        stage_timeout = body.get("stage_timeout_sec", workflow.get("stage_timeout_sec", 1800.0))
+        try:
+            stage_timeout = max(60.0, min(float(stage_timeout), 7200.0))  # Clamp 1min-2hr
+        except (TypeError, ValueError):
+            stage_timeout = 1800.0
+
         wf_run = WorkflowRun(
             id=run_id,
             workflow_id=workflow_id,
@@ -6235,6 +6306,7 @@ async def run_workflow(request: web.Request) -> web.Response:
             pending_indices=set(range(len(agent_specs))),
             working_dir=working_dir or config.default_working_dir,
             created_at=now,
+            stage_timeout_sec=stage_timeout,
         )
         manager.workflow_runs[run_id] = wf_run
 
@@ -8552,6 +8624,32 @@ async def health_check_loop(app: web.Application) -> None:
                     log.warning(f"Failed to auto-spawn queued task {queued.name}: {e}")
         except Exception as e:
             log.debug(f"Queue auto-spawn check error: {e}")
+
+        # Workflow stage timeout enforcement
+        try:
+            timed_out = manager.check_stage_timeouts()
+            for wf_run, agent_id, agent_name in timed_out:
+                log.warning(f"Workflow stage timeout: agent {agent_name} ({agent_id}) exceeded {wf_run.stage_timeout_sec}s in workflow '{wf_run.workflow_name}'")
+                # Kill the timed-out agent and treat as failed with skip
+                wf_run.running_ids.discard(agent_id)
+                wf_run.stage_started_at.pop(agent_id, None)
+                wf_run.completed_ids.add(agent_id)  # Treat as completed so downstream can proceed
+                agent = manager.agents.get(agent_id)
+                if agent:
+                    try:
+                        await manager.kill(agent_id)
+                    except Exception:
+                        pass
+                await hub.broadcast_event(
+                    "workflow_stage_timeout",
+                    f"Workflow '{wf_run.workflow_name}': agent {agent_name} timed out after {int(wf_run.stage_timeout_sec)}s — skipping",
+                    agent_id, agent_name,
+                    {"workflow_run_id": wf_run.id},
+                )
+                # Resolve next stages
+                await manager.resolve_workflow_deps(wf_run, hub)
+        except Exception as e:
+            log.debug(f"Workflow timeout check error: {e}")
 
         await asyncio.sleep(5.0)
 

@@ -3056,3 +3056,227 @@ class TestBugFixesAndFleetExport:
         """Fleet export should include exported_at timestamp."""
         src = inspect.getsource(ashlar_server.export_fleet_state)
         assert "exported_at" in src
+
+
+# ── Workflow Deadlock Detection & Stage Timeout Tests ────────────────
+
+
+class TestWorkflowDeadlockAndTimeout:
+    """Tests for circular dependency detection, stage timeout, and related features."""
+
+    # ── detect_circular_deps ──
+
+    def test_valid_dag_returns_none(self):
+        """A valid DAG with no cycles should return None."""
+        specs = [
+            {"role": "backend", "depends_on": []},
+            {"role": "tester", "depends_on": [0]},
+            {"role": "reviewer", "depends_on": [1]},
+        ]
+        result = ashlar_server.WorkflowRun.detect_circular_deps(specs)
+        assert result is None
+
+    def test_no_deps_returns_none(self):
+        """Specs with no depends_on at all should return None."""
+        specs = [{"role": "backend"}, {"role": "frontend"}, {"role": "tester"}]
+        result = ashlar_server.WorkflowRun.detect_circular_deps(specs)
+        assert result is None
+
+    def test_simple_cycle_detected(self):
+        """A→B→A cycle should be detected."""
+        specs = [
+            {"role": "backend", "depends_on": [1]},
+            {"role": "tester", "depends_on": [0]},
+        ]
+        result = ashlar_server.WorkflowRun.detect_circular_deps(specs)
+        assert result is not None
+        assert len(result) >= 1
+
+    def test_three_node_cycle_detected(self):
+        """A→B→C→A cycle should be detected."""
+        specs = [
+            {"role": "a", "depends_on": [2]},
+            {"role": "b", "depends_on": [0]},
+            {"role": "c", "depends_on": [1]},
+        ]
+        result = ashlar_server.WorkflowRun.detect_circular_deps(specs)
+        assert result is not None
+
+    def test_self_loop_detected(self):
+        """A node depending on itself should be detected."""
+        specs = [{"role": "backend", "depends_on": [0]}]
+        result = ashlar_server.WorkflowRun.detect_circular_deps(specs)
+        assert result is not None
+
+    def test_out_of_range_dep_detected(self):
+        """Dependencies referencing out-of-range indices should be flagged."""
+        specs = [
+            {"role": "backend", "depends_on": [5]},
+        ]
+        result = ashlar_server.WorkflowRun.detect_circular_deps(specs)
+        assert result is not None
+        assert result[0] == [0, 5]
+
+    def test_negative_dep_detected(self):
+        """Negative dependency indices should be flagged."""
+        specs = [
+            {"role": "backend", "depends_on": [-1]},
+        ]
+        result = ashlar_server.WorkflowRun.detect_circular_deps(specs)
+        assert result is not None
+
+    def test_empty_specs_returns_none(self):
+        """Empty spec list should return None (no cycles)."""
+        result = ashlar_server.WorkflowRun.detect_circular_deps([])
+        assert result is None
+
+    def test_mixed_valid_and_cycle(self):
+        """Mix of valid deps and a cycle should detect the cycle."""
+        specs = [
+            {"role": "a", "depends_on": []},
+            {"role": "b", "depends_on": [0]},
+            {"role": "c", "depends_on": [3]},
+            {"role": "d", "depends_on": [2]},
+        ]
+        result = ashlar_server.WorkflowRun.detect_circular_deps(specs)
+        assert result is not None
+
+    # ── WorkflowRun fields ──
+
+    def test_stage_timeout_sec_default(self):
+        """Default stage_timeout_sec should be 1800.0 (30 min)."""
+        wf = ashlar_server.WorkflowRun(
+            id="wf1", workflow_id="w1", workflow_name="test",
+            agent_specs=[], agent_map={}, pending_indices=set(),
+        )
+        assert wf.stage_timeout_sec == 1800.0
+
+    def test_stage_started_at_default_empty(self):
+        """Default stage_started_at should be empty dict."""
+        wf = ashlar_server.WorkflowRun(
+            id="wf1", workflow_id="w1", workflow_name="test",
+            agent_specs=[], agent_map={}, pending_indices=set(),
+        )
+        assert wf.stage_started_at == {}
+
+    def test_stage_timeout_sec_in_to_dict(self):
+        """to_dict() should include stage_timeout_sec."""
+        wf = ashlar_server.WorkflowRun(
+            id="wf1", workflow_id="w1", workflow_name="test",
+            agent_specs=[], agent_map={}, pending_indices=set(),
+            stage_timeout_sec=600.0,
+        )
+        d = wf.to_dict()
+        assert "stage_timeout_sec" in d
+        assert d["stage_timeout_sec"] == 600.0
+
+    # ── check_stage_timeouts ──
+
+    def test_check_timeouts_no_workflows(self):
+        """No workflows running should return empty list."""
+        config = ashlar_server.Config()
+        manager = ashlar_server.AgentManager(config)
+        result = manager.check_stage_timeouts()
+        assert result == []
+
+    def test_check_timeouts_not_expired(self):
+        """Running workflow with recent stage_started_at should not timeout."""
+        import time
+        config = ashlar_server.Config()
+        manager = ashlar_server.AgentManager(config)
+        wf = ashlar_server.WorkflowRun(
+            id="wf1", workflow_id="w1", workflow_name="test",
+            agent_specs=[{"role": "backend"}], agent_map={0: "a001"},
+            pending_indices=set(), running_ids={"a001"},
+            stage_timeout_sec=1800.0,
+            stage_started_at={"a001": time.monotonic()},
+        )
+        manager.workflow_runs["wf1"] = wf
+        result = manager.check_stage_timeouts()
+        assert result == []
+
+    def test_check_timeouts_expired(self):
+        """Running workflow with expired stage should return timed-out agents."""
+        import time
+        config = ashlar_server.Config()
+        manager = ashlar_server.AgentManager(config)
+        wf = ashlar_server.WorkflowRun(
+            id="wf1", workflow_id="w1", workflow_name="test",
+            agent_specs=[{"role": "backend"}], agent_map={0: "a001"},
+            pending_indices=set(), running_ids={"a001"},
+            stage_timeout_sec=10.0,
+            stage_started_at={"a001": time.monotonic() - 20.0},
+        )
+        manager.workflow_runs["wf1"] = wf
+        result = manager.check_stage_timeouts()
+        assert len(result) == 1
+        assert result[0][1] == "a001"  # agent_id
+
+    def test_check_timeouts_skips_completed_workflows(self):
+        """Completed workflows should not be checked for timeouts."""
+        import time
+        config = ashlar_server.Config()
+        manager = ashlar_server.AgentManager(config)
+        wf = ashlar_server.WorkflowRun(
+            id="wf1", workflow_id="w1", workflow_name="test",
+            agent_specs=[{"role": "backend"}], agent_map={0: "a001"},
+            pending_indices=set(), running_ids={"a001"},
+            status="completed",
+            stage_timeout_sec=10.0,
+            stage_started_at={"a001": time.monotonic() - 20.0},
+        )
+        manager.workflow_runs["wf1"] = wf
+        result = manager.check_stage_timeouts()
+        assert result == []
+
+    def test_check_timeouts_agent_name_fallback(self):
+        """When agent not in manager.agents, should use agent_id as name."""
+        import time
+        config = ashlar_server.Config()
+        manager = ashlar_server.AgentManager(config)
+        wf = ashlar_server.WorkflowRun(
+            id="wf1", workflow_id="w1", workflow_name="test",
+            agent_specs=[{"role": "backend"}], agent_map={0: "a001"},
+            pending_indices=set(), running_ids={"a001"},
+            stage_timeout_sec=5.0,
+            stage_started_at={"a001": time.monotonic() - 10.0},
+        )
+        manager.workflow_runs["wf1"] = wf
+        result = manager.check_stage_timeouts()
+        assert len(result) == 1
+        assert result[0][2] == "a001"  # fallback name = agent_id
+
+    # ── Wiring in run_workflow and health loop ──
+
+    def test_circular_dep_check_in_run_workflow(self):
+        """run_workflow handler should call detect_circular_deps."""
+        src = inspect.getsource(ashlar_server.run_workflow)
+        assert "detect_circular_deps" in src
+
+    def test_circular_dep_returns_400(self):
+        """run_workflow should return 400 when circular deps found."""
+        src = inspect.getsource(ashlar_server.run_workflow)
+        assert "400" in src
+        assert "Circular dependency" in src
+
+    def test_stage_timeout_from_request_body(self):
+        """run_workflow should accept stage_timeout_sec from request body."""
+        src = inspect.getsource(ashlar_server.run_workflow)
+        assert "stage_timeout_sec" in src
+
+    def test_stage_timeout_clamped(self):
+        """Stage timeout should be clamped between 60 and 7200."""
+        src = inspect.getsource(ashlar_server.run_workflow)
+        assert "60.0" in src or "60" in src
+        assert "7200.0" in src or "7200" in src
+
+    def test_timeout_enforcement_in_health_loop(self):
+        """Health check loop should enforce stage timeouts."""
+        src = inspect.getsource(ashlar_server.health_check_loop)
+        assert "check_stage_timeouts" in src
+        assert "workflow_stage_timeout" in src
+
+    def test_stage_start_tracked_in_resolve_deps(self):
+        """resolve_workflow_deps should track stage start time."""
+        src = inspect.getsource(ashlar_server.AgentManager.resolve_workflow_deps)
+        assert "stage_started_at" in src
