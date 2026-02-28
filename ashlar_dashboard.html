@@ -3610,6 +3610,7 @@ body {
     <select class="project-selector" id="projectSelector" onchange="filterByProject(this.value)" aria-label="Filter by project">
         <option value="">All Projects</option>
     </select>
+    <button class="btn-add-project" onclick="openNewProjectDialog()" title="New Project" aria-label="New Project" style="background:none;border:1px solid var(--border-subtle);color:var(--text-secondary);border-radius:var(--radius-xs);padding:2px 6px;font-size:12px;cursor:pointer;margin-left:4px;transition:var(--transition);font-family:var(--font-mono)" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border-subtle)';this.style.color='var(--text-secondary)'">+</button>
     <span class="project-metrics-badge" id="projectMetricsBadge" style="display:none;cursor:pointer" onclick="if(state.selectedProjectId)openProjectDetail(state.selectedProjectId)" title="Click to view project details"></span>
     <div class="top-spacer"></div>
     <div class="metrics-bar" id="metricsBar" style="cursor:pointer" onclick="toggleMetricsDropdown()">
@@ -3645,7 +3646,15 @@ body {
         <div class="notification-dropdown" id="notifDropdown">
             <div class="notification-dropdown-header">
                 <span>Notifications</span>
-                <span style="cursor:pointer;color:var(--accent)" onclick="clearNotifications()">Clear</span>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <select id="notifFilter" onchange="renderNotificationList()" style="background:var(--bg-input);border:1px solid var(--border-subtle);color:var(--text-secondary);border-radius:var(--radius-xs);font-size:10px;padding:2px 4px;font-family:var(--font-mono)">
+                        <option value="all">All</option>
+                        <option value="error">Errors</option>
+                        <option value="input">Waiting</option>
+                        <option value="spawn">Spawned</option>
+                    </select>
+                    <span style="cursor:pointer;color:var(--accent);font-size:12px" onclick="clearNotifications()">Clear</span>
+                </div>
             </div>
             <div id="notifList"></div>
         </div>
@@ -3716,9 +3725,16 @@ body {
             <h2>Your AI agents, one command center</h2>
             <p>Spawn agents to work across your projects — each gets its own terminal, status tracking, and context window</p>
             <button class="btn btn-primary" onclick="openSpawnDialog()" style="margin-bottom: 16px; padding: 10px 28px; font-size: 14px;">Spawn Agent</button>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:16px">
+                <button class="btn btn-secondary btn-sm" onclick="openSpawnDialog();setTimeout(()=>applyTemplate('review'),100)" style="font-size:11px">Code Review</button>
+                <button class="btn btn-secondary btn-sm" onclick="openSpawnDialog();setTimeout(()=>applyTemplate('tests'),100)" style="font-size:11px">Write Tests</button>
+                <button class="btn btn-secondary btn-sm" onclick="openSpawnDialog();setTimeout(()=>applyTemplate('bugfix'),100)" style="font-size:11px">Bug Fix</button>
+                <button class="btn btn-secondary btn-sm" onclick="openSpawnDialog();setTimeout(()=>applyTemplate('security'),100)" style="font-size:11px">Security Audit</button>
+            </div>
             <div class="shortcuts">
                 <span class="shortcut-hint"><span class="kbd">⌘N</span> spawn agent</span>
                 <span class="shortcut-hint"><span class="kbd">⌘K</span> command palette</span>
+                <span class="shortcut-hint"><span class="kbd">Space</span> push-to-talk</span>
                 <span class="shortcut-hint"><span class="kbd">?</span> shortcuts</span>
             </div>
         </div>
@@ -3732,6 +3748,15 @@ body {
 <div class="modal-overlay" id="spawnOverlay">
     <div class="spawn-dialog">
         <div class="dialog-title">Spawn New Agent</div>
+
+        <div class="quick-templates" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+            <button class="btn btn-secondary btn-sm" onclick="applyTemplate('review')" style="font-size:11px;padding:4px 10px">Code Review</button>
+            <button class="btn btn-secondary btn-sm" onclick="applyTemplate('tests')" style="font-size:11px;padding:4px 10px">Write Tests</button>
+            <button class="btn btn-secondary btn-sm" onclick="applyTemplate('bugfix')" style="font-size:11px;padding:4px 10px">Bug Fix</button>
+            <button class="btn btn-secondary btn-sm" onclick="applyTemplate('feature')" style="font-size:11px;padding:4px 10px">Feature Build</button>
+            <button class="btn btn-secondary btn-sm" onclick="applyTemplate('security')" style="font-size:11px;padding:4px 10px">Security Audit</button>
+            <button class="btn btn-secondary btn-sm" onclick="applyTemplate('refactor')" style="font-size:11px;padding:4px 10px">Refactor</button>
+        </div>
 
         <div class="preset-selector">
             <select id="spawnPresetSelect" onchange="loadPreset(this.value)">
@@ -4249,8 +4274,10 @@ body {
 <!-- ── Bulk Action Bar ── -->
 <div class="bulk-bar" id="bulkBar">
     <span class="bulk-bar-count" id="bulkCount">0 selected</span>
+    <button class="btn btn-secondary" onclick="bulkSendPrompt()"><svg class="lucide" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></svg> Send All</button>
     <button class="btn btn-secondary" onclick="bulkAction('pause')"><svg class="lucide" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg> Pause All</button>
     <button class="btn btn-secondary" onclick="bulkAction('resume')"><svg class="lucide" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg> Resume All</button>
+    <button class="btn btn-secondary" onclick="bulkAction('restart')"><svg class="lucide" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Restart All</button>
     <button class="btn btn-danger" onclick="bulkAction('kill')"><svg class="lucide" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> Kill All</button>
     <div style="flex:1"></div>
     <button class="btn btn-secondary" onclick="clearBulkSelection()">Cancel</button>
@@ -5750,6 +5777,29 @@ function closeSpawnDialog() {
     state.view = 'grid';
 }
 
+const SPAWN_TEMPLATES = {
+    review: { role: 'reviewer', task: 'Review the recent code changes for bugs, security issues, and code quality. Check for edge cases and suggest improvements.' },
+    tests: { role: 'tester', task: 'Write comprehensive tests for the recent code changes. Cover edge cases, error scenarios, and integration points.' },
+    bugfix: { role: 'backend', task: 'Investigate and fix the reported bug. Find the root cause, implement a fix, and verify it works correctly.' },
+    feature: { role: 'backend', task: 'Implement the requested feature. Follow existing code patterns and conventions. Include error handling.' },
+    security: { role: 'security', task: 'Perform a security audit of the codebase. Check for OWASP top 10 vulnerabilities, injection risks, and auth issues.' },
+    refactor: { role: 'architect', task: 'Refactor the specified code for better maintainability. Improve naming, reduce duplication, simplify complex logic.' },
+};
+
+function applyTemplate(templateKey) {
+    const tmpl = SPAWN_TEMPLATES[templateKey];
+    if (!tmpl) return;
+    // Set role
+    state.selectedRole = tmpl.role;
+    document.querySelectorAll('#roleGrid .role-option').forEach(o => {
+        o.classList.toggle('selected', o.dataset.role === tmpl.role);
+    });
+    // Set task
+    document.getElementById('spawnTask').value = tmpl.task;
+    document.getElementById('spawnTask').placeholder = TASK_PLACEHOLDERS[tmpl.role] || TASK_PLACEHOLDERS.general;
+    showToast(`Template applied: ${templateKey}`, 'info');
+}
+
 async function queueFromSpawnDialog() {
     const name = document.getElementById('spawnName').value.trim();
     const dir = document.getElementById('spawnDir').value.trim();
@@ -7160,6 +7210,32 @@ function renderProjectSelector() {
     sel.value = current;
 }
 
+async function openNewProjectDialog() {
+    const name = await promptInput('New Project Name', 'e.g. payment-service', { iconKey: 'folder-plus', confirmText: 'Next' });
+    if (!name) return;
+    const defaultPath = '~/Projects/' + name.toLowerCase().replace(/\s+/g, '-');
+    const path = await promptInput('Project Directory', defaultPath, { iconKey: 'folder', confirmText: 'Create', defaultValue: defaultPath });
+    if (!path) return;
+    try {
+        const res = await apiFetch('/api/projects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, path }),
+        });
+        if (res.ok) {
+            const proj = await res.json();
+            state.projects.push(proj);
+            renderProjectSelector();
+            showToast(`Project "${proj.name}" created`, 'success');
+        } else {
+            const err = await res.json();
+            showToast(err.error || 'Failed to create project', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to create project', 'error');
+    }
+}
+
 function filterByProject(projectId) {
     state.selectedProjectId = projectId || null;
     renderAgentGrid();
@@ -7738,14 +7814,20 @@ function addNotification(evtType, message, agentId) {
 function renderNotificationList() {
     const list = document.getElementById('notifList');
     list.innerHTML = '';
+    const filter = document.getElementById('notifFilter')?.value || 'all';
+    const filterMap = { error: ['agent_error'], input: ['agent_needs_input'], spawn: ['agent_spawned', 'agent_killed'] };
     const icons = { agent_spawned: icon('rocket', 14), agent_killed: icon('skull', 14), agent_needs_input: icon('alert-triangle', 14), agent_error: icon('x', 14) };
-    state.notifications.slice(0, 30).forEach(n => {
+    const filtered = filter === 'all' ? state.notifications : state.notifications.filter(n => (filterMap[filter] || []).includes(n.type));
+    filtered.slice(0, 30).forEach(n => {
         const el = document.createElement('div');
         el.className = 'notification-item' + (n.read ? '' : ' unread');
         el.innerHTML = `<span class="ni-icon">${icons[n.type] || icon('pin', 14)}</span><span class="ni-text">${escapeHtml(n.message)}</span><span class="ni-time">${timeAgo(new Date(n.time).toISOString())}</span>`;
         el.onclick = () => { n.read = true; el.classList.remove('unread'); closeNotifications(); if (n.agentId && state.agents.has(n.agentId)) openDeepView(n.agentId); };
         list.appendChild(el);
     });
+    if (filtered.length === 0) {
+        list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text-tertiary);font-size:12px">${filter === 'all' ? 'No notifications yet' : 'No ' + filter + ' notifications'}</div>`;
+    }
 }
 
 function toggleNotifications(e) {
@@ -9008,22 +9090,23 @@ function updateBulkUI() {
     });
 }
 
-async function bulkAction(action) {
+async function bulkAction(action, extraPayload = {}) {
     if (selectedAgents.size === 0) return;
-    // Only act on visible (not filtered-out) agents
     const ids = [...selectedAgents].filter(id => {
         const card = cardElements.get(id);
         return card && card.style.display !== 'none';
     });
     if (ids.length === 0) return;
-    const actionLabel = action === 'kill' ? 'Kill' : action === 'pause' ? 'Pause' : 'Resume';
-    const ok = await confirmAction(`${actionLabel} ${ids.length} Agents`, `${actionLabel} ${ids.length} selected agents?`, actionLabel, { iconKey: action === 'kill' ? 'skull' : 'zap', danger: action === 'kill' });
+    const labels = { kill: 'Kill', pause: 'Pause', resume: 'Resume', restart: 'Restart', send: 'Send to' };
+    const actionLabel = labels[action] || action;
+    const danger = action === 'kill';
+    const ok = await confirmAction(`${actionLabel} ${ids.length} Agents`, `${actionLabel} ${ids.length} selected agents?`, actionLabel, { iconKey: danger ? 'skull' : 'zap', danger });
     if (!ok) return;
     try {
         const res = await apiFetch('/api/agents/bulk', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action, agent_ids: ids }),
+            body: JSON.stringify({ action, agent_ids: ids, ...extraPayload }),
         });
         const data = await res.json();
         if (res.ok) {
@@ -9035,6 +9118,14 @@ async function bulkAction(action) {
         showToast(`Bulk ${action} failed`, 'error');
     }
     clearBulkSelection();
+}
+
+async function bulkSendPrompt() {
+    if (selectedAgents.size === 0) return;
+    const count = selectedAgents.size;
+    const msg = await promptInput(`Send to ${count} Agents`, 'Type a message to broadcast...', { iconKey: 'send', confirmText: 'Send' });
+    if (!msg) return;
+    bulkAction('send', { message: msg });
 }
 
 // ── Agent Edit ──

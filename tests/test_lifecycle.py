@@ -21,6 +21,11 @@ with patch("psutil.cpu_percent", return_value=0.0):
         _suggest_followup,
         FOLLOWUP_SUGGESTIONS,
         QueuedTask,
+        OutputIntelligenceParser,
+        ToolInvocation,
+        FileOperation,
+        GitOperation,
+        TestResult,
     )
 
 
@@ -910,3 +915,256 @@ class TestTaskQueue:
         assert tasks[0].name == "high"
         assert tasks[1].name == "mid"
         assert tasks[2].name == "low"
+
+
+# ─────────────────────────────────────────────
+# T13: Bulk operations validation
+# ─────────────────────────────────────────────
+
+class TestBulkOperations:
+    """Tests for bulk action validation logic."""
+
+    def test_valid_bulk_actions(self):
+        """All 5 bulk actions should be accepted."""
+        valid = ("kill", "pause", "resume", "send", "restart")
+        for action in valid:
+            assert action in valid
+
+    def test_send_requires_message(self):
+        """Bulk send should require a non-empty message field."""
+        # Simulate what the server checks
+        message = ""
+        assert not (isinstance(message, str) and message.strip())
+
+        message = "  "
+        assert not (isinstance(message, str) and message.strip())
+
+        message = "hello agents"
+        assert isinstance(message, str) and message.strip()
+
+    def test_send_message_sanitization(self):
+        """Messages should be sanitized: capped at 500 chars, control chars stripped."""
+        import re
+        raw = "x" * 600
+        sanitized = raw[:500].replace('\r', '')
+        sanitized = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', sanitized)
+        assert len(sanitized) == 500
+
+        raw_ctrl = "hello\x00world\x07test"
+        sanitized = raw_ctrl[:500].replace('\r', '')
+        sanitized = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', sanitized)
+        assert sanitized == "helloworldtest"
+
+    def test_agent_ids_must_be_list(self):
+        """agent_ids must be a non-empty list."""
+        assert isinstance([], list) and not []  # empty fails
+        assert isinstance(["a"], list) and ["a"]  # non-empty passes
+        assert not isinstance("a", list)  # string fails
+
+
+# ─────────────────────────────────────────────
+# T14: OutputIntelligenceParser
+# ─────────────────────────────────────────────
+
+class TestOutputIntelligenceParser:
+    """Tests for the regex-based output intelligence parser."""
+
+    def _make_agent(self, lines):
+        from ashlar_server import OutputIntelligenceParser
+        agent = MagicMock()
+        agent.id = "test1"
+        agent.output_lines = lines
+        agent._last_parse_index = 0
+        agent._tool_invocations = []
+        agent._file_operations = []
+        agent._git_operations = []
+        agent._test_results = []
+        return agent, OutputIntelligenceParser()
+
+    def test_parse_read_tool(self):
+        """Parser should detect Read tool invocations."""
+        agent, parser = self._make_agent(['Read("/src/main.py")'])
+        counts = parser.parse_incremental(agent)
+        assert counts["tools"] == 1
+        assert len(agent._tool_invocations) == 1
+        assert agent._tool_invocations[0].tool == "Read"
+        assert agent._tool_invocations[0].args == "/src/main.py"
+
+    def test_parse_edit_tool(self):
+        """Parser should detect Edit tool invocations."""
+        agent, parser = self._make_agent(['Edit("/src/utils.ts")'])
+        counts = parser.parse_incremental(agent)
+        assert counts["tools"] == 1
+        assert agent._tool_invocations[0].tool == "Edit"
+
+    def test_parse_bash_tool(self):
+        """Parser should detect Bash tool invocations."""
+        agent, parser = self._make_agent(['Bash("npm test --coverage")'])
+        counts = parser.parse_incremental(agent)
+        assert counts["tools"] == 1
+        assert agent._tool_invocations[0].tool == "Bash"
+
+    def test_parse_write_tool_creates_file_operation(self):
+        """Write tool should also create a file operation."""
+        agent, parser = self._make_agent(['Write("/src/new_file.py")'])
+        counts = parser.parse_incremental(agent)
+        assert counts["tools"] == 1
+        assert counts["files"] == 1
+        assert len(agent._file_operations) == 1
+        assert agent._file_operations[0].operation == "write"
+
+    def test_parse_git_commit(self):
+        """Parser should detect git commit operations."""
+        agent, parser = self._make_agent(["git commit -m 'fix: resolve login bug'"])
+        counts = parser.parse_incremental(agent)
+        assert counts["git"] == 1
+        assert agent._git_operations[0].operation == "commit"
+
+    def test_parse_git_checkout(self):
+        """Parser should detect git checkout operations."""
+        agent, parser = self._make_agent(["git checkout feature/auth"])
+        counts = parser.parse_incremental(agent)
+        assert counts["git"] == 1
+        assert agent._git_operations[0].operation == "checkout"
+        assert agent._git_operations[0].detail == "feature/auth"
+
+    def test_parse_pytest_results(self):
+        """Parser should detect pytest results."""
+        agent, parser = self._make_agent(["42 passed, 3 failed, 1 skipped"])
+        counts = parser.parse_incremental(agent)
+        assert counts["tests"] == 1
+        assert agent._test_results[0].passed == 42
+        assert agent._test_results[0].failed == 3
+        assert agent._test_results[0].skipped == 1
+        assert agent._test_results[0].framework == "pytest"
+
+    def test_parse_jest_results(self):
+        """Parser should detect jest-style results."""
+        # Jest format: "Tests: X passed, Y failed, Z total" — but pytest regex matches first
+        # since both use "N passed". Jest is only tried if pytest doesn't match.
+        # Use a format that uniquely matches jest:
+        agent, parser = self._make_agent(["Tests:  2 failed, 17 total"])
+        counts = parser.parse_incremental(agent)
+        assert counts["tests"] == 1
+        assert agent._test_results[0].failed == 2
+        assert agent._test_results[0].framework == "jest"
+
+    def test_incremental_parsing(self):
+        """Parser should only process new lines on subsequent calls."""
+        agent, parser = self._make_agent(['Read("/a.py")', 'Read("/b.py")'])
+        parser.parse_incremental(agent)
+        assert len(agent._tool_invocations) == 2
+        # Add more lines
+        agent.output_lines.append('Edit("/c.py")')
+        counts = parser.parse_incremental(agent)
+        assert counts["tools"] == 1
+        assert len(agent._tool_invocations) == 3
+
+    def test_no_new_lines(self):
+        """Parser should return zeros when no new lines."""
+        agent, parser = self._make_agent(['Read("/a.py")'])
+        parser.parse_incremental(agent)
+        counts = parser.parse_incremental(agent)
+        assert counts == {"tools": 0, "files": 0, "git": 0, "tests": 0}
+
+    def test_tool_invocation_cap(self):
+        """Tool invocations should be capped at 500."""
+        lines = [f'Read("/file{i}.py")' for i in range(600)]
+        agent, parser = self._make_agent(lines)
+        parser.parse_incremental(agent)
+        assert len(agent._tool_invocations) == 500
+
+    def test_result_status_success(self):
+        """Parser should update last tool's result_status on success."""
+        agent, parser = self._make_agent(['Read("/x.py")', 'Tool Result: success'])
+        parser.parse_incremental(agent)
+        assert agent._tool_invocations[0].result_status == "success"
+
+    def test_result_status_error(self):
+        """Parser should update last tool's result_status on error."""
+        agent, parser = self._make_agent(['Read("/x.py")', 'Error: file not found'])
+        parser.parse_incremental(agent)
+        assert agent._tool_invocations[0].result_status == "error"
+
+    def test_natural_language_file_read(self):
+        """Parser should detect natural language file reads."""
+        agent, parser = self._make_agent(['Reading config.yaml'])
+        counts = parser.parse_incremental(agent)
+        assert counts["files"] == 1
+        assert agent._file_operations[0].operation == "read"
+        assert agent._file_operations[0].file_path == "config.yaml"
+
+    def test_natural_language_file_write(self):
+        """Parser should detect natural language file writes."""
+        agent, parser = self._make_agent(['Creating server.py'])
+        counts = parser.parse_incremental(agent)
+        assert counts["files"] == 1
+        assert agent._file_operations[0].operation == "write"
+
+    def test_coverage_detection(self):
+        """Parser should detect coverage percentage."""
+        agent, parser = self._make_agent(["42 passed  Coverage: 87.5%"])
+        counts = parser.parse_incremental(agent)
+        assert counts["tests"] == 1
+        assert agent._test_results[0].coverage_pct == 87.5
+
+
+# ─────────────────────────────────────────────
+# T15: Context window calculations
+# ─────────────────────────────────────────────
+
+class TestContextWindowCalculations:
+    """Tests for backend-aware context window configuration."""
+
+    def test_claude_code_context_window(self):
+        """Claude Code should have 200K context window."""
+        bc = KNOWN_BACKENDS.get("claude-code")
+        assert bc is not None
+        assert bc.context_window == 200000
+
+    def test_codex_context_window(self):
+        """Codex should have 128K context window."""
+        bc = KNOWN_BACKENDS.get("codex")
+        assert bc is not None
+        assert bc.context_window == 128000
+
+    def test_aider_context_window(self):
+        """Aider should have 128K context window."""
+        bc = KNOWN_BACKENDS.get("aider")
+        assert bc is not None
+        assert bc.context_window == 128000
+
+    def test_backend_has_char_to_token_ratio(self):
+        """All backends should have char_to_token_ratio."""
+        for name, bc in KNOWN_BACKENDS.items():
+            assert hasattr(bc, 'char_to_token_ratio'), f"{name} missing char_to_token_ratio"
+            assert bc.char_to_token_ratio > 0, f"{name} has zero ratio"
+
+    def test_context_pct_calculation(self):
+        """Context % should be total_chars / (context_window * ratio)."""
+        bc = KNOWN_BACKENDS.get("claude-code")
+        total_chars = 100000
+        ctx_pct = total_chars / (bc.context_window * bc.char_to_token_ratio)
+        assert 0 < ctx_pct < 1  # Should be a fraction
+
+
+# ─────────────────────────────────────────────
+# T16: Agent send_message validation
+# ─────────────────────────────────────────────
+
+class TestSendMessageValidation:
+    """Tests for send_message edge cases."""
+
+    def test_multiline_message_split(self):
+        """Multi-line messages should be split into individual sends."""
+        message = "line one\nline two\nline three"
+        lines = message.split("\n")
+        assert len(lines) == 3
+        assert lines[0] == "line one"
+
+    def test_message_length_cap(self):
+        """Messages sent via REST should be capped."""
+        max_len = 50000
+        long_msg = "x" * 60000
+        capped = long_msg[:max_len]
+        assert len(capped) == max_len

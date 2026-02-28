@@ -6347,8 +6347,13 @@ async def bulk_agent_action(request: web.Request) -> web.Response:
     action = data.get("action")
     agent_ids = data.get("agent_ids", [])
 
-    if action not in ("kill", "pause", "resume"):
-        return web.json_response({"error": f"Invalid action '{action}'. Must be 'kill', 'pause', or 'resume'"}, status=400)
+    message = data.get("message", "")
+
+    if action not in ("kill", "pause", "resume", "send", "restart"):
+        return web.json_response({"error": f"Invalid action '{action}'. Must be 'kill', 'pause', 'resume', 'send', or 'restart'"}, status=400)
+
+    if action == "send" and (not isinstance(message, str) or not message.strip()):
+        return web.json_response({"error": "Bulk send requires a non-empty 'message' field"}, status=400)
 
     if not isinstance(agent_ids, list) or not agent_ids:
         return web.json_response({"error": "agent_ids must be a non-empty list"}, status=400)
@@ -6397,6 +6402,24 @@ async def bulk_agent_action(request: web.Request) -> web.Response:
                     await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
                 else:
                     failed_items.append({"id": aid, "error": "Resume failed"})
+
+            elif action == "send":
+                sanitized = message[:500].replace('\r', '')
+                sanitized = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', sanitized)
+                ok = await manager.send_message(aid, sanitized)
+                if ok:
+                    success_ids.append(aid)
+                    await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
+                else:
+                    failed_items.append({"id": aid, "error": "Send failed"})
+
+            elif action == "restart":
+                ok = await manager.restart(aid)
+                if ok:
+                    success_ids.append(aid)
+                    await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
+                else:
+                    failed_items.append({"id": aid, "error": "Restart failed"})
 
         except Exception as e:
             failed_items.append({"id": aid, "error": str(e)})
