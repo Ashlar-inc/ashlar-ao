@@ -3933,6 +3933,17 @@ body {
     font-family: var(--font-mono);
     white-space: nowrap;
 }
+.card-bookmarks-badge {
+    font-size: 9px;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    background: rgba(234,179,8,0.15);
+    color: #EAB308;
+    padding: 1px 5px;
+    border-radius: 8px;
+    white-space: nowrap;
+    cursor: pointer;
+}
 
 /* ── Pipeline Position Badge on Cards ── */
 .card-pipeline-badge { display: none; font-family: 'JetBrains Mono', monospace; font-size: 10px; background: rgba(6,182,212,0.15); color: #06b6d4; padding: 1px 6px; border-radius: 8px; white-space: nowrap; }
@@ -4784,7 +4795,7 @@ body {
                 <button class="deep-filter-chip warn" data-filter="warnings" onclick="setOutputFilter('warnings')">Warn</button>
                 <button class="deep-filter-chip info" data-filter="info" onclick="setOutputFilter('info')">Info</button>
             </div>
-            <input class="deep-search-input" id="deepSearchInput" placeholder="Search..." oninput="deepSearch()" onkeydown="handleDeepSearchKey(event)">
+            <input class="deep-search-input" id="deepSearchInput" placeholder="Search..." oninput="deepSearch()" onkeydown="handleDeepSearchKey(event)" onfocus="showSearchHistory()" onblur="setTimeout(hideSearchHistory,200)">
             <span class="deep-search-count" id="deepSearchCount"></span>
             <button class="deep-search-btn" onclick="deepSearchPrev()">↑</button>
             <button class="deep-search-btn" onclick="deepSearchNext()">↓</button>
@@ -4792,15 +4803,7 @@ body {
         </div>
         <button class="jump-to-bottom" id="jumpToBottom" onclick="scrollDeepToBottom()">↓ Jump to bottom</button>
     </div>
-    <div class="quick-commands" id="quickCommands">
-        <button class="qc-btn" onclick="quickSend('yes')">yes</button>
-        <button class="qc-btn" onclick="quickSend('no')">no</button>
-        <button class="qc-btn" onclick="quickSend('continue')">continue</button>
-        <button class="qc-btn" onclick="quickSend('explain')">explain</button>
-        <button class="qc-btn" onclick="quickSend('show me the diff')">diff</button>
-        <button class="qc-btn" onclick="quickSend('run the tests')">test</button>
-        <button class="qc-btn" onclick="quickSend('looks good, proceed')">approve</button>
-    </div>
+    <div class="quick-commands" id="quickCommands"></div>
     <div class="deep-input-bar" style="position:relative">
         <input class="deep-input" id="deepInput" placeholder="Type a message to this agent..."
                onkeydown="handleDeepInputKey(event)" oninput="handleDeepInputInput(event)">
@@ -6991,6 +6994,7 @@ function createAgentCard(agent) {
             <span class="card-message-badge" id="msgBadge-${agent.id}" aria-label="Unread messages"></span>
             <span class="card-conflict-badge"></span>
             <span class="card-files-badge"></span>
+            <span class="card-bookmarks-badge" style="display:none" title="Bookmarked output lines"></span>
             <button class="card-menu-btn" onclick="event.stopPropagation();toggleCardMenu('${agent.id}')">⋯</button>
         </div>
         <div class="card-info-row">
@@ -7302,6 +7306,19 @@ function updateAgentCard(card, agent) {
         filesBadge.style.display = '';
     } else {
         filesBadge.style.display = 'none';
+    }
+
+    // Bookmarks badge
+    const bmBadge = card.querySelector('.card-bookmarks-badge');
+    if (bmBadge) {
+        const bmCount = agent.bookmarks?.length || 0;
+        if (bmCount > 0) {
+            bmBadge.textContent = `★ ${bmCount}`;
+            bmBadge.style.display = '';
+            bmBadge.onclick = (e) => { e.stopPropagation(); openDeepView(agent.id); setTimeout(() => switchDeepTab('terminal'), 100); setTimeout(() => toggleBookmarksPanel(), 200); };
+        } else {
+            bmBadge.style.display = 'none';
+        }
     }
 
     // Sparkline (A3)
@@ -8013,6 +8030,7 @@ function openDeepView(agentId) {
     startDeepTimeTimer();
     startMinimapUpdates();
     startScrollSpeedTracking();
+    renderQuickReplies();
 
     // Reset toolbar state (scroll position restore may override these)
     document.getElementById('toolbarAutoScroll').classList.toggle('active', savedScrollPos == null);
@@ -8726,6 +8744,105 @@ function sendDeepMessage() {
     scrollDeepToBottom();
 }
 
+const DEFAULT_REPLY_TEMPLATES = [
+    { label: 'yes', message: 'yes' },
+    { label: 'no', message: 'no' },
+    { label: 'continue', message: 'continue' },
+    { label: 'explain', message: 'explain' },
+    { label: 'diff', message: 'show me the diff' },
+    { label: 'test', message: 'run the tests' },
+    { label: 'approve', message: 'looks good, proceed' },
+    { label: 'skip', message: 'skip this step' },
+    { label: 'revert', message: 'revert the changes' },
+    { label: 'commit', message: 'commit the changes' },
+];
+
+function getReplyTemplates() {
+    try {
+        const saved = localStorage.getItem('ashlar_reply_templates');
+        if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return DEFAULT_REPLY_TEMPLATES;
+}
+
+function saveReplyTemplates(templates) {
+    localStorage.setItem('ashlar_reply_templates', JSON.stringify(templates));
+}
+
+function renderQuickReplies() {
+    const container = document.getElementById('quickCommands');
+    if (!container) return;
+    const templates = getReplyTemplates();
+    container.innerHTML = templates.map(t =>
+        `<button class="qc-btn" onclick="quickSend('${t.message.replace(/'/g, "\\'")}')">${escapeHtml(t.label)}</button>`
+    ).join('') + `<button class="qc-btn" onclick="openReplyTemplateEditor()" title="Edit templates" style="opacity:0.5">+</button>`;
+}
+
+function openReplyTemplateEditor() {
+    const templates = getReplyTemplates();
+    // Build a simple inline editor below the quick commands
+    const container = document.getElementById('quickCommands');
+    if (!container) return;
+    // Check if editor already open
+    if (document.getElementById('templateEditorInline')) { document.getElementById('templateEditorInline').remove(); return; }
+    const editor = document.createElement('div');
+    editor.id = 'templateEditorInline';
+    editor.style.cssText = 'position:absolute;bottom:calc(100% + 4px);left:0;right:0;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--radius-md);padding:10px;z-index:100;box-shadow:var(--shadow-lg);max-height:260px;overflow-y:auto';
+    editor.innerHTML = `<div style="font-size:11px;font-weight:700;color:var(--text-primary);margin-bottom:8px">Edit Quick Replies</div>
+        <div id="templateEditorList" style="display:flex;flex-direction:column;gap:4px">
+        ${templates.map((t, i) => `<div class="template-row" style="display:flex;gap:4px;align-items:center">
+            <input class="form-input" value="${escapeHtml(t.label)}" placeholder="Label" style="width:70px;font-size:10px;padding:3px 5px" data-field="label">
+            <input class="form-input" value="${escapeHtml(t.message)}" placeholder="Message" style="flex:1;font-size:10px;padding:3px 5px" data-field="message">
+            <button onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;padding:0 4px">✕</button>
+        </div>`).join('')}
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+            <button class="btn btn-secondary btn-sm" onclick="addTemplateRow()" style="font-size:10px;padding:2px 6px">+ Add</button>
+            <button class="btn btn-primary btn-sm" onclick="saveTemplateEdits()" style="font-size:10px;padding:2px 8px">Save</button>
+            <button class="btn btn-secondary btn-sm" onclick="resetReplyTemplates()" style="font-size:10px;padding:2px 6px">Reset</button>
+            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('templateEditorInline')?.remove()" style="font-size:10px;padding:2px 6px">Cancel</button>
+        </div>`;
+    container.parentElement.style.position = 'relative';
+    container.parentElement.appendChild(editor);
+}
+
+function addTemplateRow() {
+    const list = document.getElementById('templateEditorList');
+    if (!list) return;
+    const idx = list.children.length;
+    const row = document.createElement('div');
+    row.className = 'template-row';
+    row.style.cssText = 'display:flex;gap:6px;align-items:center';
+    row.innerHTML = `<input class="form-input" placeholder="Label" style="width:80px;font-size:11px;padding:4px 6px" data-idx="${idx}" data-field="label">
+        <input class="form-input" placeholder="Message" style="flex:1;font-size:11px;padding:4px 6px" data-idx="${idx}" data-field="message">
+        <button class="btn btn-ghost" onclick="this.parentElement.remove()" style="padding:2px 6px;font-size:10px;color:var(--danger)">✕</button>`;
+    list.appendChild(row);
+}
+
+function saveTemplateEdits() {
+    const list = document.getElementById('templateEditorList');
+    if (!list) return;
+    const templates = [];
+    for (const row of list.children) {
+        const labelInput = row.querySelector('[data-field="label"]');
+        const msgInput = row.querySelector('[data-field="message"]');
+        if (labelInput && msgInput && labelInput.value.trim() && msgInput.value.trim()) {
+            templates.push({ label: labelInput.value.trim(), message: msgInput.value.trim() });
+        }
+    }
+    saveReplyTemplates(templates);
+    document.getElementById('templateEditorInline')?.remove();
+    renderQuickReplies();
+    showToast('Reply templates saved', 'success');
+}
+
+function resetReplyTemplates() {
+    localStorage.removeItem('ashlar_reply_templates');
+    document.getElementById('templateEditorInline')?.remove();
+    renderQuickReplies();
+    showToast('Templates reset to defaults', 'info');
+}
+
 function quickSend(msg) {
     if (!msg || !state.focusedAgentId) return;
     const input = document.getElementById('deepInput');
@@ -9298,11 +9415,50 @@ function closeDeepSearch() {
 // Virtual scroll search state
 let _virtualSearchMatches = []; // [{lineIdx, charIdx, length}]
 
+function getSearchHistory() {
+    try { return JSON.parse(localStorage.getItem('ashlar_search_history') || '[]'); } catch (e) { return []; }
+}
+
+function addToSearchHistory(query) {
+    if (!query || query.length < 2) return;
+    let history = getSearchHistory();
+    history = history.filter(h => h !== query);
+    history.unshift(query);
+    if (history.length > 15) history = history.slice(0, 15);
+    localStorage.setItem('ashlar_search_history', JSON.stringify(history));
+}
+
+function showSearchHistory() {
+    const history = getSearchHistory();
+    if (history.length === 0) return;
+    let dd = document.getElementById('searchHistoryDropdown');
+    if (!dd) {
+        dd = document.createElement('div');
+        dd.id = 'searchHistoryDropdown';
+        dd.style.cssText = 'position:absolute;bottom:calc(100% + 2px);left:40px;right:40px;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--radius-md);padding:4px;z-index:100;box-shadow:var(--shadow-lg);max-height:200px;overflow-y:auto';
+        document.getElementById('deepSearchBar').appendChild(dd);
+    }
+    dd.innerHTML = history.map(h =>
+        `<div style="padding:5px 8px;font-size:11px;color:var(--text-secondary);cursor:pointer;border-radius:var(--radius-sm);font-family:var(--font-mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" onmousedown="event.preventDefault();document.getElementById('deepSearchInput').value='${h.replace(/'/g,"\\'")}';hideSearchHistory();deepSearch()"
+        onmouseenter="this.style.background='var(--bg-overlay)'" onmouseleave="this.style.background=''">${escapeHtml(h)}</div>`
+    ).join('');
+    dd.style.display = '';
+}
+
+function hideSearchHistory() {
+    const dd = document.getElementById('searchHistoryDropdown');
+    if (dd) dd.style.display = 'none';
+}
+
 function deepSearch() {
     clearSearchHighlights();
     _virtualSearchMatches = [];
     const query = document.getElementById('deepSearchInput').value;
     if (!query) { document.getElementById('deepSearchCount').textContent = ''; return; }
+    // Save to history after a debounce
+    clearTimeout(deepSearch._historyTimer);
+    deepSearch._historyTimer = setTimeout(() => addToSearchHistory(query), 1500);
+    hideSearchHistory();
 
     const terminal = document.getElementById('deepTerminal');
     const flags = 'g' + (deepCaseSensitive ? '' : 'i');
