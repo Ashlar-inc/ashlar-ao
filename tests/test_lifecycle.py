@@ -3280,3 +3280,185 @@ class TestWorkflowDeadlockAndTimeout:
         """resolve_workflow_deps should track stage start time."""
         src = inspect.getsource(ashlar_server.AgentManager.resolve_workflow_deps)
         assert "stage_started_at" in src
+
+
+# ── Resource Exhaustion Cascade Protection Tests ─────────────────────
+
+
+class TestCascadeProtection:
+    """Tests for resource exhaustion cascade protection features."""
+
+    # ── Config defaults ──
+
+    def test_config_system_cpu_pressure_threshold(self):
+        """Default system CPU pressure threshold should be 90%."""
+        config = ashlar_server.Config()
+        assert config.system_cpu_pressure_threshold == 90.0
+
+    def test_config_system_memory_pressure_threshold(self):
+        """Default system memory pressure threshold should be 90%."""
+        config = ashlar_server.Config()
+        assert config.system_memory_pressure_threshold == 90.0
+
+    def test_config_spawn_pressure_block(self):
+        """Spawn pressure block should be enabled by default."""
+        config = ashlar_server.Config()
+        assert config.spawn_pressure_block is True
+
+    def test_config_agent_memory_pause_pct(self):
+        """Agent memory pause should default to 85% of limit."""
+        config = ashlar_server.Config()
+        assert config.agent_memory_pause_pct == 0.85
+
+    def test_config_context_auto_pause_threshold(self):
+        """Context auto-pause threshold should default to 0.95."""
+        config = ashlar_server.Config()
+        assert config.context_auto_pause_threshold == 0.95
+
+    def test_config_pathological_error_window(self):
+        """Pathological error window should default to 60s."""
+        config = ashlar_server.Config()
+        assert config.pathological_error_window_sec == 60.0
+
+    def test_config_max_pathological_restarts(self):
+        """Max pathological restarts should default to 1."""
+        config = ashlar_server.Config()
+        assert config.max_pathological_restarts == 1
+
+    # ── Agent fields ──
+
+    def test_agent_pathological_default_false(self):
+        """Agent._pathological should default to False."""
+        agent = ashlar_server.Agent(
+            id="t001", name="test", role="general", status="working",
+            working_dir="/tmp", backend="claude-code", task="test",
+        )
+        assert agent._pathological is False
+
+    def test_agent_context_auto_paused_default_false(self):
+        """Agent._context_auto_paused should default to False."""
+        agent = ashlar_server.Agent(
+            id="t001", name="test", role="general", status="working",
+            working_dir="/tmp", backend="claude-code", task="test",
+        )
+        assert agent._context_auto_paused is False
+
+    def test_agent_pressure_paused_default_false(self):
+        """Agent._pressure_paused should default to False."""
+        agent = ashlar_server.Agent(
+            id="t001", name="test", role="general", status="working",
+            working_dir="/tmp", backend="claude-code", task="test",
+        )
+        assert agent._pressure_paused is False
+
+    # ── Per-agent CPU method ──
+
+    def test_get_agent_cpu_exists(self):
+        """AgentManager should have get_agent_cpu method."""
+        assert hasattr(ashlar_server.AgentManager, 'get_agent_cpu')
+
+    def test_get_agent_cpu_no_pid(self):
+        """get_agent_cpu should return 0.0 for agent without PID."""
+        import asyncio
+        config = ashlar_server.Config()
+        manager = ashlar_server.AgentManager(config)
+        agent = ashlar_server.Agent(
+            id="t001", name="test", role="general", status="working",
+            working_dir="/tmp", backend="claude-code", task="test",
+        )
+        manager.agents["t001"] = agent
+        result = asyncio.run(manager.get_agent_cpu("t001"))
+        assert result == 0.0
+
+    def test_get_agent_cpu_missing_agent(self):
+        """get_agent_cpu should return 0.0 for nonexistent agent."""
+        import asyncio
+        config = ashlar_server.Config()
+        manager = ashlar_server.AgentManager(config)
+        result = asyncio.run(manager.get_agent_cpu("nonexistent"))
+        assert result == 0.0
+
+    # ── CPU tracking in metrics loop ──
+
+    def test_cpu_tracked_in_metrics_loop(self):
+        """metrics_loop should update agent.cpu_pct."""
+        src = inspect.getsource(ashlar_server.metrics_loop)
+        assert "cpu_pct" in src
+        assert "get_agent_cpu" in src
+
+    # ── check_system_pressure ──
+
+    def test_check_system_pressure_exists(self):
+        """AgentManager should have check_system_pressure method."""
+        assert hasattr(ashlar_server.AgentManager, 'check_system_pressure')
+
+    def test_check_system_pressure_returns_dict(self):
+        """check_system_pressure should return a dict with expected keys."""
+        config = ashlar_server.Config()
+        manager = ashlar_server.AgentManager(config)
+        result = manager.check_system_pressure()
+        assert isinstance(result, dict)
+        assert "cpu_pressure" in result
+        assert "memory_pressure" in result
+
+    # ── Spawn pressure block ──
+
+    def test_spawn_checks_system_pressure(self):
+        """spawn() should check system pressure before spawning."""
+        src = inspect.getsource(ashlar_server.AgentManager.spawn)
+        assert "check_system_pressure" in src
+        assert "spawn_pressure_block" in src
+
+    # ── Pathological error detection ──
+
+    def test_pathological_detection_in_health_loop(self):
+        """Health check loop should detect pathological error loops."""
+        src = inspect.getsource(ashlar_server.health_check_loop)
+        assert "_pathological" in src
+        assert "agent_pathological" in src
+        assert "pathological_error_window_sec" in src
+
+    def test_pathological_limits_restarts(self):
+        """Health loop should limit max_restarts for pathological agents."""
+        src = inspect.getsource(ashlar_server.health_check_loop)
+        assert "max_pathological_restarts" in src
+
+    # ── Context auto-pause ──
+
+    def test_context_auto_pause_in_health_loop(self):
+        """Health check loop should auto-pause agents at context threshold."""
+        src = inspect.getsource(ashlar_server.health_check_loop)
+        assert "context_auto_pause_threshold" in src
+        assert "_context_auto_paused" in src
+        assert "agent_context_auto_paused" in src
+
+    # ── System pressure response ──
+
+    def test_fleet_pressure_response_in_health_loop(self):
+        """Health check loop should respond to system pressure."""
+        src = inspect.getsource(ashlar_server.health_check_loop)
+        assert "fleet_pressure_response" in src
+        assert "_fleet_pressure_warned" in src
+        assert "_pressure_paused" in src
+
+    def test_pressure_relief_resumes_agents(self):
+        """Health loop should resume pressure-paused agents when pressure relieved."""
+        src = inspect.getsource(ashlar_server.health_check_loop)
+        assert "_pressure_paused" in src
+        # Check that there's logic to resume when pressure is relieved
+        assert "Pressure relieved" in src or "_fleet_pressure_warned" in src
+
+    # ── Graduated memory response ──
+
+    def test_memory_watchdog_graduated_response(self):
+        """Memory watchdog should pause before kill (graduated response)."""
+        src = inspect.getsource(ashlar_server.memory_watchdog_loop)
+        assert "agent_memory_paused" in src
+        assert "pause_threshold" in src
+        assert "agent_memory_pause_pct" in src
+
+    def test_memory_watchdog_still_kills_at_limit(self):
+        """Memory watchdog should still kill agents exceeding full limit."""
+        src = inspect.getsource(ashlar_server.memory_watchdog_loop)
+        assert "agent.memory_mb > limit" in src
+        assert "agent_killed" in src

@@ -247,6 +247,14 @@ class Config:
     # Cost budget
     cost_budget_usd: float = 0.0  # 0 = no limit
     cost_budget_auto_pause: bool = False
+    # Resource exhaustion cascade protection
+    system_cpu_pressure_threshold: float = 90.0  # System CPU % to trigger fleet pressure response
+    system_memory_pressure_threshold: float = 90.0  # System memory % to trigger fleet pressure response
+    spawn_pressure_block: bool = True  # Block spawning when system under pressure
+    agent_memory_pause_pct: float = 0.85  # Pause agent at this % of memory_limit_mb
+    context_auto_pause_threshold: float = 0.95  # Auto-pause agent at this context %
+    pathological_error_window_sec: float = 60.0  # If agent errors within this time of restart, mark pathological
+    max_pathological_restarts: int = 1  # Max restarts for agents that error rapidly after restart
     # Pattern alerting — regex patterns that trigger high-priority notifications
     alert_patterns: list = field(default_factory=lambda: [
         {"pattern": r"(?i)CRITICAL|FATAL|panic|segfault|segmentation fault", "severity": "critical", "label": "Critical Error"},
@@ -1031,6 +1039,10 @@ class Agent:
     _stale_warned: bool = field(default=False, repr=False)
     _workflow_stall_warned: bool = field(default=False, repr=False)
     _workflow_hung_warned: bool = field(default=False, repr=False)
+    _pathological: bool = field(default=False, repr=False)  # True if agent errors rapidly after restart
+    _last_working_time: float = field(default=0.0, repr=False)  # monotonic time of last transition TO working
+    _context_auto_paused: bool = field(default=False, repr=False)  # True if auto-paused due to context exhaustion
+    _pressure_paused: bool = field(default=False, repr=False)  # True if auto-paused due to system pressure
     _status_updated_at: float = field(default=0.0, repr=False)  # monotonic time of last status change
     # Intelligence fields — structured output parsing
     _tool_invocations: collections.deque = field(default_factory=lambda: collections.deque(maxlen=500), repr=False)
@@ -1646,6 +1658,17 @@ class AgentManager:
         """Spawn a new agent. Returns the Agent object."""
         if len(self.agents) >= self.config.max_agents:
             raise ValueError(f"Maximum agents ({self.config.max_agents}) reached")
+
+        # System pressure check — block spawning if system is overloaded
+        if self.config.spawn_pressure_block:
+            pressure = self.check_system_pressure()
+            if pressure.get("cpu_pressure") or pressure.get("memory_pressure"):
+                reasons = []
+                if pressure.get("cpu_pressure"):
+                    reasons.append(f"CPU at {pressure.get('cpu_pct', 0):.0f}%")
+                if pressure.get("memory_pressure"):
+                    reasons.append(f"Memory at {pressure.get('memory_pct', 0):.0f}%")
+                raise ValueError(f"System under pressure ({', '.join(reasons)}), spawning blocked. Lower load or disable spawn_pressure_block in config.")
 
         # ── Input validation ──
 
@@ -2576,6 +2599,38 @@ class AgentManager:
             return round(total / 1e6, 1)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return 0.0
+
+    async def get_agent_cpu(self, agent_id: str) -> float:
+        """Get CPU % of agent's process tree (sum of all children)."""
+        agent = self.agents.get(agent_id)
+        if not agent or not agent.pid:
+            return 0.0
+
+        try:
+            proc = psutil.Process(agent.pid)
+            total = proc.cpu_percent(interval=None)
+            for child in proc.children(recursive=True):
+                try:
+                    total += child.cpu_percent(interval=None)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            return round(total, 1)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return 0.0
+
+    def check_system_pressure(self) -> dict[str, bool]:
+        """Check if system is under resource pressure. Returns dict of pressure flags."""
+        try:
+            cpu = psutil.cpu_percent(interval=None)
+            mem = psutil.virtual_memory().percent
+            return {
+                "cpu_pressure": cpu >= self.config.system_cpu_pressure_threshold,
+                "memory_pressure": mem >= self.config.system_memory_pressure_threshold,
+                "cpu_pct": cpu,
+                "memory_pct": mem,
+            }
+        except Exception:
+            return {"cpu_pressure": False, "memory_pressure": False, "cpu_pct": 0.0, "memory_pct": 0.0}
 
     # ── Workflow dependency resolution ──
 
@@ -8405,10 +8460,11 @@ async def metrics_loop(app: web.Application) -> None:
         try:
             metrics = await collect_system_metrics(manager)
 
-            # Also update per-agent memory
+            # Also update per-agent memory and CPU
             for agent_id, agent in list(manager.agents.items()):
                 try:
                     agent.memory_mb = await manager.get_agent_memory(agent_id)
+                    agent.cpu_pct = await manager.get_agent_cpu(agent_id)
                 except Exception:
                     pass
 
@@ -8447,6 +8503,22 @@ async def health_check_loop(app: web.Application) -> None:
                 if agent.status == "error":
                     now = time.monotonic()
                     error_duration = now - agent._error_entered_at if agent._error_entered_at > 0 else 0
+
+                    # Pathological error loop detection: if agent errored within window of last restart
+                    if agent.restart_count > 0 and agent._error_entered_at > 0 and agent.last_restart_time > 0:
+                        time_working = agent._error_entered_at - agent.last_restart_time
+                        if time_working < app["config"].pathological_error_window_sec and not agent._pathological:
+                            agent._pathological = True
+                            agent.max_restarts = min(agent.max_restarts, app["config"].max_pathological_restarts)
+                            log.warning(
+                                f"Agent {agent_id} ({agent.name}) flagged as pathological — "
+                                f"errored {time_working:.0f}s after restart (threshold: {app['config'].pathological_error_window_sec}s)"
+                            )
+                            await hub.broadcast_event(
+                                "agent_pathological",
+                                f"Agent {agent.name} is in a pathological error loop (errors within {time_working:.0f}s of restart). Auto-restart limited.",
+                                agent_id, agent.name,
+                            )
 
                     # Only attempt restart if error has persisted >10s
                     if error_duration > 10.0 and agent.restart_count < agent.max_restarts:
@@ -8545,6 +8617,24 @@ async def health_check_loop(app: web.Application) -> None:
                             agent_id, agent.name,
                         )
 
+                # -- Context exhaustion auto-pause (cascade prevention) --
+                ctx_pause_threshold = app["config"].context_auto_pause_threshold
+                if agent.context_pct >= ctx_pause_threshold and agent.status in ("working", "planning", "reading"):
+                    if not agent._context_auto_paused:
+                        agent._context_auto_paused = True
+                        log.warning(f"Agent {agent_id} ({agent.name}) context at {agent.context_pct:.0%} — auto-pausing to prevent exhaustion crash")
+                        try:
+                            await manager.pause(agent_id)
+                            agent.create_snapshot(trigger="context_auto_pause")
+                            await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
+                            await hub.broadcast_event(
+                                "agent_context_auto_paused",
+                                f"Agent {agent.name} auto-paused at {agent.context_pct:.0%} context — prevents crash cascade",
+                                agent_id, agent.name,
+                            )
+                        except Exception as cp_err:
+                            log.warning(f"Failed to auto-pause agent {agent_id} for context: {cp_err}")
+
                 # -- Workflow stage stall detection --
                 if agent.workflow_run_id and agent.status == "paused":
                     pause_duration = time.monotonic() - agent.last_output_time if agent.last_output_time > 0 else 0
@@ -8593,6 +8683,56 @@ async def health_check_loop(app: web.Application) -> None:
                         )
         except Exception as e:
             log.error(f"Fleet budget check error: {e}")
+
+        # Fleet-wide system pressure response — pause lowest-health agents to relieve pressure
+        try:
+            pressure = manager.check_system_pressure()
+            if pressure.get("cpu_pressure") or pressure.get("memory_pressure"):
+                if not app.get('_fleet_pressure_warned', False):
+                    app['_fleet_pressure_warned'] = True
+                    reasons = []
+                    if pressure.get("cpu_pressure"):
+                        reasons.append(f"CPU {pressure.get('cpu_pct', 0):.0f}%")
+                    if pressure.get("memory_pressure"):
+                        reasons.append(f"Memory {pressure.get('memory_pct', 0):.0f}%")
+                    pressure_str = ", ".join(reasons)
+                    log.warning(f"System pressure detected ({pressure_str}) — pausing lowest-health working agents")
+                    # Sort working agents by health_score ascending, pause bottom 25% (at least 1)
+                    working = sorted(
+                        [a for a in list(manager.agents.values()) if a.status in ("working", "planning", "reading")],
+                        key=lambda a: a.health_score,
+                    )
+                    to_pause = max(1, len(working) // 4)
+                    paused_names = []
+                    for a in working[:to_pause]:
+                        try:
+                            a._pressure_paused = True
+                            await manager.pause(a.id)
+                            await hub.broadcast({"type": "agent_update", "agent": a.to_dict()})
+                            paused_names.append(a.name)
+                        except Exception as pp_err:
+                            log.warning(f"Failed to pressure-pause agent {a.id}: {pp_err}")
+                    if paused_names:
+                        await hub.broadcast_event(
+                            "fleet_pressure_response",
+                            f"System under pressure ({pressure_str}). Paused {len(paused_names)} agent(s): {', '.join(paused_names)}",
+                            None, None,
+                        )
+            else:
+                # Pressure relieved — clear flag so it can trigger again
+                if app.get('_fleet_pressure_warned', False):
+                    app['_fleet_pressure_warned'] = False
+                    # Resume pressure-paused agents
+                    for a in list(manager.agents.values()):
+                        if a._pressure_paused and a.status == "paused":
+                            try:
+                                a._pressure_paused = False
+                                await manager.resume(a.id)
+                                await hub.broadcast({"type": "agent_update", "agent": a.to_dict()})
+                            except Exception:
+                                pass
+        except Exception as e:
+            log.debug(f"Fleet pressure check error: {e}")
 
         # Auto-spawn from task queue when slots are available
         try:
@@ -8660,6 +8800,7 @@ async def memory_watchdog_loop(app: web.Application) -> None:
     hub: WebSocketHub = app["ws_hub"]
     limit = app["config"].memory_limit_mb
     warn_threshold = limit * 0.75
+    pause_threshold = limit * app["config"].agent_memory_pause_pct
     _cleanup_counter = 0
 
     while True:
@@ -8671,6 +8812,21 @@ async def memory_watchdog_loop(app: web.Application) -> None:
                     await manager.kill(agent_id)
                     await hub.broadcast({"type": "agent_removed", "agent_id": agent_id})
                     await hub.broadcast_event("agent_killed", f"Agent {name} killed: memory limit exceeded ({agent.memory_mb}MB)", agent_id, name)
+                elif agent.memory_mb > pause_threshold and agent.status in ("working", "planning", "reading"):
+                    # Graduated response: pause before kill to prevent cascade
+                    if not getattr(agent, '_memory_pause_warned', False):
+                        agent._memory_pause_warned = True
+                        log.warning(f"Agent {agent_id} memory at {agent.memory_mb}MB ({pause_threshold}MB pause threshold) — auto-pausing")
+                        try:
+                            await manager.pause(agent_id)
+                            await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
+                            await hub.broadcast_event(
+                                "agent_memory_paused",
+                                f"Agent {agent.name} auto-paused at {agent.memory_mb}MB (limit: {limit}MB) — prevent cascade",
+                                agent_id, agent.name,
+                            )
+                        except Exception as mp_err:
+                            log.warning(f"Failed to memory-pause agent {agent_id}: {mp_err}")
                 elif agent.memory_mb > warn_threshold:
                     log.warning(f"Agent {agent_id} memory warning: {agent.memory_mb}MB / {limit}MB")
         except Exception as e:
