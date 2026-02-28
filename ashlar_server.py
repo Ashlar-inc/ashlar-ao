@@ -6902,6 +6902,8 @@ async def output_capture_loop(app: web.Application) -> None:
     interval = app["config"].output_capture_interval
     _archive_retry_queue: list[tuple[str, list[str], int]] = []  # (agent_id, lines, offset)
     _seen_conflicts: set[tuple[str, frozenset]] = set()  # Dedup file conflict notifications
+    _recent_errors: list[tuple[float, str]] = []  # (timestamp, agent_id) for multi-error detection
+    _fleet_error_warned = False
 
     while True:
         try:
@@ -7124,6 +7126,20 @@ async def output_capture_loop(app: web.Application) -> None:
                             # Reset health warning flags so they can re-fire on recovery+relapse
                             agent._health_low_warned = False
                             agent._health_critical_warned = False
+                            # Track for multi-error detection
+                            now_mono = time.monotonic()
+                            _recent_errors.append((now_mono, agent_id))
+                            _recent_errors[:] = [(t, a) for t, a in _recent_errors if now_mono - t < 60]
+                            if len(_recent_errors) >= 2 and not _fleet_error_warned:
+                                err_names = [manager.agents[a].name for _, a in _recent_errors if a in manager.agents]
+                                _fleet_error_warned = True
+                                await hub.broadcast_event(
+                                    "fleet_multi_error",
+                                    f"Multiple agents errored: {', '.join(err_names)}",
+                                    agent_id, agent.name,
+                                )
+                            elif len(_recent_errors) < 2:
+                                _fleet_error_warned = False
                             wf_run, failure_action = manager.on_agent_failed(agent_id)
                             if wf_run:
                                 if failure_action == "retry":
@@ -7146,6 +7162,20 @@ async def output_capture_loop(app: web.Application) -> None:
                             wf_run = manager.on_agent_complete(agent_id)
                             if wf_run:
                                 await manager.resolve_workflow_deps(wf_run, hub)
+
+                            # Broadcast completion event with summary
+                            duration = time.monotonic() - agent._spawn_time if agent._spawn_time else 0
+                            dur_str = f"{int(duration // 60)}m{int(duration % 60)}s" if duration > 60 else f"{int(duration)}s"
+                            cost_str = f"${agent.estimated_cost_usd:.2f}" if agent.estimated_cost_usd > 0 else ""
+                            completion_msg = f"Agent {agent.name} completed"
+                            if agent.summary:
+                                completion_msg += f": {agent.summary}"
+                            await hub.broadcast_event(
+                                "agent_completed",
+                                completion_msg,
+                                agent_id, agent.name,
+                                metadata={"duration": dur_str, "cost": cost_str, "summary": agent.summary or ""},
+                            )
 
                             # Suggest follow-up agents based on what this agent did
                             suggestion = _suggest_followup(agent)

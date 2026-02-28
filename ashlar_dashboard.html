@@ -3789,6 +3789,10 @@ body {
             <span class="metric-label">Cost</span>
             <span class="metric-value" id="metricCost">$0.00</span>
         </div>
+        <div class="metric" id="metricFleetStatus" title="Fleet status summary" style="display:none">
+            <span class="metric-label">Fleet</span>
+            <span class="metric-value" id="metricFleetText" style="font-size:10px;letter-spacing:0;color:var(--text-secondary)"></span>
+        </div>
         <div class="metric intelligence-status" id="intelligenceStatus" style="display:none" onclick="toggleInsightsPanel()" role="button" tabindex="0" title="Intelligence status — click for insights">
             <span class="intelligence-dot"></span>
             <span class="metric-label">AI</span>
@@ -5496,6 +5500,16 @@ function handleEvent(data) {
             playTone([220], 0.3);
             sendBrowserNotification('Agent error', msg, data.agent_id);
             break;
+        case 'agent_completed':
+            showToast(msg, 'success');
+            playTone([440, 550, 660], 0.1);
+            sendBrowserNotification('Agent completed', msg, data.agent_id);
+            break;
+        case 'fleet_multi_error':
+            showToast(msg, 'error');
+            playTone([220, 165, 110], 0.2);
+            sendBrowserNotification('Fleet alert: Multiple errors', msg);
+            break;
         case 'agent_restarted':
             showToast(msg, 'info');
             playTone([440, 660], 0.1);
@@ -5582,12 +5596,36 @@ function scheduleRender() {
             updateStatusFilterChips();
             updateAmbientGradient();
             updateGridLayout();
+            updateFleetStatus();
             // Re-apply filter after render (renderAgentGrid resets card visibility)
             if (state.statusFilter !== 'all' || gridSearchQuery) {
                 filterAgentGrid(gridSearchQuery);
             }
         });
     }
+}
+
+function updateFleetStatus() {
+    const el = document.getElementById('metricFleetStatus');
+    const textEl = document.getElementById('metricFleetText');
+    if (state.agents.size === 0) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    const counts = {};
+    for (const [, agent] of state.agents) {
+        counts[agent.status] = (counts[agent.status] || 0) + 1;
+    }
+    const parts = [];
+    if (counts.working) parts.push(`${counts.working}W`);
+    if (counts.planning) parts.push(`${counts.planning}P`);
+    if (counts.waiting) parts.push(`${counts.waiting}!`);
+    if (counts.error) parts.push(`${counts.error}E`);
+    if (counts.idle) parts.push(`${counts.idle}I`);
+    if (counts.spawning) parts.push(`${counts.spawning}S`);
+    textEl.textContent = parts.join(' ');
+    // Color based on worst status
+    if (counts.error) textEl.style.color = 'var(--danger)';
+    else if (counts.waiting) textEl.style.color = 'var(--orange)';
+    else textEl.style.color = 'var(--text-secondary)';
 }
 
 // ── Agent Card Grid ──
@@ -6040,6 +6078,12 @@ function updateAgentCard(card, agent) {
     if (agent.output_rate) metaParts.push(`${Math.round(agent.output_rate)}l/m`);
     if (agent.estimated_cost_usd > 0.001) metaParts.push(`$${agent.estimated_cost_usd.toFixed(2)}`);
     if (agent.files_touched > 0) metaParts.push(`${agent.files_touched} files`);
+    // Uptime
+    if (agent.created_at) {
+        const elapsed = (Date.now() - new Date(agent.created_at).getTime()) / 1000;
+        if (elapsed > 3600) metaParts.push(`${Math.floor(elapsed/3600)}h${Math.floor((elapsed%3600)/60)}m`);
+        else if (elapsed > 60) metaParts.push(`${Math.floor(elapsed/60)}m`);
+    }
     metaParts.push(timeAgo(agent.updated_at || agent.created_at));
     meta.innerHTML = metaParts.map(p => `<span>${p}</span>`).join('');
 
