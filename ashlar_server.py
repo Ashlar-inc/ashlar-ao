@@ -362,6 +362,25 @@ def load_config(has_claude: bool = True) -> Config:
     hung_val = alerts.get("hung_timeout_minutes", 10)
     hung_val = _validate(hung_val, lambda v: isinstance(v, int) and 1 <= v <= 120, 10, "hung_timeout_minutes")
 
+    # Load alert patterns from YAML (or use defaults)
+    yaml_alert_patterns = alerts.get("patterns", [])
+    if yaml_alert_patterns and isinstance(yaml_alert_patterns, list):
+        validated_alert_patterns = []
+        for ap in yaml_alert_patterns:
+            if isinstance(ap, dict) and "pattern" in ap:
+                try:
+                    re.compile(ap["pattern"])
+                    validated_alert_patterns.append({
+                        "pattern": ap["pattern"],
+                        "severity": ap.get("severity", "warning"),
+                        "label": ap.get("label", "Alert"),
+                    })
+                except re.error as e:
+                    log.warning(f"Invalid alert pattern regex: {ap.get('pattern')!r} — {e}")
+        alert_patterns_final = validated_alert_patterns if validated_alert_patterns else None
+    else:
+        alert_patterns_final = None  # Will use Config defaults
+
     # Resolve LLM API key from env var
     api_key_env = llm.get("api_key_env", "XAI_API_KEY")
     llm_api_key = os.environ.get(api_key_env, "")
@@ -445,6 +464,7 @@ def load_config(has_claude: bool = True) -> Config:
         intelligence_meta_interval=intel.get("meta_interval_sec", 30.0),
         cost_budget_usd=float(raw.get("cost_budget_usd", 0)),
         cost_budget_auto_pause=bool(raw.get("cost_budget_auto_pause", False)),
+        **({"alert_patterns": alert_patterns_final} if alert_patterns_final else {}),
     )
 
 
@@ -5938,6 +5958,10 @@ async def put_config(request: web.Request) -> web.Response:
         "hung_timeout_minutes": lambda v: isinstance(v, int) and 1 <= v <= 120,
         "cost_budget_usd": lambda v: isinstance(v, (int, float)) and v >= 0,
         "cost_budget_auto_pause": lambda v: isinstance(v, bool),
+        "intelligence_enabled": lambda v: isinstance(v, bool),
+        "intelligence_model": lambda v: isinstance(v, str) and len(v) > 0,
+        "intelligence_summary_interval": lambda v: isinstance(v, (int, float)) and 3.0 <= v <= 120.0,
+        "intelligence_meta_interval": lambda v: isinstance(v, (int, float)) and 5.0 <= v <= 300.0,
     }
 
     # Clamp max_restarts to [1, 10] range
@@ -5971,6 +5995,12 @@ async def put_config(request: web.Request) -> web.Response:
         "cost_budget_usd": "cost_budget_usd",
         "cost_budget_auto_pause": "cost_budget_auto_pause",
     }
+    intel_keys = {
+        "intelligence_enabled": "enabled",
+        "intelligence_model": "model",
+        "intelligence_summary_interval": "summary_interval_sec",
+        "intelligence_meta_interval": "meta_interval_sec",
+    }
 
     for key, value in data.items():
         if key not in allowed_keys:
@@ -5983,6 +6013,8 @@ async def put_config(request: web.Request) -> web.Response:
             yaml_update.setdefault("voice", {})[voice_keys[key]] = value
         elif key in alert_keys:
             yaml_update.setdefault("alerts", {})[alert_keys[key]] = value
+        elif key in intel_keys:
+            yaml_update.setdefault("intelligence", {})[intel_keys[key]] = value
 
     # FIRST: write YAML to disk. Only update in-memory config on success.
     config_path = ASHLAR_DIR / "ashlar.yaml"
@@ -6012,6 +6044,21 @@ async def put_config(request: web.Request) -> web.Response:
     summarizer = request.app.get("llm_summarizer")
     if summarizer and "llm_enabled" in data:
         summarizer.config = config
+
+    # If intelligence model changed, update client
+    intel_client = request.app.get("intelligence_client")
+    if intel_client and "intelligence_model" in data:
+        intel_client.model = data["intelligence_model"]
+
+    # Recompile alert patterns if config changed
+    if "alert_patterns" in data and isinstance(data["alert_patterns"], list):
+        compiled_alerts = []
+        for ap in data["alert_patterns"]:
+            try:
+                compiled_alerts.append((re.compile(ap["pattern"]), ap.get("severity", "warning"), ap.get("label", "Alert")))
+            except (re.error, KeyError):
+                pass
+        request.app["_compiled_alert_patterns"] = compiled_alerts if compiled_alerts else None
 
     return web.json_response(config.to_dict())
 

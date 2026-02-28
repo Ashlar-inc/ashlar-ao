@@ -2778,3 +2778,53 @@ class TestCriticalBugFixes:
         import inspect
         src = inspect.getsource(ashlar_server.create_app)
         assert "_compiled_alert_patterns" in src
+
+
+class TestConfigLoadingAndValidation:
+    """Tests for config loading with alert_patterns and intelligence validators."""
+
+    def test_load_config_parses_alert_patterns(self):
+        """load_config should parse alert patterns from YAML alerts section."""
+        import inspect
+        src = inspect.getsource(ashlar_server.load_config)
+        assert "alert_patterns" in src
+        assert "validated_alert_patterns" in src
+
+    def test_load_config_validates_alert_regex(self):
+        """load_config should validate alert pattern regex."""
+        import inspect
+        src = inspect.getsource(ashlar_server.load_config)
+        assert "re.compile" in src
+        assert "re.error" in src
+
+    def test_put_config_has_intelligence_validators(self):
+        """put_config should validate intelligence fields."""
+        import inspect
+        src = inspect.getsource(ashlar_server.put_config)
+        assert "intelligence_enabled" in src
+        assert "intelligence_model" in src
+        assert "intelligence_summary_interval" in src
+        assert "intelligence_meta_interval" in src
+
+    def test_put_config_maps_intel_to_yaml(self):
+        """put_config should map intelligence fields to YAML intelligence section."""
+        import inspect
+        src = inspect.getsource(ashlar_server.put_config)
+        assert "intel_keys" in src
+        assert '"intelligence"' in src
+
+    def test_put_config_recompiles_alert_patterns(self):
+        """put_config should recompile alert patterns when config changes."""
+        import inspect
+        src = inspect.getsource(ashlar_server.put_config)
+        assert "_compiled_alert_patterns" in src
+
+    def test_default_config_has_alert_patterns(self):
+        """Default Config should have 5 alert patterns."""
+        config = ashlar_server.Config()
+        assert len(config.alert_patterns) == 5
+        # All should have required fields
+        for ap in config.alert_patterns:
+            assert "pattern" in ap
+            assert "severity" in ap
+            assert "label" in ap
