@@ -4671,6 +4671,89 @@ body {
     background: var(--accent); color: white; border: none; border-radius: var(--radius-sm);
     font-size: 10px; padding: 3px 8px; cursor: pointer;
 }
+
+/* ── Search & Replace Popover ── */
+.search-replace-popover {
+    display: none; position: absolute; right: 8px; top: 8px;
+    background: var(--bg-elevated); border: 1px solid var(--border-default);
+    border-radius: var(--radius-md); padding: 10px; z-index: 55;
+    box-shadow: var(--shadow-lg); width: 320px;
+}
+.search-replace-popover.active { display: flex; flex-direction: column; gap: 6px; }
+.search-replace-popover label { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+.search-replace-popover input {
+    width: 100%; background: var(--bg-input); border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm); color: var(--text-primary); font-size: 12px;
+    padding: 5px 8px; font-family: var(--font-mono); outline: none;
+}
+.search-replace-popover input:focus { border-color: var(--accent); }
+.sr-actions { display: flex; gap: 4px; margin-top: 4px; }
+.sr-actions button {
+    padding: 4px 10px; font-size: 10px; border-radius: var(--radius-sm);
+    border: none; cursor: pointer; font-family: var(--font-sans);
+}
+.sr-actions .sr-apply { background: var(--accent); color: white; }
+.sr-actions .sr-clear { background: var(--bg-surface); color: var(--text-secondary); border: 1px solid var(--border-default); }
+.sr-count { font-size: 10px; color: var(--text-tertiary); font-family: var(--font-mono); }
+
+/* ── Auto-Collapse Tool Results ── */
+.tool-result-collapsed {
+    border-left: 2px solid var(--border-default); margin-left: 4px;
+    padding-left: 8px; cursor: pointer;
+}
+.tool-result-expander {
+    display: inline-block; font-size: 10px; color: var(--accent); cursor: pointer;
+    padding: 1px 6px; background: rgba(99,102,241,0.08); border-radius: var(--radius-sm);
+    margin: 2px 0; font-family: var(--font-mono);
+}
+.tool-result-expander:hover { background: rgba(99,102,241,0.15); }
+
+/* ── Deep View Shortcut Reference ── */
+.deep-shortcuts-popover {
+    display: none; position: absolute; right: 8px; top: 100%;
+    margin-top: 4px; background: var(--bg-elevated); border: 1px solid var(--border-default);
+    border-radius: var(--radius-md); padding: 12px; z-index: 55;
+    box-shadow: var(--shadow-lg); width: 260px;
+}
+.deep-shortcuts-popover.active { display: block; }
+.dsp-title { font-size: 11px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
+.dsp-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 11px; }
+.dsp-key { color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 3px; }
+.dsp-desc { color: var(--text-secondary); }
+
+/* ── New Lines Diff Highlight ── */
+.terminal-line.new-line { border-left: 2px solid var(--success); padding-left: 8px; animation: newLineFadeIn 0.3s ease; }
+@keyframes newLineFadeIn { from { background: rgba(34,197,94,0.15); } to { background: transparent; } }
+
+/* ── Card Expanded Preview ── */
+.card-inline-preview {
+    grid-column: 1 / -1; background: var(--bg-surface); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md); padding: 8px 12px; font-family: var(--font-mono);
+    font-size: 11px; line-height: 1.5; color: rgba(255,255,255,0.75);
+    max-height: 120px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word;
+    animation: slideDown 0.2s ease;
+}
+@keyframes slideDown { from { opacity: 0; max-height: 0; } to { opacity: 1; max-height: 120px; } }
+.card-inline-preview .preview-close {
+    float: right; background: none; border: none; color: var(--text-tertiary);
+    cursor: pointer; font-size: 12px; padding: 0 2px;
+}
+.card-inline-preview .preview-close:hover { color: var(--text-primary); }
+
+/* ── Fleet Output Statistics ── */
+.fleet-stats-panel {
+    display: none; background: var(--bg-surface); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md); padding: 16px; margin: 8px 16px;
+}
+.fleet-stats-panel.active { display: block; }
+.fleet-stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.fleet-stats-card {
+    background: var(--bg-elevated); border-radius: var(--radius-sm); padding: 12px;
+    border: 1px solid var(--border-subtle);
+}
+.fleet-stats-card .fsc-value { font-size: 20px; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono); }
+.fleet-stats-card .fsc-label { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+.fleet-stats-card .fsc-detail { font-size: 10px; color: var(--text-secondary); margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -4817,6 +4900,7 @@ body {
         <button class="btn btn-secondary btn-sm" onclick="openConflicts()" title="File Conflicts"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg> Conflicts</button>
         <button class="btn btn-secondary btn-sm" onclick="openEventLog()" title="Event Log"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> Events</button>
         <button class="btn btn-secondary btn-sm" onclick="openGlobalSearch()" title="Search All Outputs (Cmd+Shift+F)"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Search All</button>
+        <button class="btn btn-secondary btn-sm" onclick="toggleFleetStats()" title="Fleet Output Statistics">⊞ Stats</button>
     </div>
     <table class="agent-table" id="agentTable">
         <thead><tr>
@@ -4850,6 +4934,13 @@ body {
         <span class="conflict-banner-text" id="conflictBannerText"></span>
         <button class="conflict-banner-btn" onclick="showConflictSummary()">Details</button>
         <button class="conflict-banner-dismiss" onclick="dismissConflictBanner()" title="Dismiss">&times;</button>
+    </div>
+    <div class="fleet-stats-panel" id="fleetStatsPanel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <span style="font-size:13px;font-weight:700;color:var(--text-primary)">Fleet Output Statistics</span>
+            <button class="btn btn-ghost" style="font-size:11px" onclick="closeFleetStats()">✕</button>
+        </div>
+        <div class="fleet-stats-grid" id="fleetStatsGrid"></div>
     </div>
     <div class="agent-grid" id="agentGrid">
         <div class="empty-state" id="emptyState">
@@ -5046,6 +5137,20 @@ body {
             <button class="deep-action-btn" onclick="openHandoff()" title="Handoff to another agent"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></span> Handoff</button>
             <button class="deep-action-btn" onclick="deepExportOutput()" title="Download output log"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg></span> Export</button>
             <button class="deep-action-btn danger" onclick="deepKill()">Kill</button>
+            <button class="deep-action-btn" onclick="toggleDeepShortcutsRef()" title="Keyboard shortcuts" style="position:relative">?
+                <div class="deep-shortcuts-popover" id="deepShortcutsPopover">
+                    <div class="dsp-title">Deep View Shortcuts</div>
+                    <div class="dsp-row"><span class="dsp-desc">Search</span><span class="dsp-key">⌘F</span></div>
+                    <div class="dsp-row"><span class="dsp-desc">Go to line</span><span class="dsp-key">⌘G</span></div>
+                    <div class="dsp-row"><span class="dsp-desc">Split pane</span><span class="dsp-key">⌘\</span></div>
+                    <div class="dsp-row"><span class="dsp-desc">Close</span><span class="dsp-key">Esc</span></div>
+                    <div class="dsp-row"><span class="dsp-desc">Next agent</span><span class="dsp-key">⇧→</span></div>
+                    <div class="dsp-row"><span class="dsp-desc">Prev agent</span><span class="dsp-key">⇧←</span></div>
+                    <div class="dsp-row"><span class="dsp-desc">Send message</span><span class="dsp-key">⌘↩</span></div>
+                    <div class="dsp-row"><span class="dsp-desc">Approve</span><span class="dsp-key">⌘⇧A</span></div>
+                    <div class="dsp-row"><span class="dsp-desc">Search/Replace</span><span class="dsp-key">⌘H</span></div>
+                </div>
+            </button>
         </div>
     </div>
     <div id="deepPromptBar" class="deep-prompt-bar" style="display:none"></div>
@@ -5063,6 +5168,8 @@ body {
         <button class="terminal-toolbar-btn" id="toolbarToolFilter" onclick="toggleToolFilterBar()" title="Filter by tool type">⚙ Filter</button>
         <button class="terminal-toolbar-btn" id="toolbarHighlight" onclick="toggleHighlightPopover()" title="Custom highlight rules">✦ Highlight</button>
         <button class="terminal-toolbar-btn" id="toolbarSplitPane" onclick="toggleSplitPane()" title="Split pane with notes (Cmd+\\)">⫿ Split</button>
+        <button class="terminal-toolbar-btn" id="toolbarSearchReplace" onclick="toggleSearchReplace()" title="Search and replace (Cmd+H)">⇄ Replace</button>
+        <button class="terminal-toolbar-btn" id="toolbarAutoCollapse" onclick="toggleAutoCollapse()" title="Auto-collapse long tool results">⊟ Collapse</button>
         <div class="highlight-popover" id="highlightPopover">
             <div style="font-size:11px;font-weight:700;color:var(--text-primary);margin-bottom:8px">Custom Highlights</div>
             <div id="highlightRulesList"></div>
@@ -5161,6 +5268,18 @@ body {
                 <button class="btn btn-secondary btn-sm" onclick="refreshWordCloud()" style="font-size:10px;padding:2px 8px">Refresh</button>
             </div>
             <div id="wordCloudContent" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px"></div>
+        </div>
+        <div class="search-replace-popover" id="searchReplacePopover">
+            <label>Find (regex)</label>
+            <input type="text" id="srFindInput" placeholder="Pattern..." oninput="previewSearchReplace()">
+            <label>Replace with</label>
+            <input type="text" id="srReplaceInput" placeholder="Replacement..." oninput="previewSearchReplace()">
+            <span class="sr-count" id="srCount"></span>
+            <div class="sr-actions">
+                <button class="sr-apply" onclick="applySearchReplace()">Apply</button>
+                <button class="sr-clear" onclick="clearSearchReplace()">Reset</button>
+                <button class="sr-clear" onclick="toggleSearchReplace()">Close</button>
+            </div>
         </div>
         <div class="deep-search-bar" id="deepSearchBar">
             <button class="deep-search-toggle" id="deepRegexToggle" onclick="toggleDeepRegex()" title="Toggle regex mode">.*</button>
@@ -9378,6 +9497,8 @@ function appendDeepOutput(lines) {
     }
     terminal.appendChild(frag);
     trackOutputLines(lines.length);
+    if (state.focusedAgentId) markNewLines(state.focusedAgentId);
+    if (_autoCollapseEnabled) applyAutoCollapse();
     // Auto-scroll if following
     if (deepAutoScroll) {
         terminal.scrollTop = terminal.scrollHeight;
@@ -17140,13 +17261,291 @@ if (_groupByProject) {
     if (btn) btn.classList.add('active');
 }
 
-// Keyboard shortcut: Cmd+\ for split pane
+// Keyboard shortcuts for deep view features
 document.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === '\\' && state.view === 'deep') {
+    if (state.view !== 'deep') return;
+    if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
         e.preventDefault();
         toggleSplitPane();
     }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'h' && !e.shiftKey) {
+        e.preventDefault();
+        toggleSearchReplace();
+    }
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Search & Replace (visual only) ──
+// ═══════════════════════════════════════════════════════════════════
+let _srOriginalContent = null;
+
+function toggleSearchReplace() {
+    const pop = document.getElementById('searchReplacePopover');
+    const btn = document.getElementById('toolbarSearchReplace');
+    if (!pop) return;
+    const isActive = pop.classList.contains('active');
+    pop.classList.toggle('active', !isActive);
+    if (btn) btn.classList.toggle('active', !isActive);
+    if (!isActive) document.getElementById('srFindInput')?.focus();
+}
+
+function previewSearchReplace() {
+    const findVal = document.getElementById('srFindInput')?.value;
+    const countEl = document.getElementById('srCount');
+    if (!findVal) { if (countEl) countEl.textContent = ''; return; }
+    try {
+        const re = new RegExp(findVal, 'gi');
+        const terminal = document.getElementById('deepTerminal');
+        if (!terminal) return;
+        const lines = terminal.querySelectorAll('.terminal-line');
+        let count = 0;
+        lines.forEach(line => {
+            const text = line.textContent || '';
+            const matches = text.match(re);
+            if (matches) count += matches.length;
+        });
+        if (countEl) countEl.textContent = `${count} match${count !== 1 ? 'es' : ''}`;
+    } catch { if (countEl) countEl.textContent = 'invalid regex'; }
+}
+
+function applySearchReplace() {
+    const findVal = document.getElementById('srFindInput')?.value;
+    const replaceVal = document.getElementById('srReplaceInput')?.value || '';
+    if (!findVal) return;
+    try {
+        const re = new RegExp(findVal, 'gi');
+        const terminal = document.getElementById('deepTerminal');
+        if (!terminal) return;
+        // Save original content for reset
+        if (!_srOriginalContent) {
+            _srOriginalContent = new Map();
+            terminal.querySelectorAll('.terminal-line').forEach((line, i) => {
+                _srOriginalContent.set(i, line.innerHTML);
+            });
+        }
+        let totalReplaced = 0;
+        terminal.querySelectorAll('.terminal-line').forEach(line => {
+            // Walk text nodes only to avoid breaking HTML structure
+            const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+            const nodes = [];
+            while (walker.nextNode()) nodes.push(walker.currentNode);
+            nodes.forEach(node => {
+                const text = node.textContent;
+                if (re.test(text)) {
+                    re.lastIndex = 0;
+                    const matches = text.match(re);
+                    if (matches) totalReplaced += matches.length;
+                    const span = document.createElement('span');
+                    span.innerHTML = text.replace(re, `<mark style="background:rgba(99,102,241,0.3);color:inherit">${escapeHtml(replaceVal)}</mark>`);
+                    node.parentNode.replaceChild(span, node);
+                }
+            });
+        });
+        const countEl = document.getElementById('srCount');
+        if (countEl) countEl.textContent = `${totalReplaced} replaced`;
+    } catch { /* invalid regex */ }
+}
+
+function clearSearchReplace() {
+    if (!_srOriginalContent) return;
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    terminal.querySelectorAll('.terminal-line').forEach((line, i) => {
+        if (_srOriginalContent.has(i)) line.innerHTML = _srOriginalContent.get(i);
+    });
+    _srOriginalContent = null;
+    const countEl = document.getElementById('srCount');
+    if (countEl) countEl.textContent = 'reset';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Auto-Collapse Long Tool Results ──
+// ═══════════════════════════════════════════════════════════════════
+let _autoCollapseEnabled = false;
+
+function toggleAutoCollapse() {
+    _autoCollapseEnabled = !_autoCollapseEnabled;
+    const btn = document.getElementById('toolbarAutoCollapse');
+    if (btn) btn.classList.toggle('active', _autoCollapseEnabled);
+    if (_autoCollapseEnabled) applyAutoCollapse();
+    else removeAutoCollapse();
+}
+
+function applyAutoCollapse() {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const lines = terminal.querySelectorAll('.terminal-line');
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const toolStartRe = /^(⎿|│|├|└)\s|^\s{2,}\d+│|^   \d+\s+/;
+    let blockStart = -1, blockLines = [];
+
+    const collapseBlock = (start, blockLns) => {
+        if (blockLns.length <= 5) return;
+        // Hide lines 3 through N-1, add expander after line 2
+        for (let j = 3; j < blockLns.length; j++) {
+            blockLns[j].classList.add('tool-result-collapsed');
+            blockLns[j].style.display = 'none';
+        }
+        const expander = document.createElement('div');
+        expander.className = 'tool-result-expander';
+        expander.textContent = `▸ Show ${blockLns.length - 3} more lines`;
+        expander.onclick = function() {
+            blockLns.forEach(l => { l.style.display = ''; l.classList.remove('tool-result-collapsed'); });
+            this.remove();
+        };
+        if (blockLns[2] && blockLns[2].nextSibling) {
+            blockLns[2].parentNode.insertBefore(expander, blockLns[2].nextSibling);
+        }
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+        const text = (lines[i].textContent || '').replace(ansiRe, '');
+        const isToolOutput = toolStartRe.test(text);
+        if (isToolOutput) {
+            if (blockStart === -1) blockStart = i;
+            blockLines.push(lines[i]);
+        } else {
+            if (blockLines.length > 5) collapseBlock(blockStart, blockLines);
+            blockStart = -1;
+            blockLines = [];
+        }
+    }
+    if (blockLines.length > 5) collapseBlock(blockStart, blockLines);
+}
+
+function removeAutoCollapse() {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    terminal.querySelectorAll('.tool-result-collapsed').forEach(el => {
+        el.style.display = '';
+        el.classList.remove('tool-result-collapsed');
+    });
+    terminal.querySelectorAll('.tool-result-expander').forEach(el => el.remove());
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Deep View Shortcuts Reference ──
+// ═══════════════════════════════════════════════════════════════════
+function toggleDeepShortcutsRef() {
+    const pop = document.getElementById('deepShortcutsPopover');
+    if (pop) pop.classList.toggle('active');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── New Lines Diff Highlight ──
+// ═══════════════════════════════════════════════════════════════════
+let _lastOutputLineCount = new Map();
+
+function markNewLines(agentId) {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal || state.focusedAgentId !== agentId) return;
+    const lines = terminal.querySelectorAll('.terminal-line');
+    const prevCount = _lastOutputLineCount.get(agentId) || 0;
+    if (lines.length > prevCount) {
+        for (let i = prevCount; i < lines.length; i++) {
+            lines[i].classList.add('new-line');
+        }
+        // Remove new-line class after animation
+        setTimeout(() => {
+            for (let i = prevCount; i < lines.length; i++) {
+                if (lines[i]) lines[i].classList.remove('new-line');
+            }
+        }, 3000);
+    }
+    _lastOutputLineCount.set(agentId, lines.length);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Card Expanded Preview (Shift+click) ──
+// ═══════════════════════════════════════════════════════════════════
+document.getElementById('agentGrid')?.addEventListener('click', (e) => {
+    if (!e.shiftKey) return;
+    const card = e.target.closest('.agent-card');
+    if (!card) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const agentId = card.dataset.agentId;
+    const agent = state.agents.get(agentId);
+    if (!agent) return;
+
+    // Remove any existing preview
+    document.querySelectorAll('.card-inline-preview').forEach(p => p.remove());
+
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    const last5 = lines.slice(-5);
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const cleaned = last5.map(l => l.replace(ansiRe, '')).join('\n') || '(no output)';
+
+    const preview = document.createElement('div');
+    preview.className = 'card-inline-preview';
+    preview.innerHTML = `<button class="preview-close" onclick="this.parentElement.remove()">✕</button>${escapeHtml(cleaned)}`;
+    card.after(preview);
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Fleet Output Statistics ──
+// ═══════════════════════════════════════════════════════════════════
+function toggleFleetStats() {
+    const panel = document.getElementById('fleetStatsPanel');
+    if (!panel) return;
+    const isActive = panel.classList.contains('active');
+    panel.classList.toggle('active', !isActive);
+    if (!isActive) updateFleetStatsPanel();
+}
+
+function closeFleetStats() {
+    document.getElementById('fleetStatsPanel')?.classList.remove('active');
+}
+
+function updateFleetStatsPanel() {
+    const grid = document.getElementById('fleetStatsGrid');
+    if (!grid) return;
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+
+    let totalLines = 0, totalTools = 0, totalErrors = 0;
+    let mostActive = { name: '-', lines: 0 };
+    let busiestAgent = { name: '-', rate: 0 };
+    const toolCounts = { read: 0, edit: 0, write: 0, bash: 0, grep: 0, glob: 0 };
+    const errorPatterns = {};
+
+    for (const [id, agent] of state.agents) {
+        const lines = agent._outputBuffer || agent.output_lines || [];
+        totalLines += lines.length;
+        if (lines.length > mostActive.lines) { mostActive = { name: agent.name, lines: lines.length }; }
+
+        const rate = agent.output_rate || 0;
+        if (rate > busiestAgent.rate) { busiestAgent = { name: agent.name, rate }; }
+
+        for (const l of lines) {
+            const clean = l.replace(ansiRe, '');
+            if (/\bRead\s*\(/.test(clean)) { toolCounts.read++; totalTools++; }
+            if (/\bEdit\s*\(/.test(clean)) { toolCounts.edit++; totalTools++; }
+            if (/\bWrite\s*\(/.test(clean)) { toolCounts.write++; totalTools++; }
+            if (/\bBash\s*\(/.test(clean)) { toolCounts.bash++; totalTools++; }
+            if (/\bGrep\s*\(/.test(clean)) { toolCounts.grep++; totalTools++; }
+            if (/\bGlob\s*\(/.test(clean)) { toolCounts.glob++; totalTools++; }
+            if (/\b(error|exception|traceback|FAILED|ERROR|panic|fatal)\b/i.test(clean)) {
+                totalErrors++;
+                const match = clean.match(/\b(TypeError|SyntaxError|ImportError|ValueError|KeyError|AttributeError|RuntimeError|ConnectionError|TimeoutError|PermissionError|FileNotFoundError|ModuleNotFoundError)\b/);
+                if (match) {
+                    errorPatterns[match[1]] = (errorPatterns[match[1]] || 0) + 1;
+                }
+            }
+        }
+    }
+
+    const topTools = Object.entries(toolCounts).sort((a, b) => b[1] - a[1]).filter(([, v]) => v > 0);
+    const topErrors = Object.entries(errorPatterns).sort((a, b) => b[1] - a[1]).slice(0, 3);
+
+    grid.innerHTML = `
+        <div class="fleet-stats-card"><div class="fsc-value">${totalLines > 1000 ? (totalLines / 1000).toFixed(1) + 'K' : totalLines}</div><div class="fsc-label">Total Output Lines</div></div>
+        <div class="fleet-stats-card"><div class="fsc-value">${totalTools}</div><div class="fsc-label">Tool Invocations</div><div class="fsc-detail">${topTools.slice(0, 3).map(([t, c]) => `${t}: ${c}`).join(', ') || 'none'}</div></div>
+        <div class="fleet-stats-card"><div class="fsc-value">${totalErrors}</div><div class="fsc-label">Errors Detected</div><div class="fsc-detail">${topErrors.map(([t, c]) => `${t}: ${c}`).join(', ') || 'none'}</div></div>
+        <div class="fleet-stats-card"><div class="fsc-value">${escapeHtml(mostActive.name)}</div><div class="fsc-label">Most Active Agent</div><div class="fsc-detail">${mostActive.lines} lines</div></div>
+        <div class="fleet-stats-card"><div class="fsc-value">${escapeHtml(busiestAgent.name)}</div><div class="fsc-label">Highest Output Rate</div><div class="fsc-detail">${busiestAgent.rate.toFixed(1)} lines/s</div></div>
+        <div class="fleet-stats-card"><div class="fsc-value">${state.agents.size}</div><div class="fsc-label">Active Agents</div></div>
+    `;
+}
 
 const EMPTY_STATE_HTML = document.getElementById('emptyState').innerHTML;
 socket.connect();
