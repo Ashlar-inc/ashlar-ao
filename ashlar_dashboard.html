@@ -2543,6 +2543,7 @@ body {
 }
 @keyframes tabSlideIn { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .deep-notes-panel { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+.deep-snapshots-panel { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
 .agent-tag-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 3px 8px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono); cursor: default; }
 .agent-tag-chip .tag-remove { cursor: pointer; opacity: 0.5; font-size: 14px; line-height: 1; }
 .agent-tag-chip .tag-remove:hover { opacity: 1; color: var(--danger); }
@@ -4171,6 +4172,7 @@ body {
         <button class="deep-tab active" id="deepTabTerminal" onclick="switchDeepTab('terminal')">Terminal</button>
         <button class="deep-tab" id="deepTabActivity" onclick="switchDeepTab('activity')">Activity</button>
         <button class="deep-tab" id="deepTabNotes" onclick="switchDeepTab('notes')">Notes</button>
+        <button class="deep-tab" id="deepTabSnapshots" onclick="switchDeepTab('snapshots')">Snapshots</button>
         <button class="deep-tab" id="deepTabScratchpad" onclick="switchDeepTab('scratchpad')">Scratchpad</button>
     </div>
     <div class="deep-terminal-wrap">
@@ -4205,6 +4207,13 @@ body {
                     <textarea id="agentNotesTextarea" class="form-input" style="flex:1;resize:none;font-size:13px;line-height:1.5;font-family:var(--font-sans);padding:10px;min-height:150px" placeholder="Add notes about this agent..."></textarea>
                 </div>
             </div>
+        </div>
+        <div class="deep-snapshots-panel" id="deepSnapshotsPanel" style="display:none">
+            <div style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);display:flex;justify-content:space-between;align-items:center">
+                <span style="font-size:12px;font-weight:700;color:var(--text-primary)">Output Snapshots</span>
+                <button class="btn btn-secondary btn-sm" onclick="createManualSnapshot()" style="font-size:10px;padding:2px 8px">+ Snapshot</button>
+            </div>
+            <div id="snapshotsListContent" style="flex:1;overflow-y:auto;padding:8px"></div>
         </div>
         <div class="deep-scratchpad-panel" id="deepScratchpadPanel" style="display:none">
             <div class="scratchpad-header">
@@ -11703,10 +11712,12 @@ function switchDeepTab(tab) {
     const scratchpad = document.getElementById('deepScratchpadPanel');
     const activityPanel = document.getElementById('deepActivityPanel');
     const notesPanel = document.getElementById('deepNotesPanel');
+    const snapshotsPanel = document.getElementById('deepSnapshotsPanel');
     const tabTerminal = document.getElementById('deepTabTerminal');
     const tabScratchpad = document.getElementById('deepTabScratchpad');
     const tabActivity = document.getElementById('deepTabActivity');
     const tabNotes = document.getElementById('deepTabNotes');
+    const tabSnapshots = document.getElementById('deepTabSnapshots');
     const toolbar = document.getElementById('terminalToolbar');
     const searchBar = document.getElementById('deepSearchBar');
 
@@ -11715,6 +11726,7 @@ function switchDeepTab(tab) {
     scratchpad.style.display = 'none';
     activityPanel.style.display = 'none';
     notesPanel.style.display = 'none';
+    snapshotsPanel.style.display = 'none';
     toolbar.style.display = 'none';
     closeDeepSearch();
     searchBar.style.display = 'none';
@@ -11722,6 +11734,7 @@ function switchDeepTab(tab) {
     tabScratchpad.classList.remove('active');
     tabActivity.classList.remove('active');
     tabNotes.classList.remove('active');
+    tabSnapshots.classList.remove('active');
 
     if (tab === 'terminal') {
         terminal.style.display = '';
@@ -11736,10 +11749,64 @@ function switchDeepTab(tab) {
         notesPanel.style.display = 'flex';
         tabNotes.classList.add('active');
         loadAgentNotesUI();
+    } else if (tab === 'snapshots') {
+        snapshotsPanel.style.display = 'flex';
+        tabSnapshots.classList.add('active');
+        if (state.focusedAgentId) loadSnapshots(state.focusedAgentId);
     } else {
         scratchpad.style.display = '';
         tabScratchpad.classList.add('active');
         if (_scratchpadProjectId) refreshScratchpad();
+    }
+}
+
+async function loadSnapshots(agentId) {
+    const container = document.getElementById('snapshotsListContent');
+    if (!container) return;
+    container.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px;padding:16px;text-align:center">Loading snapshots...</div>';
+    try {
+        const res = await apiFetch(`/api/agents/${agentId}/snapshots`);
+        const data = await res.json();
+        if (!data.snapshots || data.snapshots.length === 0) {
+            container.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px;padding:16px;text-align:center">No snapshots yet. Snapshots are auto-captured on errors, waiting states, and completion.</div>';
+            return;
+        }
+        container.innerHTML = data.snapshots.map(snap => {
+            const triggerColors = { error: 'var(--danger)', waiting: 'var(--warning)', complete: 'var(--success)', manual: 'var(--accent)' };
+            const color = triggerColors[snap.trigger] || 'var(--text-tertiary)';
+            const time = snap.created_at ? new Date(snap.created_at).toLocaleTimeString() : '?';
+            const preview = (snap.output_tail || '').split('\n').slice(-5).map(l => escapeHtml(l)).join('<br>');
+            return `<div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:8px;padding:10px 12px;margin-bottom:6px;cursor:pointer" onclick="this.querySelector('.snap-preview').style.display=this.querySelector('.snap-preview').style.display==='none'?'block':'none'">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                    <span style="background:${color};color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:4px;letter-spacing:0.5px">${escapeHtml(snap.trigger)}</span>
+                    <span style="font-size:11px;color:var(--text-secondary);font-weight:600">${escapeHtml(snap.status)}</span>
+                    <span style="font-size:10px;color:var(--text-tertiary);margin-left:auto;font-family:var(--font-mono)">${time}</span>
+                </div>
+                <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">${escapeHtml(snap.summary || 'No summary')}</div>
+                <div style="font-size:10px;color:var(--text-tertiary);display:flex;gap:8px">
+                    <span>${snap.line_count} lines</span>
+                    <span>ctx: ${(snap.context_pct * 100).toFixed(1)}%</span>
+                </div>
+                <div class="snap-preview" style="display:none;margin-top:8px;padding:8px;background:var(--bg-page);border-radius:4px;font-family:var(--font-mono);font-size:10px;line-height:1.4;color:var(--text-secondary);max-height:120px;overflow-y:auto;white-space:pre-wrap">${preview}</div>
+            </div>`;
+        }).reverse().join('');
+    } catch (e) {
+        container.innerHTML = '<div style="color:var(--danger);font-size:12px;padding:16px;text-align:center">Failed to load snapshots</div>';
+    }
+}
+
+async function createManualSnapshot() {
+    if (!state.focusedAgentId) return;
+    try {
+        const res = await apiFetch(`/api/agents/${state.focusedAgentId}/snapshots`, { method: 'POST' });
+        if (res.ok) {
+            showToast('Snapshot created', 'success');
+            loadSnapshots(state.focusedAgentId);
+        } else {
+            showToast('Failed to create snapshot', 'error');
+        }
+    } catch (e) {
+        showToast('Network error', 'error');
     }
 }
 
