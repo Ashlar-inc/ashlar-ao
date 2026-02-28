@@ -458,6 +458,72 @@ body {
     margin: 0 auto;
 }
 
+/* Compact mode: single-row cards */
+.agent-grid.compact-mode {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    max-width: 900px;
+}
+.compact-mode .agent-card {
+    min-height: auto;
+    padding: 8px 12px;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    animation: none;
+    border-left-width: 3px;
+}
+.compact-mode .agent-card:hover { transform: none; }
+.compact-mode .card-header {
+    display: contents;
+}
+.compact-mode .card-icon { flex-shrink: 0; }
+.compact-mode .card-name { flex-shrink: 0; max-width: 100px; }
+.compact-mode .card-summary {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin: 0;
+    font-size: 12px;
+}
+.compact-mode .card-footer {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0;
+}
+.compact-mode .context-bar-row {
+    flex-shrink: 0;
+    width: 80px;
+}
+.compact-mode .card-info-row,
+.compact-mode .card-dir,
+.compact-mode .card-input-section,
+.compact-mode .progress-bar,
+.compact-mode .card-sparkline,
+.compact-mode .card-health-sparkline,
+.compact-mode .card-pin-indicator,
+.compact-mode .card-tags-row,
+.compact-mode .card-hover-actions,
+.compact-mode .card-menu,
+.compact-mode .card-select,
+.compact-mode .plan-mode-indicator,
+.compact-mode .card-health,
+.compact-mode .card-message-badge,
+.compact-mode .card-conflict-badge,
+.compact-mode .card-files-badge,
+.compact-mode .card-menu-btn { display: none !important; }
+.compact-mode .card-cost-badge { display: none; }
+.compact-mode .new-agent-card {
+    min-height: auto;
+    padding: 8px 12px;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+.compact-mode .new-agent-card .plus { font-size: 16px; }
+.compact-mode .new-agent-card .label { font-size: 12px; }
+
 .empty-state {
     grid-column: 1 / -1;
     text-align: center;
@@ -555,6 +621,14 @@ body {
     background: color-mix(in srgb, var(--accent) 6%, var(--bg-surface));
     transform: translateY(-2px);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.agent-card.status-transition {
+    animation: statusFlash 0.6s ease-out;
+}
+@keyframes statusFlash {
+    0% { box-shadow: inset 0 0 0 1px rgba(99,102,241,0.5); }
+    50% { box-shadow: inset 0 0 12px rgba(99,102,241,0.15); }
+    100% { box-shadow: none; }
 }
 
 @keyframes fadeUp {
@@ -3741,6 +3815,8 @@ body {
 .deep-filter-chip.active.file { background: #3B82F6; border-color: #3B82F6; }
 .deep-filter-chip.active.tool { background: var(--success); border-color: var(--success); }
 .deep-filter-chip.active.think { background: var(--warning); border-color: var(--warning); color: #000; }
+.deep-filter-chip.active.warn { background: #F59E0B; border-color: #F59E0B; color: #000; }
+.deep-filter-chip.active.info { background: #06B6D4; border-color: #06B6D4; color: #000; }
 .deep-filter-chip .chip-count { font-weight: 400; opacity: 0.7; margin-left: 2px; }
 
 /* ── Conflict Badge on Cards ── */
@@ -4273,6 +4349,7 @@ body {
         </select>
         <div class="view-toggle">
             <button class="view-toggle-btn active" id="viewGridBtn" onclick="setViewMode('grid')" title="Card grid"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/></svg></button>
+            <button class="view-toggle-btn" id="viewCompactBtn" onclick="setViewMode('compact')" title="Compact view"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
             <button class="view-toggle-btn" id="viewTableBtn" onclick="setViewMode('table')" title="Table view"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg></button>
         </div>
         <button class="btn btn-secondary btn-sm" onclick="openTimeline()" title="Activity Timeline (Cmd+T)"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12H3"/><path d="M16 6H3"/><path d="M12 18H3"/><path d="m16 12 5 3-5 3v-6Z"/></svg> Timeline</button>
@@ -4571,6 +4648,8 @@ body {
                 <button class="deep-filter-chip tool" data-filter="tools" onclick="setOutputFilter('tools')">Tools</button>
                 <button class="deep-filter-chip git" data-filter="git" onclick="setOutputFilter('git')">Git</button>
                 <button class="deep-filter-chip think" data-filter="thinking" onclick="setOutputFilter('thinking')">Think</button>
+                <button class="deep-filter-chip warn" data-filter="warnings" onclick="setOutputFilter('warnings')">Warn</button>
+                <button class="deep-filter-chip info" data-filter="info" onclick="setOutputFilter('info')">Info</button>
             </div>
             <input class="deep-search-input" id="deepSearchInput" placeholder="Search..." oninput="deepSearch()" onkeydown="handleDeepSearchKey(event)">
             <span class="deep-search-count" id="deepSearchCount"></span>
@@ -6840,6 +6919,12 @@ function applyCardReorder(fromId, toId) {
 }
 
 function updateAgentCard(card, agent) {
+    const prevStatus = card.dataset.status;
+    if (prevStatus && prevStatus !== agent.status) {
+        card.classList.remove('status-transition');
+        void card.offsetWidth; // force reflow to restart animation
+        card.classList.add('status-transition');
+    }
     card.dataset.status = agent.status;
     card.dataset.planMode = agent.plan_mode ? 'true' : 'false';
     card.dataset.activeOutput = (agent.output_rate && agent.output_rate > 0 && agent.status === 'working') ? 'true' : 'false';
@@ -8791,6 +8876,8 @@ const OUTPUT_FILTER_PATTERNS = {
     tools: /\b(Read|Edit|Write|Bash|Glob|Grep|Task|WebFetch|WebSearch|NotebookEdit|LS)\s*\(/i,
     git: /\b(git\s+(commit|push|pull|checkout|merge|rebase|branch|diff|log|stash|add)|commit\s+[a-f0-9]{7})\b/i,
     thinking: /\b(thinking|planning|analyzing|let me|I'll|I will|considering|approach)\b/i,
+    warnings: /\b(warn(ing)?|deprecat(ed|ion)|caution|notice|WARN)\b/i,
+    info: /\b(info|note|hint|tip|success(fully)?|complet(ed|ion)|done|pass(ed)?|✓|✔)\b/i,
 };
 
 function setOutputFilter(filter) {
@@ -13369,8 +13456,11 @@ function setViewMode(mode) {
     state.viewMode = mode;
     localStorage.setItem('ashlar_view_mode', mode);
     document.getElementById('viewGridBtn').classList.toggle('active', mode === 'grid');
+    document.getElementById('viewCompactBtn').classList.toggle('active', mode === 'compact');
     document.getElementById('viewTableBtn').classList.toggle('active', mode === 'table');
-    document.getElementById('agentGrid').style.display = mode === 'grid' ? '' : 'none';
+    const grid = document.getElementById('agentGrid');
+    grid.style.display = mode === 'table' ? 'none' : '';
+    grid.classList.toggle('compact-mode', mode === 'compact');
     document.getElementById('agentTable').style.display = mode === 'table' ? 'table' : 'none';
     if (mode === 'table') renderAgentTable();
 }
@@ -14435,6 +14525,10 @@ if (state.viewMode === 'table') {
     document.getElementById('agentTable').style.display = '';
     document.getElementById('viewGridBtn').classList.remove('active');
     document.getElementById('viewTableBtn').classList.add('active');
+} else if (state.viewMode === 'compact') {
+    document.getElementById('agentGrid').classList.add('compact-mode');
+    document.getElementById('viewGridBtn').classList.remove('active');
+    document.getElementById('viewCompactBtn').classList.add('active');
 }
 
 // Add timeline + pipeline + new features to command palette
@@ -14446,6 +14540,7 @@ PALETTE_ACTIONS.push(
     { icon: 'file-text', label: 'Event Log', shortcut: '', action: () => { closePalette(); openEventLog(); }, section: 'view' },
     { icon: 'search', label: 'Search All Outputs', shortcut: '⌘⇧F', action: () => { closePalette(); openGlobalSearch(); }, section: 'view' },
     { icon: 'table', label: 'Toggle Table View', shortcut: '', action: () => { closePalette(); setViewMode(state.viewMode === 'table' ? 'grid' : 'table'); }, section: 'view' },
+    { icon: 'list', label: 'Toggle Compact View', shortcut: '', action: () => { closePalette(); setViewMode(state.viewMode === 'compact' ? 'grid' : 'compact'); }, section: 'view' },
     { icon: 'save', label: 'Manage Presets', shortcut: '', action: () => { closePalette(); openSettings(); }, section: 'config' },
     { icon: 'file-text', label: 'View Scratchpad', shortcut: '', action: () => { closePalette(); if (state.focusedAgentId) { switchDeepTab('scratchpad'); } else { showToast('Open an agent first to view its scratchpad', 'info'); } }, section: 'view' },
 );
