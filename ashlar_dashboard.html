@@ -6761,9 +6761,11 @@ function updateDeepViewHeader(agent) {
                                                             '0 0 4px rgba(34,197,94,0.25)';
     }
     document.getElementById('deepMemory').textContent = `${Math.round(agent.memory_mb || 0)} MB`;
-    // Line count
-    const lineCount = (agent._outputBuffer || []).length;
-    document.getElementById('deepLineCount').textContent = lineCount > 0 ? `${lineCount} lines` : '';
+    // Line count — prefer server-side total which includes archived lines
+    const totalLines = agent.total_output_lines || (agent._outputBuffer || []).length;
+    const lineCountStr = totalLines > 1000 ? `${(totalLines / 1000).toFixed(1)}K lines` : `${totalLines} lines`;
+    document.getElementById('deepLineCount').textContent = totalLines > 0 ? lineCountStr : '';
+    document.getElementById('deepLineCount').title = totalLines > 0 ? `${totalLines.toLocaleString()} lines, ${(agent.total_output_chars || 0).toLocaleString()} chars` : '';
 
     // Health score
     const healthEl = document.getElementById('deepHealth');

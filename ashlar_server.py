@@ -997,6 +997,7 @@ class Agent:
             "error_count": self.error_count,
             "time_to_first_output": round(self.time_to_first_output, 2),
             "total_output_lines": self.total_output_lines,
+            "total_output_chars": self._total_chars,
             "output_rate": round(self.output_rate, 1),
             "files_touched": self.files_touched,
             "model": self.model,
