@@ -3609,6 +3609,22 @@ body {
 .collab-body { flex: 1; overflow: hidden; position: relative; background: var(--bg-page); }
 .collab-body canvas { width: 100%; height: 100%; }
 .collab-legend { display: flex; gap: 12px; font-size: 10px; color: var(--text-secondary); }
+/* ── Multi-Agent Split View ── */
+.split-panel { background: var(--bg-surface); width: 96vw; max-width: 1400px; height: 80vh; border-radius: 16px; display: flex; flex-direction: column; box-shadow: 0 32px 80px rgba(0,0,0,0.6); animation: modalScaleIn 0.2s cubic-bezier(0.22, 1, 0.36, 1); overflow: hidden; }
+.split-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); flex-shrink: 0; }
+.split-header h3 { font-size: 14px; font-weight: 700; margin: 0; }
+.split-body { flex: 1; display: grid; gap: 1px; background: var(--border-subtle); overflow: hidden; }
+.split-body.panes-2 { grid-template-columns: 1fr 1fr; }
+.split-body.panes-3 { grid-template-columns: 1fr 1fr 1fr; }
+.split-body.panes-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.split-pane { display: flex; flex-direction: column; background: var(--bg-page); overflow: hidden; }
+.split-pane-header { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface); flex-shrink: 0; }
+.split-pane-header select { font-size: 11px; background: var(--bg-input); border: 1px solid var(--border-subtle); color: var(--text-primary); padding: 2px 6px; border-radius: 4px; flex: 1; }
+.split-pane-header .pane-status { font-size: 10px; font-family: var(--font-mono); color: var(--text-tertiary); }
+.split-pane-header .pane-close { cursor: pointer; color: var(--text-tertiary); font-size: 14px; padding: 0 4px; }
+.split-pane-header .pane-close:hover { color: var(--text-primary); }
+.split-pane-terminal { flex: 1; overflow-y: auto; padding: 8px; font-family: var(--font-mono); font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+.split-pane-terminal .terminal-line { padding-left: 0; }
 .collab-legend-item { display: flex; align-items: center; gap: 4px; }
 .collab-legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 /* ── Fleet Analytics Panel ── */
@@ -4355,6 +4371,7 @@ body {
         <button class="btn btn-secondary btn-sm" onclick="openTimeline()" title="Activity Timeline (Cmd+T)"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12H3"/><path d="M16 6H3"/><path d="M12 18H3"/><path d="m16 12 5 3-5 3v-6Z"/></svg> Timeline</button>
         <button class="btn btn-secondary btn-sm" onclick="openAnalytics()" title="Fleet Analytics"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg> Analytics</button>
         <button class="btn btn-secondary btn-sm" onclick="openFleetTimeline()" title="Fleet Timeline"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="10" x2="14" y2="10"/><line x1="4" y1="14" x2="18" y2="14"/><line x1="4" y1="18" x2="10" y2="18"/></svg> Timeline</button>
+        <button class="btn btn-secondary btn-sm" onclick="openSplitView()" title="Split Terminal View"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/></svg> Split</button>
         <button class="btn btn-secondary btn-sm" onclick="openCollabGraph()" title="Collaboration Graph"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> Graph</button>
         <button class="btn btn-secondary btn-sm" onclick="openConflicts()" title="File Conflicts"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg> Conflicts</button>
         <button class="btn btn-secondary btn-sm" onclick="openEventLog()" title="Event Log"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> Events</button>
@@ -5141,6 +5158,20 @@ body {
         <div class="collab-body">
             <canvas id="collabCanvas" width="900" height="500"></canvas>
         </div>
+    </div>
+</div>
+
+<!-- ── Multi-Agent Split View ── -->
+<div class="modal-overlay" id="splitViewOverlay" onclick="if(event.target===this)closeSplitView()">
+    <div class="split-panel">
+        <div class="split-header">
+            <h3>Split Terminal View</h3>
+            <div style="display:flex;gap:8px;align-items:center">
+                <button class="btn btn-secondary btn-sm" onclick="addSplitPane()" id="splitAddBtn">+ Add Pane</button>
+                <button class="btn btn-secondary btn-sm" onclick="closeSplitView()">Close</button>
+            </div>
+        </div>
+        <div class="split-body panes-2" id="splitBody"></div>
     </div>
 </div>
 
@@ -7335,6 +7366,7 @@ function showContextMenu(agentId, x, y) {
     menu.innerHTML = `
         <div class="context-menu-item" onclick="openDeepView('${agentId}');hideContextMenu()">${icon('eye', 14)} Open Deep View</div>
         <div class="context-menu-item" onclick="hideContextMenu();openCompare('${agentId}')">${icon('columns', 14)} Compare With...</div>
+        <div class="context-menu-item" onclick="hideContextMenu();openSplitView('${agentId}')">${icon('layout-grid', 14)} Split View</div>
         <div class="context-menu-item" onclick="hideContextMenu();cloneAgent('${agentId}')">${icon('copy', 14)} Clone Agent</div>
         <div class="context-menu-sep"></div>
         <div class="context-menu-item" onclick="hideContextMenu();pauseResumeAgent('${agentId}')">${icon(isPaused ? 'play' : 'circle-pause', 14)} ${isPaused ? 'Resume' : 'Pause'}</div>
@@ -12781,6 +12813,104 @@ function renderCollabGraph() {
     }
 }
 
+// ── Multi-Agent Split View ──
+let _splitPanes = []; // [{agentId, refreshTimer}]
+let _splitRefreshTimer = null;
+
+function openSplitView(initialAgentId) {
+    _splitPanes = [];
+    const agents = [...state.agents.keys()];
+    // Start with 2 panes: the initial agent and the next one
+    const first = initialAgentId || agents[0] || '';
+    const second = agents.find(id => id !== first) || '';
+    _splitPanes.push({ agentId: first });
+    if (second) _splitPanes.push({ agentId: second });
+    else _splitPanes.push({ agentId: '' });
+    document.getElementById('splitViewOverlay').classList.add('active');
+    renderSplitPanes();
+    startSplitRefresh();
+}
+
+function closeSplitView() {
+    document.getElementById('splitViewOverlay').classList.remove('active');
+    stopSplitRefresh();
+    _splitPanes = [];
+}
+
+function addSplitPane() {
+    if (_splitPanes.length >= 4) { showToast('Maximum 4 panes', 'info'); return; }
+    const used = new Set(_splitPanes.map(p => p.agentId));
+    const next = [...state.agents.keys()].find(id => !used.has(id)) || '';
+    _splitPanes.push({ agentId: next });
+    renderSplitPanes();
+}
+
+function removeSplitPane(idx) {
+    if (_splitPanes.length <= 1) return;
+    _splitPanes.splice(idx, 1);
+    renderSplitPanes();
+}
+
+function setSplitAgent(idx, agentId) {
+    _splitPanes[idx].agentId = agentId;
+    refreshSplitPane(idx);
+}
+
+function renderSplitPanes() {
+    const body = document.getElementById('splitBody');
+    body.className = 'split-body panes-' + _splitPanes.length;
+    const addBtn = document.getElementById('splitAddBtn');
+    addBtn.style.display = _splitPanes.length >= 4 ? 'none' : '';
+    body.innerHTML = _splitPanes.map((pane, i) => {
+        const agents = [...state.agents.entries()];
+        const options = agents.map(([id, ag]) =>
+            `<option value="${id}" ${id === pane.agentId ? 'selected' : ''}>${ag.name} (${ag.status})</option>`
+        ).join('');
+        return `<div class="split-pane" id="splitPane${i}">
+            <div class="split-pane-header">
+                <select onchange="setSplitAgent(${i}, this.value)">${options}<option value="">None</option></select>
+                <span class="pane-status" id="splitStatus${i}"></span>
+                ${_splitPanes.length > 1 ? `<span class="pane-close" onclick="removeSplitPane(${i})">&times;</span>` : ''}
+            </div>
+            <div class="split-pane-terminal" id="splitTerminal${i}"></div>
+        </div>`;
+    }).join('');
+    _splitPanes.forEach((_, i) => refreshSplitPane(i));
+}
+
+function refreshSplitPane(idx) {
+    const pane = _splitPanes[idx];
+    if (!pane) return;
+    const terminal = document.getElementById(`splitTerminal${idx}`);
+    const statusEl = document.getElementById(`splitStatus${idx}`);
+    if (!terminal) return;
+    const agent = state.agents.get(pane.agentId);
+    if (!agent) {
+        terminal.innerHTML = '<div style="color:var(--text-tertiary);padding:20px;text-align:center">Select an agent</div>';
+        if (statusEl) statusEl.textContent = '';
+        return;
+    }
+    if (statusEl) statusEl.textContent = agent.status;
+    const lines = agent.output_lines || [];
+    const last50 = lines.slice(-50);
+    terminal.innerHTML = last50.map(l => {
+        const html = ansiToHtml(l);
+        return `<div class="terminal-line">${html}</div>`;
+    }).join('');
+    terminal.scrollTop = terminal.scrollHeight;
+}
+
+function startSplitRefresh() {
+    stopSplitRefresh();
+    _splitRefreshTimer = setInterval(() => {
+        _splitPanes.forEach((_, i) => refreshSplitPane(i));
+    }, 2000);
+}
+
+function stopSplitRefresh() {
+    if (_splitRefreshTimer) { clearInterval(_splitRefreshTimer); _splitRefreshTimer = null; }
+}
+
 // ── Fleet Analytics ──
 function openAnalytics() {
     document.getElementById('analyticsOverlay').classList.add('active');
@@ -14541,6 +14671,7 @@ PALETTE_ACTIONS.push(
     { icon: 'search', label: 'Search All Outputs', shortcut: '⌘⇧F', action: () => { closePalette(); openGlobalSearch(); }, section: 'view' },
     { icon: 'table', label: 'Toggle Table View', shortcut: '', action: () => { closePalette(); setViewMode(state.viewMode === 'table' ? 'grid' : 'table'); }, section: 'view' },
     { icon: 'list', label: 'Toggle Compact View', shortcut: '', action: () => { closePalette(); setViewMode(state.viewMode === 'compact' ? 'grid' : 'compact'); }, section: 'view' },
+    { icon: 'columns', label: 'Split Terminal View', shortcut: '', action: () => { closePalette(); openSplitView(); }, section: 'view' },
     { icon: 'save', label: 'Manage Presets', shortcut: '', action: () => { closePalette(); openSettings(); }, section: 'config' },
     { icon: 'file-text', label: 'View Scratchpad', shortcut: '', action: () => { closePalette(); if (state.focusedAgentId) { switchDeepTab('scratchpad'); } else { showToast('Open an agent first to view its scratchpad', 'info'); } }, section: 'view' },
 );
