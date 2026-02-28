@@ -4853,7 +4853,7 @@ async function fetchInsights() {
                 renderInsightsPanel();
             }
         }
-    } catch (e) { /* no intelligence endpoint */ }
+    } catch (e) { console.warn('Insights fetch failed:', e.message); }
 }
 
 function updateInsightsBadge() {
@@ -4944,7 +4944,7 @@ async function handleSync(data) {
             state.workflowRuns.clear();
             (Array.isArray(runs) ? runs : runs.data || []).forEach(r => state.workflowRuns.set(r.id, r));
         }
-    } catch (e) { /* workflow-runs endpoint may not exist yet */ }
+    } catch (e) { console.warn('Workflow runs fetch failed:', e.message); }
 }
 
 let _lastAriaAnnounce = 0;
@@ -6470,7 +6470,7 @@ async function fetchWorkflowRun(runId) {
             state.workflowRuns.set(run.id, run);
             scheduleRender();
         }
-    } catch (e) { /* ignore */ }
+    } catch (e) { console.warn('Workflow run fetch failed:', e.message); }
 }
 
 function updateWorkflowRunStatus(runId, status) {
@@ -6577,6 +6577,9 @@ const PALETTE_ACTIONS = [
     { icon: 'check-square', label: 'Bulk select mode', shortcut: '', action: () => { closePalette(); toggleBulkMode(); } },
     { icon: 'alert-triangle', label: 'Show conflicts', shortcut: '', action: () => { closePalette(); showConflictSummary(); } },
     { icon: 'puzzle', label: 'Extensions...', shortcut: '⌘E', action: () => { closePalette(); openExtensionsPanel(); } },
+    { icon: 'brain', label: 'View intelligence insights', shortcut: '', action: () => { closePalette(); toggleInsightsPanel(); } },
+    { icon: 'activity', label: 'System metrics', shortcut: '', action: () => { closePalette(); toggleMetricsDropdown(); } },
+    { icon: 'message-square', label: 'Natural language command...', shortcut: '', action: () => { closePalette(); openNlCommand(); } },
 ];
 
 function openPalette() {
@@ -6867,22 +6870,47 @@ function clearCommandTarget(e) {
     if (sel) sel.value = '';
 }
 
-function sendCommand() {
+async function sendCommand() {
     const input = document.getElementById('commandInput');
     const msg = input.value.trim();
     if (!msg) return;
     closeAutocomplete();
+    input.value = '';
 
+    // If message starts with / or @, handle as direct command/mention
     const targetId = state.focusedAgentId || state.commandTargetId || (state.agents.size === 1 ? [...state.agents.keys()][0] : null);
+
+    // Try intelligent command parsing first for messages without explicit target
+    if (!targetId || !msg.startsWith('@')) {
+        try {
+            const resp = await fetch('/api/intelligence/command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ transcript: msg })
+            });
+            if (resp.ok) {
+                const result = await resp.json();
+                if (result.intent && result.intent.confidence >= 0.6) {
+                    if (result.executed) {
+                        showToast(`${result.intent.action}: ${result.results || 'done'}`, 'success');
+                    } else {
+                        showToast(`Parsed: ${result.intent.action} ${(result.intent.targets || []).join(', ')}`, 'info');
+                    }
+                    return;
+                }
+            }
+        } catch (e) { /* intelligence unavailable, fall through */ }
+    }
+
+    // Direct send to target agent
     if (targetId) {
         socket.send({ type: 'send', agent_id: targetId, message: msg });
         showToast(`Sent to ${escapeHtml(state.agents.get(targetId)?.name || targetId)}`, 'info');
     } else if (state.agents.size > 1) {
-        showToast('Pick a target agent with @name', 'warning');
+        showToast('Pick a target agent with @name, or type a natural language command', 'warning');
     } else {
         showToast('No agents running', 'info');
     }
-    input.value = '';
 }
 
 function updateCommandTarget() {
@@ -7423,7 +7451,29 @@ class VoiceInput {
             if (targetId) { socket.send({ type: 'pause', agent_id: targetId }); return; }
         }
 
-        // Default: send as message if 3+ words and target exists, else show unrecognized
+        // Try intelligent command parsing via server before falling back
+        try {
+            const cmdResp = await fetch('/api/intelligence/command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ transcript: text })
+            });
+            if (cmdResp.ok) {
+                const result = await cmdResp.json();
+                if (result.intent && result.intent.confidence >= 0.6) {
+                    const intent = result.intent;
+                    if (result.executed) {
+                        showToast(`${intent.action}: ${result.results || 'done'}`, 'success');
+                        playTone([660, 880], 0.1);
+                    } else {
+                        showToast(`Understood: ${intent.action} ${intent.targets?.join(', ') || ''}`, 'info');
+                    }
+                    return;
+                }
+            }
+        } catch (e) { /* intelligence endpoint unavailable, fall back */ }
+
+        // Fallback: send as message if 3+ words and target exists, else show unrecognized
         const words = text.trim().split(/\s+/);
         const targetId = state.focusedAgentId || (state.agents.size === 1 ? [...state.agents.keys()][0] : null);
         if (targetId && words.length >= 3) {
@@ -7445,6 +7495,13 @@ function showVoiceTranscript(text) {
     el.textContent = text;
     el.classList.add('active');
     setTimeout(() => el.classList.remove('active'), 3000);
+}
+
+function openNlCommand() {
+    const input = document.getElementById('commandInput');
+    input.focus();
+    input.placeholder = 'Type a natural language command (e.g., "pause all backend agents")...';
+    showToast('Type a command below — it will be parsed by AI', 'info');
 }
 
 // PTT via Space
@@ -8004,25 +8061,71 @@ function updateMetricsDropdown() {
 
     const agents = [...state.agents.values()];
     const m = state.metrics;
+    const totalCost = agents.reduce((sum, a) => sum + (a.estimated_cost_usd || 0), 0);
 
-    let html = `<table>
-        <tr><th>Agent</th><th>Status</th><th>Memory</th><th>Context</th></tr>`;
+    let html = '';
+
+    // System overview bar
+    if (m.memory) {
+        const diskPct = m.disk?.pct || 0;
+        html += `<div style="display:flex;gap:16px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border-subtle)">
+            <div style="flex:1;font-size:11px"><span style="color:var(--text-tertiary)">CPU</span><br><span style="font-size:14px;font-weight:600;color:${m.cpu_pct > 80 ? 'var(--danger)' : m.cpu_pct > 50 ? 'var(--orange)' : 'var(--success)'}">${m.cpu_pct}%</span></div>
+            <div style="flex:1;font-size:11px"><span style="color:var(--text-tertiary)">RAM</span><br><span style="font-size:14px;font-weight:600;color:${m.memory.pct > 85 ? 'var(--danger)' : m.memory.pct > 60 ? 'var(--orange)' : 'var(--success)'}">${m.memory.used_gb}/${m.memory.total_gb} GB</span></div>
+            <div style="flex:1;font-size:11px"><span style="color:var(--text-tertiary)">Cost</span><br><span style="font-size:14px;font-weight:600;color:var(--text-primary)">$${totalCost.toFixed(2)}</span></div>
+        </div>`;
+    }
+
+    // Service health
+    if (state._serviceHealth) {
+        const sh = state._serviceHealth;
+        const svcItems = [];
+        svcItems.push(`<span style="color:${sh.db_available !== false ? 'var(--success)' : 'var(--danger)'}">DB ${sh.db_available !== false ? 'OK' : 'DOWN'}</span>`);
+        svcItems.push(`<span style="color:${sh.llm_enabled ? 'var(--success)' : 'var(--text-tertiary)'}">LLM ${sh.llm_enabled ? 'ON' : 'OFF'}</span>`);
+        if (sh.bg_task_health) {
+            const tasks = Object.entries(sh.bg_task_health);
+            const healthy = tasks.filter(([,v]) => v === 'running' || v === true).length;
+            svcItems.push(`<span style="color:${healthy === tasks.length ? 'var(--success)' : 'var(--orange)'}">Tasks ${healthy}/${tasks.length}</span>`);
+        }
+        html += `<div style="font-size:10px;font-family:var(--font-mono);display:flex;gap:10px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border-subtle)">${svcItems.join('')}</div>`;
+    }
+
+    // Agent table
+    html += `<table>
+        <tr><th>Agent</th><th>Status</th><th>Mem</th><th>Ctx</th><th>Cost</th><th>Health</th></tr>`;
     if (agents.length === 0) {
-        html += '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary)">No agents</td></tr>';
+        html += '<tr><td colspan="6" style="text-align:center;color:var(--text-tertiary)">No agents</td></tr>';
     } else {
+        agents.sort((a, b) => (b.estimated_cost_usd || 0) - (a.estimated_cost_usd || 0));
         agents.forEach(a => {
+            const hp = typeof a.health_score === 'number' ? Math.round(a.health_score * 100) : null;
+            const hpColor = hp !== null ? (hp >= 80 ? 'var(--success)' : hp >= 50 ? 'var(--orange)' : 'var(--danger)') : 'var(--text-tertiary)';
+            const cost = (a.estimated_cost_usd || 0);
             html += `<tr>
                 <td>${roleIcon(a.role, 14)} ${escapeHtml(a.name)}</td>
                 <td>${escapeHtml(a.status)}</td>
-                <td>${Math.round(a.memory_mb || 0)} MB</td>
-                <td>${Math.max(0, 100 - Math.round((a.context_pct || 0) * 100))}% left</td>
+                <td>${Math.round(a.memory_mb || 0)}MB</td>
+                <td style="color:${(a.context_pct||0) > 0.8 ? 'var(--danger)' : 'var(--text-secondary)'}">${Math.max(0, 100 - Math.round((a.context_pct || 0) * 100))}%</td>
+                <td style="font-family:var(--font-mono)">$${cost.toFixed(2)}</td>
+                <td style="color:${hpColor}">${hp !== null ? hp + '%' : '—'}</td>
             </tr>`;
         });
     }
     html += '</table>';
-    if (m.memory) html += `<div style="margin-top:8px;font-size:11px;color:var(--text-tertiary)">System: ${m.cpu_pct}% CPU · ${m.memory.used_gb}/${m.memory.total_gb} GB RAM</div>`;
     dd.innerHTML = html;
 }
+
+// Fetch service health periodically
+async function fetchServiceHealth() {
+    try {
+        const resp = await fetch('/api/system');
+        if (resp.ok) {
+            const data = await resp.json();
+            state._serviceHealth = data.services || {};
+        }
+    } catch (e) { /* server may be down */ }
+}
+setInterval(fetchServiceHealth, 10000);
+fetchServiceHealth();
 
 // ── Time Updater ──
 
@@ -8031,8 +8134,14 @@ setInterval(() => {
         const card = cardElements.get(id);
         if (card) {
             const meta = card.querySelector('.card-meta');
-            const memStr = agent.memory_mb ? `${Math.round(agent.memory_mb)}MB` : '';
-            meta.textContent = [memStr, timeAgo(agent.updated_at || agent.created_at)].filter(Boolean).join(' · ');
+            const parts = [];
+            if (agent.restart_count > 0) parts.push(`\u21bb${agent.restart_count}`);
+            if (agent.memory_mb) parts.push(`${Math.round(agent.memory_mb)}MB`);
+            if (agent.output_rate) parts.push(`${Math.round(agent.output_rate)}l/m`);
+            if (agent.estimated_cost_usd > 0.001) parts.push(`$${agent.estimated_cost_usd.toFixed(2)}`);
+            if (agent.files_touched > 0) parts.push(`${agent.files_touched} files`);
+            parts.push(timeAgo(agent.updated_at || agent.created_at));
+            meta.innerHTML = parts.map(p => `<span>${escapeHtml(p)}</span>`).join('');
         }
     }
     if (state.view === 'deep' && state.focusedAgentId) {
@@ -9792,7 +9901,7 @@ async function renderActivityFeed(agentId) {
                 serverActivity = await resp.json();
                 if (agent) agent._activity = serverActivity;
             }
-        } catch (e) { /* fall back to client parsing */ }
+        } catch (e) { console.debug('Activity fetch unavailable, using client parsing'); }
     }
 
     // Build unified event list from server structured data
