@@ -544,6 +544,18 @@ body {
     animation: fadeOut 0.3s ease forwards;
     pointer-events: none;
 }
+.agent-card.dragging {
+    opacity: 0.4;
+    transform: scale(0.95);
+    box-shadow: var(--shadow-lg);
+    z-index: 10;
+}
+.agent-card.drag-over {
+    border-left-color: var(--accent) !important;
+    background: color-mix(in srgb, var(--accent) 6%, var(--bg-surface));
+    transform: translateY(-2px);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+}
 
 @keyframes fadeUp {
     from { opacity: 0; transform: translateY(12px); }
@@ -1987,40 +1999,69 @@ body {
 /* ── Shortcut Cheatsheet ── */
 .cheatsheet-overlay {
     position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.5);
-    backdrop-filter: blur(8px);
+    bottom: 60px;
+    right: 16px;
     z-index: 350;
     display: none;
-    align-items: center;
-    justify-content: center;
+    pointer-events: none;
+    animation: cheatsheetSlideIn 0.2s ease-out;
 }
-.cheatsheet-overlay.active { display: flex; }
+.cheatsheet-overlay.active { display: block; pointer-events: auto; }
+
+@keyframes cheatsheetSlideIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
 
 .cheatsheet {
-    background: rgba(13,21,32,0.95);
-    backdrop-filter: blur(24px);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-xl);
-    padding: 28px;
-    width: 420px;
+    background: rgba(13,21,32,0.92);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    padding: 16px 20px;
+    width: 400px;
     max-width: 90vw;
-    box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+    max-height: 70vh;
+    overflow-y: auto;
+    box-shadow: var(--shadow-xl);
 }
+.cheatsheet::-webkit-scrollbar { width: 4px; }
+.cheatsheet::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 2px; }
 .cheatsheet h3 {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 700;
-    margin-bottom: 20px;
+    margin-bottom: 12px;
     letter-spacing: -0.02em;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
+.cheatsheet h3 .cheatsheet-close {
+    cursor: pointer;
+    color: var(--text-tertiary);
+    font-size: 18px;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: var(--radius-xs);
+}
+.cheatsheet h3 .cheatsheet-close:hover { color: var(--text-primary); background: var(--bg-elevated); }
+.cheatsheet-section {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 700;
+    margin: 8px 0 2px;
+}
+.cheatsheet-section:first-of-type { margin-top: 0; }
 .cheatsheet-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 6px 0;
-    font-size: 13px;
+    padding: 4px 0;
+    font-size: 12px;
 }
-.cheatsheet-row .keys { color: var(--text-tertiary); }
+.cheatsheet-row .keys { color: var(--text-tertiary); white-space: nowrap; }
 .cheatsheet-row .keys .kbd { margin-left: 4px; }
 .cheatsheet-row .desc { color: var(--text-secondary); }
 
@@ -2859,6 +2900,15 @@ body {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.3; }
 }
+.scroll-speed-indicator {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--text-tertiary);
+    margin-left: 8px;
+    transition: color 0.3s;
+}
+.scroll-speed-indicator.fast { color: var(--warning); }
+.scroll-speed-indicator.very-fast { color: var(--danger); }
 
 /* ── Workflow Picker Modal ── */
 .wf-picker-overlay {
@@ -4219,6 +4269,7 @@ body {
             <option value="status">Status</option>
             <option value="cost">Cost</option>
             <option value="age">Age</option>
+            <option value="manual">Manual</option>
         </select>
         <div class="view-toggle">
             <button class="view-toggle-btn active" id="viewGridBtn" onclick="setViewMode('grid')" title="Card grid"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/></svg></button>
@@ -4445,6 +4496,7 @@ body {
         <button class="terminal-toolbar-btn" onclick="markOutputPosition()" id="toolbarMark" title="Mark current position to track new output">⚑ Mark</button>
         <div class="toolbar-spacer"></div>
         <div class="follow-indicator" id="followIndicator" style="display:none">FOLLOWING</div>
+        <span class="scroll-speed-indicator" id="scrollSpeedIndicator" style="display:none"></span>
     </div>
     <div class="deep-tab-bar" id="deepTabBar">
         <button class="deep-tab active" id="deepTabTerminal" onclick="switchDeepTab('terminal')">Terminal</button>
@@ -4825,10 +4877,10 @@ body {
 </div>
 
 <!-- ── Shortcut Cheatsheet ── -->
-<div class="cheatsheet-overlay" id="cheatsheetOverlay" onclick="if(event.target===this)closeCheatsheet()">
+<div class="cheatsheet-overlay" id="cheatsheetOverlay">
     <div class="cheatsheet">
-        <h3>Keyboard Shortcuts</h3>
-        <div style="font-size:11px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:4px">Navigation</div>
+        <h3>Keyboard Shortcuts <span class="cheatsheet-close" onclick="closeCheatsheet()">&times;</span></h3>
+        <div class="cheatsheet-section">Navigation</div>
         <div class="cheatsheet-row"><span class="desc">Command palette</span><span class="keys"><span class="kbd">⌘K</span> or <span class="kbd">/</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Spawn agent</span><span class="keys"><span class="kbd">⌘N</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Focus agent by position</span><span class="keys"><span class="kbd">1</span>–<span class="kbd">9</span></span></div>
@@ -4838,17 +4890,17 @@ body {
         <div class="cheatsheet-row"><span class="desc">Cycle agents</span><span class="keys"><span class="kbd">Tab</span> / <span class="kbd">⇧Tab</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Settings</span><span class="keys"><span class="kbd">⌘,</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Show this cheatsheet</span><span class="keys"><span class="kbd">?</span></span></div>
-        <div style="font-size:11px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin:8px 0 4px">Agent Actions</div>
+        <div class="cheatsheet-section">Agent Actions</div>
         <div class="cheatsheet-row"><span class="desc">Approve first waiting</span><span class="keys"><span class="kbd">⌘⇧A</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Pause/resume focused</span><span class="keys"><span class="kbd">⌘⇧P</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Kill focused</span><span class="keys"><span class="kbd">⌘⇧K</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Restart focused</span><span class="keys"><span class="kbd">⌘⇧R</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Bulk select mode</span><span class="keys"><span class="kbd">⌘⇧S</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Select all visible</span><span class="keys"><span class="kbd">⌘A</span></span></div>
-        <div style="font-size:11px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin:8px 0 4px">Interaction Sheet</div>
+        <div class="cheatsheet-section">Interaction Sheet</div>
         <div class="cheatsheet-row"><span class="desc">Approve / Yes</span><span class="keys"><span class="kbd">A</span> or <span class="kbd">Y</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Reject / No</span><span class="keys"><span class="kbd">R</span> or <span class="kbd">N</span></span></div>
-        <div style="font-size:11px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin:8px 0 4px">Deep View &amp; Search</div>
+        <div class="cheatsheet-section">Deep View &amp; Search</div>
         <div class="cheatsheet-row"><span class="desc">Search in terminal</span><span class="keys"><span class="kbd">⌘F</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Search all agents</span><span class="keys"><span class="kbd">⌘⇧F</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Activity timeline</span><span class="keys"><span class="kbd">⌘T</span></span></div>
@@ -4858,10 +4910,10 @@ body {
         <div class="cheatsheet-row"><span class="desc">Notes tab</span><span class="keys"><span class="kbd">N</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Focus input</span><span class="keys"><span class="kbd">I</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Jump to bottom</span><span class="keys"><span class="kbd">G</span></span></div>
-        <div style="font-size:11px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin:8px 0 4px">Spawn Dialog</div>
+        <div class="cheatsheet-section">Spawn Dialog</div>
         <div class="cheatsheet-row"><span class="desc">Spawn agent</span><span class="keys"><span class="kbd">⌘↵</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Navigate roles</span><span class="keys"><span class="kbd">←</span><span class="kbd">→</span></span></div>
-        <div style="font-size:11px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin:8px 0 4px">Voice &amp; Other</div>
+        <div class="cheatsheet-section">Voice &amp; Other</div>
         <div class="cheatsheet-row"><span class="desc">Push-to-talk</span><span class="keys">Hold <span class="kbd">Space</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Extensions</span><span class="keys"><span class="kbd">⌘E</span></span></div>
     </div>
@@ -5244,6 +5296,7 @@ const state = {
     insights: [],
     taskQueue: [],
     cardSort: localStorage.getItem('ashlar_card_sort') || 'priority',
+    cardOrder: JSON.parse(localStorage.getItem('ashlar_card_order') || '[]'),
     notificationLog: [],
     deepScrollPositions: new Map(), // agentId -> scrollTop
 };
@@ -6712,6 +6765,36 @@ function createAgentCard(agent) {
             <div class="card-menu-item danger" onclick="event.stopPropagation();killAgent('${agent.id}')">${icon('x', 14)} Kill</div>
         </div>
     `;
+    // Drag-and-drop reordering
+    card.draggable = true;
+    card.addEventListener('dragstart', (e) => {
+        if (document.getElementById('agentGrid').classList.contains('bulk-mode')) { e.preventDefault(); return; }
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', agent.id);
+        _draggedAgentId = agent.id;
+        requestAnimationFrame(() => card.classList.add('dragging'));
+    });
+    card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        document.querySelectorAll('.agent-card.drag-over').forEach(c => c.classList.remove('drag-over'));
+        _draggedAgentId = null;
+    });
+    card.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (_draggedAgentId && _draggedAgentId !== agent.id) {
+            card.classList.add('drag-over');
+        }
+    });
+    card.addEventListener('dragleave', () => { card.classList.remove('drag-over'); });
+    card.addEventListener('drop', (e) => {
+        e.preventDefault();
+        card.classList.remove('drag-over');
+        const fromId = e.dataTransfer.getData('text/plain');
+        if (fromId && fromId !== agent.id) {
+            applyCardReorder(fromId, agent.id);
+        }
+    });
     // Hover — subtle elevation, no colored glow
     card.addEventListener('mouseenter', () => { card.style.boxShadow = 'var(--shadow-md)'; });
     card.addEventListener('mouseleave', () => { card.style.boxShadow = ''; });
@@ -6723,6 +6806,37 @@ function createAgentCard(agent) {
         openDeepView(agent.id);
     };
     return card;
+}
+
+let _draggedAgentId = null;
+
+function applyCardReorder(fromId, toId) {
+    // Build current order
+    const ids = [...state.agents.keys()];
+    const fromIdx = ids.indexOf(fromId);
+    const toIdx = ids.indexOf(toId);
+    if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
+    // Move fromId to toIdx position
+    ids.splice(fromIdx, 1);
+    ids.splice(toIdx, 0, fromId);
+    // Rebuild state.agents in new order
+    const reordered = new Map();
+    for (const id of ids) {
+        const agent = state.agents.get(id);
+        if (agent) reordered.set(id, agent);
+    }
+    state.agents = reordered;
+    // Save and switch to manual sort
+    state.cardOrder = ids;
+    localStorage.setItem('ashlar_card_order', JSON.stringify(ids));
+    if (state.cardSort !== 'manual') {
+        state.cardSort = 'manual';
+        localStorage.setItem('ashlar_card_sort', 'manual');
+        const sel = document.getElementById('cardSortSelect');
+        if (sel) sel.value = 'manual';
+        showToast('Switched to manual sort order', 'info');
+    }
+    scheduleRender();
 }
 
 function updateAgentCard(card, agent) {
@@ -7577,6 +7691,7 @@ function openDeepView(agentId) {
     updateDeepViewHeader(agent);
     startDeepTimeTimer();
     startMinimapUpdates();
+    startScrollSpeedTracking();
 
     // Reset toolbar state (scroll position restore may override these)
     document.getElementById('toolbarAutoScroll').classList.toggle('active', savedScrollPos == null);
@@ -8031,6 +8146,39 @@ function updateActivityHeatmap(agent) {
 }
 
 let _newLinesSinceScroll = 0;
+let _scrollSpeedSamples = []; // timestamps + line counts
+let _scrollSpeedTimer = null;
+
+function startScrollSpeedTracking() {
+    _scrollSpeedSamples = [];
+    stopScrollSpeedTracking();
+    _scrollSpeedTimer = setInterval(updateScrollSpeedIndicator, 1000);
+}
+function stopScrollSpeedTracking() {
+    if (_scrollSpeedTimer) { clearInterval(_scrollSpeedTimer); _scrollSpeedTimer = null; }
+    const el = document.getElementById('scrollSpeedIndicator');
+    if (el) { el.style.display = 'none'; el.className = 'scroll-speed-indicator'; }
+}
+function trackOutputLines(count) {
+    const now = Date.now();
+    _scrollSpeedSamples.push({ t: now, n: count });
+    // Keep only last 10 seconds
+    const cutoff = now - 10000;
+    _scrollSpeedSamples = _scrollSpeedSamples.filter(s => s.t > cutoff);
+}
+function updateScrollSpeedIndicator() {
+    const el = document.getElementById('scrollSpeedIndicator');
+    if (!el) return;
+    const now = Date.now();
+    const cutoff = now - 5000;
+    const recent = _scrollSpeedSamples.filter(s => s.t > cutoff);
+    const totalLines = recent.reduce((s, r) => s + r.n, 0);
+    const lps = totalLines / 5; // lines per second (5s window)
+    if (lps < 0.5) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.textContent = lps >= 10 ? `${Math.round(lps)} ln/s` : `${lps.toFixed(1)} ln/s`;
+    el.className = 'scroll-speed-indicator' + (lps >= 20 ? ' very-fast' : lps >= 8 ? ' fast' : '');
+}
 
 function appendDeepOutput(lines) {
     const terminal = document.getElementById('deepTerminal');
@@ -8050,6 +8198,7 @@ function appendDeepOutput(lines) {
         frag.appendChild(div);
     }
     terminal.appendChild(frag);
+    trackOutputLines(lines.length);
     // Auto-scroll if following
     if (deepAutoScroll) {
         terminal.scrollTop = terminal.scrollHeight;
@@ -8101,6 +8250,7 @@ function stopDeepTimeTimer() {
 function closeDeepView() {
     stopDeepTimeTimer();
     stopMinimapUpdates();
+    stopScrollSpeedTracking();
     const terminal = document.getElementById('deepTerminal');
     // Save scroll position for this agent
     if (state.focusedAgentId && terminal) {
@@ -9755,8 +9905,16 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ── Cheatsheet ──
-function openCheatsheet() { document.getElementById('cheatsheetOverlay').classList.add('active'); trapFocus(document.getElementById('cheatsheetOverlay')); }
-function closeCheatsheet() { releaseFocus(); document.getElementById('cheatsheetOverlay').classList.remove('active'); }
+function openCheatsheet() {
+    const el = document.getElementById('cheatsheetOverlay');
+    el.classList.add('active');
+    // Close on click outside
+    const outsideHandler = (e) => {
+        if (!el.contains(e.target)) { closeCheatsheet(); document.removeEventListener('mousedown', outsideHandler); }
+    };
+    setTimeout(() => document.addEventListener('mousedown', outsideHandler), 0);
+}
+function closeCheatsheet() { document.getElementById('cheatsheetOverlay').classList.remove('active'); }
 
 // ── Project Selector ──
 
@@ -14378,6 +14536,16 @@ renderAgentGrid = function() {
                 return (agB.estimated_cost_usd || 0) - (agA.estimated_cost_usd || 0);
             case 'age':
                 return (agA.created_at || '').localeCompare(agB.created_at || '');
+            case 'manual': {
+                const order = state.cardOrder;
+                const ia = order.indexOf(a[0]);
+                const ib = order.indexOf(b[0]);
+                // Unknown agents go to end in creation order
+                if (ia >= 0 && ib >= 0) return ia - ib;
+                if (ia >= 0) return -1;
+                if (ib >= 0) return 1;
+                return 0;
+            }
             default:
                 return 0;
         }
