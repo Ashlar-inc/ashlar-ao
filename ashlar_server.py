@@ -1067,6 +1067,10 @@ class Agent:
             old_status = self.status
             self.status = new_status
             self._status_updated_at = now
+            # Clear stale input state on error/paused — prevents UI showing waiting badge after failure
+            if new_status in ("error", "paused") and self.needs_input:
+                self.needs_input = False
+                self.input_prompt = None
             # Track status transitions for timeline
             if old_status != new_status:
                 self._status_history.append({"status": new_status, "at": now})
@@ -1477,6 +1481,7 @@ class AgentManager:
         self.agents: dict[str, Agent] = {}
         self.tmux_prefix = "ashlar"
         self._loop: asyncio.AbstractEventLoop | None = None
+        self.db: "Database | None" = None  # Set after creation by create_app()
         # Rich backend configs
         self.backend_configs: dict[str, BackendConfig] = self._build_backend_configs()
         # Workflow run tracking
@@ -1748,6 +1753,15 @@ class AgentManager:
         agent.last_output_time = time.monotonic()
         self.agents[agent_id] = agent
         self._total_spawned += 1
+
+        # Pre-flight: kill any orphaned tmux session with this name (rare UUID collision)
+        try:
+            check = await self._run_tmux(["has-session", "-t", session_name])
+            if check.returncode == 0:
+                log.warning(f"Orphaned tmux session {session_name} found, killing before spawn")
+                await self._run_tmux(["kill-session", "-t", session_name])
+        except Exception:
+            pass  # has-session returns non-zero if session doesn't exist — expected
 
         # Create tmux session
         try:
@@ -2169,6 +2183,14 @@ class AgentManager:
                 log.warning(f"Failed to remove demo script {agent.script_path} for agent {agent_id}: {e}")
 
         self._cleanup_file_activity(agent_id)
+
+        # Release DB file locks held by this agent
+        try:
+            if self.db and hasattr(self.db, 'release_file_locks'):
+                await self.db.release_file_locks(agent_id)
+        except Exception as e:
+            log.warning(f"Failed to release DB file locks for agent {agent_id}: {e}")
+
         del self.agents[agent_id]
         self._total_killed += 1
         return True
@@ -5294,6 +5316,8 @@ class WebSocketHub:
     async def broadcast(self, message: dict) -> None:
         if not self.clients:
             return
+        # Snapshot to prevent "set changed size during iteration" if clients connect/disconnect mid-broadcast
+        clients_snapshot = set(self.clients)
         dead: set[web.WebSocketResponse] = set()
 
         async def _send(ws: web.WebSocketResponse) -> None:
@@ -5302,7 +5326,7 @@ class WebSocketHub:
             except (ConnectionError, RuntimeError, ConnectionResetError, asyncio.TimeoutError, asyncio.CancelledError):
                 dead.add(ws)
 
-        await asyncio.gather(*[_send(ws) for ws in self.clients], return_exceptions=True)
+        await asyncio.gather(*[_send(ws) for ws in clients_snapshot], return_exceptions=True)
         self.clients -= dead
 
     async def broadcast_event(
@@ -9355,6 +9379,7 @@ def create_app(config: Config) -> web.Application:
     db = Database()
     app["db"] = db
     app["db_available"] = True  # Set to False if DB init fails in start_background_tasks
+    manager.db = db  # Give manager DB ref for cleanup operations (e.g., release file locks on kill)
 
     hub = WebSocketHub(manager, config, db)
     hub.app = app

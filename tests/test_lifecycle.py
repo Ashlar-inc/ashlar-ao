@@ -3878,3 +3878,130 @@ class TestSpawnValidation:
         """Validation should return errors list for blocking issues."""
         src = inspect.getsource(ashlar_server.validate_spawn)
         assert "errors" in src
+
+
+# ─────────────────────────────────────────────
+# Stale Input State on Error (#249)
+# ─────────────────────────────────────────────
+
+
+class TestStaleInputClearOnError:
+    def test_error_clears_needs_input(self):
+        """Transitioning to error should clear needs_input flag."""
+        agent = ashlar_server.Agent(
+            id="test", name="test", role="general",
+            status="waiting", working_dir="/tmp",
+            backend="claude-code", task="test",
+        )
+        agent.needs_input = True
+        agent.input_prompt = "Do you want to continue?"
+        agent.set_status("error")
+        assert agent.needs_input is False
+        assert agent.input_prompt is None
+
+    def test_paused_clears_needs_input(self):
+        """Transitioning to paused should clear needs_input flag."""
+        agent = ashlar_server.Agent(
+            id="test", name="test", role="general",
+            status="waiting", working_dir="/tmp",
+            backend="claude-code", task="test",
+        )
+        agent.needs_input = True
+        agent.input_prompt = "Approve plan?"
+        agent.set_status("paused")
+        assert agent.needs_input is False
+        assert agent.input_prompt is None
+
+    def test_working_preserves_needs_input_false(self):
+        """Transitioning to working with no needs_input should be fine."""
+        agent = ashlar_server.Agent(
+            id="test", name="test", role="general",
+            status="idle", working_dir="/tmp",
+            backend="claude-code", task="test",
+        )
+        agent.needs_input = False
+        agent.set_status("working")
+        assert agent.needs_input is False
+
+    def test_non_error_preserves_needs_input(self):
+        """Transitioning to working should NOT clear needs_input."""
+        agent = ashlar_server.Agent(
+            id="test", name="test", role="general",
+            status="waiting", working_dir="/tmp",
+            backend="claude-code", task="test",
+        )
+        agent.needs_input = True
+        agent.input_prompt = "Continue?"
+        agent.set_status("working")
+        # Working does not clear needs_input — only error/paused do
+        assert agent.needs_input is True
+
+
+# ─────────────────────────────────────────────
+# DB Cleanup on Kill (#249)
+# ─────────────────────────────────────────────
+
+
+class TestDBCleanupOnKill:
+    def test_kill_calls_release_file_locks(self):
+        """Kill should release DB file locks for the agent."""
+        src = inspect.getsource(ashlar_server.AgentManager.kill)
+        assert "release_file_locks" in src
+
+    def test_kill_handles_missing_db(self):
+        """Kill should handle missing db gracefully."""
+        src = inspect.getsource(ashlar_server.AgentManager.kill)
+        assert "self.db" in src
+        # Should have a try/except around DB cleanup
+        assert "except Exception" in src
+
+    def test_manager_has_db_attribute(self):
+        """AgentManager should have db attribute initialized to None."""
+        config = ashlar_server.Config()
+        config.demo_mode = True
+        manager = ashlar_server.AgentManager(config)
+        assert hasattr(manager, 'db')
+        assert manager.db is None
+
+    def test_create_app_sets_manager_db(self):
+        """create_app should set manager.db reference."""
+        src = inspect.getsource(ashlar_server.create_app)
+        assert "manager.db = db" in src
+
+
+# ─────────────────────────────────────────────
+# WebSocket Broadcast Safety (#249)
+# ─────────────────────────────────────────────
+
+
+class TestWSBroadcastSafety:
+    def test_broadcast_snapshots_clients(self):
+        """Broadcast should snapshot clients set before iterating."""
+        src = inspect.getsource(ashlar_server.WebSocketHub.broadcast)
+        assert "clients_snapshot" in src
+        assert "set(self.clients)" in src
+
+    def test_broadcast_iterates_snapshot(self):
+        """Broadcast gather should iterate over snapshot, not live set."""
+        src = inspect.getsource(ashlar_server.WebSocketHub.broadcast)
+        assert "clients_snapshot" in src
+        # The gather should use clients_snapshot
+        assert "for ws in clients_snapshot" in src
+
+
+# ─────────────────────────────────────────────
+# Tmux Session Collision Check (#250)
+# ─────────────────────────────────────────────
+
+
+class TestTmuxSessionCollisionCheck:
+    def test_spawn_checks_existing_session(self):
+        """Spawn should check for existing tmux session before creating."""
+        src = inspect.getsource(ashlar_server.AgentManager.spawn)
+        assert "has-session" in src
+
+    def test_spawn_kills_orphan_before_create(self):
+        """Spawn should kill orphaned session if found."""
+        src = inspect.getsource(ashlar_server.AgentManager.spawn)
+        assert "Orphaned tmux session" in src
+        assert "kill-session" in src
