@@ -992,6 +992,26 @@ class Agent:
             return True
         return False
 
+    def _cost_burn_rate(self) -> dict | None:
+        """Calculate cost burn rate ($/min) and estimated time to context exhaustion."""
+        if self._spawn_time <= 0 or self.estimated_cost_usd <= 0:
+            return None
+        uptime_min = (time.monotonic() - self._spawn_time) / 60.0
+        if uptime_min < 0.5:
+            return None
+        rate_per_min = self.estimated_cost_usd / uptime_min
+        total_tokens = self.tokens_input + self.tokens_output
+        tokens_per_min = total_tokens / uptime_min if uptime_min > 0 else 0
+        ctx_window = KNOWN_BACKENDS[self.backend].context_window if self.backend in KNOWN_BACKENDS else 200_000
+        remaining_tokens = max(0, ctx_window - self.tokens_input)
+        minutes_remaining = remaining_tokens / tokens_per_min if tokens_per_min > 0 else None
+        return {
+            "cost_per_min": round(rate_per_min, 4),
+            "tokens_per_min": round(tokens_per_min),
+            "minutes_remaining": round(minutes_remaining, 1) if minutes_remaining else None,
+            "uptime_min": round(uptime_min, 1),
+        }
+
     def create_snapshot(self, trigger: str) -> OutputSnapshot:
         """Create a snapshot of current output state."""
         tail_lines = list(self.output_lines)[-50:]
@@ -1053,6 +1073,7 @@ class Agent:
             "tokens_input": self.tokens_input,
             "tokens_output": self.tokens_output,
             "estimated_cost_usd": round(self.estimated_cost_usd, 4),
+            "cost_burn_rate": self._cost_burn_rate(),
             "plan_mode": self.plan_mode,
             "cost_is_estimated": True,
             "context_window": KNOWN_BACKENDS[self.backend].context_window if self.backend in KNOWN_BACKENDS else 200_000,
@@ -7039,6 +7060,75 @@ async def bulk_agent_action(request: web.Request) -> web.Response:
     return web.json_response({"success": success_ids, "failed": failed_items})
 
 
+async def batch_spawn(request: web.Request) -> web.Response:
+    """POST /api/agents/batch-spawn — spawn multiple agents from a single request.
+
+    Body: {"agents": [{"role": "backend", "name": "api", "task": "...", "working_dir": "...", ...}, ...]}
+    Optional: "project_id", "plan_mode" at top level to apply to all agents.
+    """
+    if r := _check_rate(request, cost=5, rate=0.5, burst=3):
+        return r
+    manager: AgentManager = request.app["agent_manager"]
+    hub: WebSocketHub = request.app["ws_hub"]
+    config: Config = request.app["config"]
+    try:
+        data = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    agent_specs = data.get("agents", [])
+    if not isinstance(agent_specs, list) or not agent_specs:
+        return web.json_response({"error": "agents must be a non-empty list"}, status=400)
+    if len(agent_specs) > 10:
+        return web.json_response({"error": "Maximum 10 agents per batch"}, status=400)
+
+    shared_project = data.get("project_id")
+    shared_plan_mode = data.get("plan_mode", False)
+    shared_dir = data.get("working_dir")
+
+    spawned = []
+    failed = []
+
+    for i, spec in enumerate(agent_specs):
+        if not isinstance(spec, dict):
+            failed.append({"index": i, "error": "Each agent spec must be an object"})
+            continue
+        task = spec.get("task", "")
+        if not task:
+            failed.append({"index": i, "error": "task is required"})
+            continue
+        role = spec.get("role", config.default_role)
+        if role not in BUILTIN_ROLES:
+            failed.append({"index": i, "error": f"Unknown role '{role}'"})
+            continue
+
+        try:
+            agent = await manager.spawn(
+                role=role,
+                name=spec.get("name"),
+                working_dir=spec.get("working_dir") or shared_dir,
+                task=task,
+                plan_mode=spec.get("plan_mode", shared_plan_mode),
+                backend=spec.get("backend", config.default_backend),
+                model=spec.get("model"),
+                tools=spec.get("tools"),
+            )
+            if shared_project or spec.get("project_id"):
+                agent.project_id = spec.get("project_id") or shared_project
+            spawned.append(agent.to_dict())
+            await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
+            await hub.broadcast_event("agent_spawned", f"Batch spawned: {agent.name}", agent.id, agent.name)
+        except Exception as e:
+            failed.append({"index": i, "error": str(e)})
+
+    return web.json_response({
+        "spawned": spawned,
+        "failed": failed,
+        "total_spawned": len(spawned),
+        "total_failed": len(failed),
+    }, status=201 if spawned else 400)
+
+
 async def bulk_respond(request: web.Request) -> web.Response:
     """Send responses to multiple waiting agents at once."""
     manager: AgentManager = request.app["agent_manager"]
@@ -7868,6 +7958,7 @@ def create_app(config: Config) -> web.Application:
     app.router.add_post("/api/agents", spawn_agent)
     app.router.add_post("/api/agents/bulk", bulk_agent_action)
     app.router.add_post("/api/agents/bulk-respond", bulk_respond)
+    app.router.add_post("/api/agents/batch-spawn", batch_spawn)
     app.router.add_patch("/api/agents/{id}", patch_agent)
     app.router.add_get("/api/agents/{id}", get_agent)
     app.router.add_delete("/api/agents/{id}", delete_agent)

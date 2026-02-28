@@ -5591,9 +5591,17 @@ function handleMetrics(data) {
     // Agents
     document.getElementById('metricAgents').textContent = `${data.agents_active || 0}/${data.agents_total || 0}`;
 
-    // Cost — aggregate from active agents
-    const totalCost = [...state.agents.values()].reduce((sum, a) => sum + (a.estimated_cost_usd || 0), 0);
-    document.getElementById('metricCost').textContent = totalCost < 1 ? `$${totalCost.toFixed(2)}` : `$${totalCost.toFixed(1)}`;
+    // Cost — aggregate from active agents with fleet burn rate
+    const agents = [...state.agents.values()];
+    const totalCost = agents.reduce((sum, a) => sum + (a.estimated_cost_usd || 0), 0);
+    const costEl = document.getElementById('metricCost');
+    costEl.textContent = totalCost < 1 ? `$${totalCost.toFixed(2)}` : `$${totalCost.toFixed(1)}`;
+    const fleetBurnRate = agents.reduce((sum, a) => sum + (a.cost_burn_rate?.cost_per_min || 0), 0);
+    if (fleetBurnRate > 0) {
+        costEl.title = `Fleet burn: $${fleetBurnRate.toFixed(4)}/min ($${(fleetBurnRate * 60).toFixed(2)}/hr)`;
+    } else {
+        costEl.title = 'Total estimated cost';
+    }
 
     // CPU sparkline
     state.cpuHistory.push(cpu);
@@ -6798,6 +6806,27 @@ function updateDeepViewHeader(agent) {
     const costEl = document.getElementById('deepCost');
     const cost = agent.estimated_cost_usd || 0;
     costEl.textContent = cost > 0 ? `$${cost.toFixed(4)}` : '-';
+    // Cost burn rate tooltip
+    const burn = agent.cost_burn_rate;
+    if (burn) {
+        const parts = [`$${burn.cost_per_min.toFixed(4)}/min`, `${burn.tokens_per_min.toLocaleString()} tok/min`];
+        if (burn.minutes_remaining != null) {
+            const mins = burn.minutes_remaining;
+            parts.push(mins > 60 ? `~${(mins / 60).toFixed(1)}h remaining` : `~${Math.round(mins)}m remaining`);
+        }
+        parts.push(`Uptime: ${burn.uptime_min.toFixed(1)}m`);
+        costEl.title = parts.join(' · ');
+        if (burn.minutes_remaining != null && burn.minutes_remaining < 10) {
+            costEl.style.color = 'var(--danger)';
+        } else if (burn.minutes_remaining != null && burn.minutes_remaining < 30) {
+            costEl.style.color = 'var(--warning)';
+        } else {
+            costEl.style.color = '';
+        }
+    } else {
+        costEl.title = '';
+        costEl.style.color = '';
+    }
 
     // Tool invocations + file ops
     const toolCountEl = document.getElementById('deepToolCount');

@@ -1952,3 +1952,60 @@ class TestOutputSnapshots:
         assert len(lines) == 50
         assert lines[-1] == "line-99"
         assert lines[0] == "line-50"
+
+
+class TestCostBurnRate:
+    """Tests for Agent._cost_burn_rate() forecasting."""
+
+    def test_no_burn_rate_without_cost(self):
+        """Should return None when no cost data exists."""
+        agent = ashlar_server.Agent(
+            id="br01", name="test", role="general", status="working",
+            working_dir="/tmp", backend="demo", task="test",
+            summary="", tmux_session="ashlar-br01",
+            created_at="2026-01-01T00:00:00Z", updated_at="2026-01-01T00:00:00Z",
+        )
+        assert agent._cost_burn_rate() is None
+
+    def test_no_burn_rate_early(self):
+        """Should return None when agent is <30s old (not enough data)."""
+        agent = ashlar_server.Agent(
+            id="br02", name="test", role="general", status="working",
+            working_dir="/tmp", backend="demo", task="test",
+            summary="", tmux_session="ashlar-br02",
+            created_at="2026-01-01T00:00:00Z", updated_at="2026-01-01T00:00:00Z",
+        )
+        agent._spawn_time = time.monotonic()  # Just spawned
+        agent.estimated_cost_usd = 0.01
+        assert agent._cost_burn_rate() is None
+
+    def test_burn_rate_calculation(self):
+        """Should calculate cost_per_min and tokens_per_min correctly."""
+        agent = ashlar_server.Agent(
+            id="br03", name="test", role="general", status="working",
+            working_dir="/tmp", backend="claude-code", task="test",
+            summary="", tmux_session="ashlar-br03",
+            created_at="2026-01-01T00:00:00Z", updated_at="2026-01-01T00:00:00Z",
+        )
+        agent._spawn_time = time.monotonic() - 120  # 2 minutes ago
+        agent.estimated_cost_usd = 0.10
+        agent.tokens_input = 5000
+        agent.tokens_output = 2000
+        rate = agent._cost_burn_rate()
+        assert rate is not None
+        assert rate["cost_per_min"] > 0
+        assert rate["tokens_per_min"] > 0
+        assert rate["uptime_min"] > 1.5
+        assert "minutes_remaining" in rate
+
+    def test_burn_rate_in_to_dict(self):
+        """Agent.to_dict should include cost_burn_rate field."""
+        agent = ashlar_server.Agent(
+            id="br04", name="test", role="general", status="working",
+            working_dir="/tmp", backend="demo", task="test",
+            summary="", tmux_session="ashlar-br04",
+            created_at="2026-01-01T00:00:00Z", updated_at="2026-01-01T00:00:00Z",
+        )
+        d = agent.to_dict()
+        assert "cost_burn_rate" in d
+        assert d["cost_burn_rate"] is None  # No cost data = None
