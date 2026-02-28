@@ -2611,6 +2611,9 @@ body {
 .progress-bar-fill.phase-testing { background: linear-gradient(90deg, #06B6D4, #22D3EE); }
 .progress-bar-fill.phase-complete { background: linear-gradient(90deg, #10B981, #34D399); }
 .card-progress-text { font-size: 9px; font-family: var(--font-mono); color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+.card-mini-stats { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.mini-stat { font-size: 8px; font-family: var(--font-mono); font-weight: 600; padding: 1px 4px; border-radius: 3px; background: rgba(255,255,255,0.04); color: var(--text-tertiary); letter-spacing: 0.2px; }
+.mini-stat.has-val { color: var(--text-secondary); background: rgba(255,255,255,0.06); }
 /* Status badge waiting pulse */
 .status-badge.waiting {
     animation: badge-pulse 2s ease-in-out infinite;
@@ -2875,6 +2878,17 @@ body {
 .terminal-line.hl-success { background: rgba(34,197,94,0.06); border-left: 2px solid rgba(34,197,94,0.3); padding-left: 12px; margin-left: -2px; }
 .terminal-line.hl-warning { background: rgba(234,179,8,0.06); border-left: 2px solid rgba(234,179,8,0.3); padding-left: 12px; margin-left: -2px; }
 .terminal-line.hl-git { background: rgba(139,92,246,0.06); border-left: 2px solid rgba(139,92,246,0.3); padding-left: 12px; margin-left: -2px; }
+.terminal-line .line-timestamp {
+    display: none;
+    font-size: 9px;
+    color: var(--text-tertiary);
+    margin-right: 8px;
+    font-family: var(--font-mono);
+    opacity: 0.6;
+    user-select: none;
+    min-width: 60px;
+}
+.show-timestamps .terminal-line .line-timestamp { display: inline-block; }
 .terminal-line.truncated { position: relative; }
 .terminal-line.truncated .trunc-fade { display: inline; }
 .terminal-line.truncated .trunc-full { display: none; }
@@ -3074,6 +3088,32 @@ body {
     background: var(--accent-subtle);
 }
 .toolbar-spacer { flex: 1; }
+.goto-line-popover {
+    display: none;
+    position: absolute;
+    right: 8px;
+    bottom: 100%;
+    margin-bottom: 4px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: 8px;
+    z-index: 50;
+    box-shadow: var(--shadow-md);
+}
+.goto-line-popover.active { display: flex; align-items: center; gap: 6px; }
+.goto-line-popover input {
+    width: 80px;
+    padding: 4px 8px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+.goto-line-popover input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 2px var(--accent-subtle); }
+.goto-line-popover label { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
 .follow-indicator {
     font-size: 10px;
     color: var(--success);
@@ -4067,6 +4107,16 @@ body {
     opacity: 0.6;
 }
 
+/* ── Card Status Duration ── */
+.card-status-duration {
+    font-size: 9px;
+    font-family: var(--font-mono);
+    color: var(--text-tertiary);
+    letter-spacing: 0.2px;
+}
+.card-status-duration.warn { color: var(--warning); }
+.card-status-duration.danger { color: var(--danger); }
+
 /* ── Card Cost Badge ── */
 .card-cost-badge {
     font-size: 9px;
@@ -4804,6 +4854,12 @@ body {
         <button class="terminal-toolbar-btn" onclick="toggleBookmarksPanel()" id="toolbarBookmarks">★ Bookmarks <span class="bookmark-count-badge" id="bookmarkCountBadge" style="display:none">0</span></button>
         <button class="terminal-toolbar-btn" onclick="markOutputPosition()" id="toolbarMark" title="Mark current position to track new output">⚑ Mark</button>
         <button class="terminal-toolbar-btn" id="toolbarTailMode" onclick="toggleTailMode()" title="Show only last 50 lines">⊟ Tail</button>
+        <button class="terminal-toolbar-btn" onclick="openGoToLine()" title="Go to line (Cmd+G)">⤓ Go to line</button>
+        <button class="terminal-toolbar-btn" id="toolbarTimestamps" onclick="toggleTimestamps()" title="Show line timestamps">⏱ Timestamps</button>
+        <div class="goto-line-popover" id="gotoLinePopover">
+            <label>Line:</label>
+            <input type="number" id="gotoLineInput" min="1" placeholder="Line #" />
+        </div>
         <div class="toolbar-spacer"></div>
         <div class="follow-indicator" id="followIndicator" style="display:none">FOLLOWING</div>
         <span class="scroll-speed-indicator" id="scrollSpeedIndicator" style="display:none"></span>
@@ -6775,10 +6831,19 @@ function handleAgentOutput(data) {
     const agent = state.agents.get(data.agent_id);
     if (!agent) return;
     if (!agent._outputBuffer) agent._outputBuffer = [];
+    // Track timestamps per line index
+    if (!agent._outputTimestamps) agent._outputTimestamps = [];
+    const tsNow = Date.now();
+    const startIdx = agent._outputBuffer.length;
     agent._outputBuffer.push(...data.lines);
+    for (let ti = 0; ti < data.lines.length; ti++) {
+        agent._outputTimestamps[startIdx + ti] = tsNow;
+    }
     // Cap buffer at 10000 lines to prevent memory bloat
     if (agent._outputBuffer.length > 10000) {
+        const trim = agent._outputBuffer.length - 10000;
         agent._outputBuffer = agent._outputBuffer.slice(-10000);
+        agent._outputTimestamps = agent._outputTimestamps.slice(-10000);
     }
     // Track sparkline output history
     if (!agent._outputHistory) agent._outputHistory = [];
@@ -7236,6 +7301,7 @@ function createAgentCard(agent) {
         </div>
         <div class="progress-bar" role="progressbar" aria-label="Task progress"><div class="progress-bar-fill"></div></div>
         <div class="card-progress-text" style="display:none"></div>
+        <div class="card-mini-stats" style="display:none"></div>
         <canvas class="card-sparkline" width="160" height="20"></canvas>
         <canvas class="card-health-sparkline" width="80" height="14"></canvas>
         <div class="context-bar-row"><div class="context-bar" role="progressbar" aria-label="Context window usage"><div class="context-bar-fill"></div></div><span class="context-pct-label low">0%</span><span class="context-warn-icon" title="High context usage">&#9888;</span><span class="context-text"></span></div>
@@ -7243,6 +7309,7 @@ function createAgentCard(agent) {
         <div class="card-tags-row" style="display:none"></div>
         <div class="card-footer">
             <span class="status-badge"></span>
+            <span class="card-status-duration"></span>
             <span class="card-cost-badge" style="display:none"></span>
             <span class="card-line-count" style="display:none" title="Total output lines"></span>
             <span class="card-meta"></span>
@@ -7403,6 +7470,23 @@ function detectProgressText(agent) {
     return null;
 }
 
+function detectToolCounts(agent) {
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    if (lines.length === 0) return null;
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const counts = { read: 0, edit: 0, write: 0, bash: 0, grep: 0, glob: 0 };
+    for (let i = 0; i < lines.length; i++) {
+        const l = lines[i].replace(ansiRe, '');
+        if (/\bRead\s*\(/.test(l)) counts.read++;
+        if (/\bEdit\s*\(/.test(l)) counts.edit++;
+        if (/\bWrite\s*\(/.test(l)) counts.write++;
+        if (/\bBash\s*\(/.test(l)) counts.bash++;
+        if (/\bGrep\s*\(/.test(l)) counts.grep++;
+        if (/\bGlob\s*\(/.test(l)) counts.glob++;
+    }
+    return counts;
+}
+
 function detectLastFile(agent) {
     const lines = agent._outputBuffer || agent.output_lines || [];
     if (lines.length === 0) return null;
@@ -7426,7 +7510,9 @@ function updateAgentCard(card, agent) {
         card.classList.remove('status-transition');
         void card.offsetWidth; // force reflow to restart animation
         card.classList.add('status-transition');
+        card.dataset.statusSince = Date.now().toString();
     }
+    if (!card.dataset.statusSince) card.dataset.statusSince = Date.now().toString();
     card.dataset.status = agent.status;
     card.dataset.planMode = agent.plan_mode ? 'true' : 'false';
     card.dataset.activeOutput = (agent.output_rate && agent.output_rate > 0 && agent.status === 'working') ? 'true' : 'false';
@@ -7566,6 +7652,25 @@ function updateAgentCard(card, agent) {
             progTextEl.style.display = '';
         } else {
             progTextEl.style.display = 'none';
+        }
+    }
+
+    // Mini-stats row — tool invocation counts from output
+    const miniStatsEl = card.querySelector('.card-mini-stats');
+    if (miniStatsEl) {
+        const counts = detectToolCounts(agent);
+        if (counts && Object.values(counts).some(v => v > 0)) {
+            const parts = [];
+            if (counts.read) parts.push(`R:${counts.read}`);
+            if (counts.edit) parts.push(`E:${counts.edit}`);
+            if (counts.write) parts.push(`W:${counts.write}`);
+            if (counts.bash) parts.push(`B:${counts.bash}`);
+            if (counts.grep) parts.push(`G:${counts.grep}`);
+            if (counts.glob) parts.push(`Gl:${counts.glob}`);
+            miniStatsEl.innerHTML = parts.map(p => `<span class="mini-stat has-val">${p}</span>`).join('');
+            miniStatsEl.style.display = 'flex';
+        } else {
+            miniStatsEl.style.display = 'none';
         }
     }
 
@@ -7835,6 +7940,26 @@ function updateAgentCard(card, agent) {
         badge.textContent = agent.status;
     }
     badge.className = `status-badge ${agent.status}`;
+
+    // Status duration — show how long agent has been in current status
+    const durEl = card.querySelector('.card-status-duration');
+    if (durEl && card.dataset.statusSince) {
+        const durSec = (Date.now() - parseInt(card.dataset.statusSince)) / 1000;
+        if (durSec >= 10) {
+            let durText;
+            if (durSec >= 3600) durText = `${Math.floor(durSec/3600)}h${Math.floor((durSec%3600)/60)}m`;
+            else if (durSec >= 60) durText = `${Math.floor(durSec/60)}m${Math.floor(durSec%60)}s`;
+            else durText = `${Math.floor(durSec)}s`;
+            durEl.textContent = durText;
+            durEl.className = 'card-status-duration';
+            if (agent.status === 'waiting' || agent.status === 'error') {
+                if (durSec > 300) durEl.classList.add('danger');
+                else if (durSec > 120) durEl.classList.add('warn');
+            }
+        } else {
+            durEl.textContent = '';
+        }
+    }
 
     // Meta: memory + time + output rate + cost + health + files
     const meta = card.querySelector('.card-meta');
@@ -8438,12 +8563,15 @@ function openDeepView(agentId) {
     if (lines.length) {
         _addLoadMoreIndicator(terminal);
         resetCodeBlockState(agentId);
+        if (_showTimestamps) terminal.classList.add('show-timestamps');
+        const tsMap = agent._outputTimestamps || [];
         const frag = document.createDocumentFragment();
         for (let li = 0; li < lines.length; li++) {
             const cl = classifyTerminalLine(lines[li], agentId);
             const div = document.createElement('div');
             div.className = cl.className;
-            div.innerHTML = cl.html;
+            const ts = tsMap[li] ? `<span class="line-timestamp">${formatLineTimestamp(tsMap[li])}</span>` : '<span class="line-timestamp"></span>';
+            div.innerHTML = ts + cl.html;
             addLineNumber(div, li, agentId);
             frag.appendChild(div);
         }
@@ -8916,11 +9044,13 @@ function appendDeepOutput(lines) {
         sep.innerHTML = `<span class="capture-sep-line"></span><span class="capture-sep-label">+${lines.length} lines at ${time}</span><span class="capture-sep-line"></span>`;
         frag.appendChild(sep);
     }
+    const tsNow = formatLineTimestamp(Date.now());
     for (const line of lines) {
         const cl = classifyTerminalLine(line, aid);
         const div = document.createElement('div');
         div.className = cl.className + (deepAutoScroll ? '' : ' new-highlight');
-        div.innerHTML = cl.html;
+        const tsHtml = `<span class="line-timestamp">${tsNow}</span>`;
+        div.innerHTML = tsHtml + cl.html;
         addLineNumber(div, existingCount++, aid);
         frag.appendChild(div);
     }
@@ -10672,6 +10802,9 @@ document.addEventListener('keydown', (e) => {
     // Cmd+Shift+F — global search across all agents
     if (e.metaKey && e.shiftKey && e.key === 'F') { e.preventDefault(); openGlobalSearch(); return; }
 
+    // Cmd+G — go to line in deep view
+    if (e.metaKey && e.key === 'g' && state.view === 'deep') { e.preventDefault(); openGoToLine(); return; }
+
     // Cmd+F — search in deep view
     if (e.metaKey && e.key === 'f' && state.view === 'deep') { e.preventDefault(); openDeepSearch(); return; }
 
@@ -11487,6 +11620,72 @@ function applyTailMode() {
         terminal.prepend(indicator);
     }
     indicator.textContent = `⊟ Tail mode — showing last ${TAIL_LINES} of ${allLines.length} lines`;
+}
+
+// ── Timestamps Toggle ──
+
+let _showTimestamps = false;
+function toggleTimestamps() {
+    _showTimestamps = !_showTimestamps;
+    const btn = document.getElementById('toolbarTimestamps');
+    btn.classList.toggle('active', _showTimestamps);
+    const terminal = document.getElementById('deepTerminal');
+    if (terminal) terminal.classList.toggle('show-timestamps', _showTimestamps);
+}
+
+function formatLineTimestamp(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const h = d.getHours().toString().padStart(2, '0');
+    const m = d.getMinutes().toString().padStart(2, '0');
+    const s = d.getSeconds().toString().padStart(2, '0');
+    return `${h}:${m}:${s}`;
+}
+
+// ── Go-to-Line ──
+
+function openGoToLine() {
+    const pop = document.getElementById('gotoLinePopover');
+    const input = document.getElementById('gotoLineInput');
+    const isActive = pop.classList.contains('active');
+    if (isActive) { pop.classList.remove('active'); return; }
+    const totalLines = virtualTermData.length || document.getElementById('deepTerminal')?.querySelectorAll('.terminal-line').length || 0;
+    input.max = totalLines;
+    input.placeholder = `1–${totalLines}`;
+    input.value = '';
+    pop.classList.add('active');
+    input.focus();
+    input.onkeydown = (e) => {
+        if (e.key === 'Enter') { goToLine(parseInt(input.value)); pop.classList.remove('active'); }
+        if (e.key === 'Escape') { pop.classList.remove('active'); }
+    };
+}
+
+function goToLine(lineNum) {
+    if (!lineNum || lineNum < 1) return;
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    // Disable tail mode if active
+    if (_tailMode) { _tailMode = false; document.getElementById('toolbarTailMode')?.classList.remove('active'); }
+    const lines = terminal.querySelectorAll('.terminal-line');
+    // Re-show all lines (in case tail mode hid them)
+    lines.forEach(l => l.style.display = '');
+    terminal.querySelector('.tail-indicator')?.remove();
+    const idx = Math.min(lineNum - 1, lines.length - 1);
+    if (idx < 0) return;
+    const target = lines[idx];
+    // Highlight briefly
+    target.style.background = 'rgba(99,102,241,0.2)';
+    target.style.borderLeft = '3px solid var(--accent)';
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    deepAutoScroll = false;
+    document.getElementById('toolbarAutoScroll')?.classList.remove('active');
+    document.getElementById('followIndicator').style.display = 'none';
+    setTimeout(() => {
+        target.style.background = '';
+        target.style.borderLeft = '';
+    }, 3000);
+    showToast(`Jumped to line ${lineNum}`, 'info');
 }
 
 // ── Toasts with Progress Bar ──
@@ -15781,6 +15980,7 @@ PALETTE_ACTIONS.push(
     { icon: 'list', label: 'Toggle Compact View', shortcut: '', action: () => { closePalette(); setViewMode(state.viewMode === 'compact' ? 'grid' : 'compact'); }, section: 'view' },
     { icon: 'columns', label: 'Split Terminal View', shortcut: '', action: () => { closePalette(); openSplitView(); }, section: 'view' },
     { icon: 'git-merge', label: 'Diff Compare Agents', shortcut: '', action: () => { closePalette(); openCompare(); setTimeout(() => setCompareMode('diff'), 100); }, section: 'view' },
+    { icon: 'hash', label: 'Go to Line', shortcut: '⌘G', action: () => { closePalette(); if (state.view === 'deep') openGoToLine(); else showToast('Open an agent first', 'info'); }, section: 'view' },
     { icon: 'save', label: 'Manage Presets', shortcut: '', action: () => { closePalette(); openSettings(); }, section: 'config' },
     { icon: 'file-text', label: 'View Scratchpad', shortcut: '', action: () => { closePalette(); if (state.focusedAgentId) { switchDeepTab('scratchpad'); } else { showToast('Open an agent first to view its scratchpad', 'info'); } }, section: 'view' },
 );
