@@ -4573,6 +4573,104 @@ body {
     #ambientGradient { display: none; }
     .deep-view { transition: none; }
 }
+
+/* ── Split Pane in Deep View ── */
+.deep-terminal-wrap.split-active { display: grid; grid-template-columns: 1fr 4px 320px; }
+.deep-terminal-wrap.split-active .deep-terminal { position: relative; inset: auto; }
+.split-divider {
+    display: none; cursor: col-resize; background: var(--border-subtle);
+    transition: background 0.15s;
+}
+.split-divider:hover, .split-divider.dragging { background: var(--accent); }
+.deep-terminal-wrap.split-active .split-divider { display: block; }
+.split-notes-pane {
+    display: none; flex-direction: column; background: var(--bg-surface);
+    border-left: 1px solid var(--border-subtle); overflow: hidden;
+}
+.deep-terminal-wrap.split-active .split-notes-pane { display: flex; }
+.split-notes-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; border-bottom: 1px solid var(--border-subtle);
+    font-size: 11px; font-weight: 700; color: var(--text-primary);
+}
+.split-notes-tabs { display: flex; gap: 0; }
+.split-notes-tab {
+    background: none; border: none; color: var(--text-tertiary); font-size: 10px;
+    padding: 4px 8px; cursor: pointer; border-bottom: 2px solid transparent;
+    font-family: var(--font-sans); text-transform: uppercase; letter-spacing: 0.5px;
+}
+.split-notes-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.split-notes-body { flex: 1; overflow-y: auto; padding: 10px; }
+.split-notes-body textarea {
+    width: 100%; height: 100%; background: var(--bg-input); color: var(--text-primary);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+    font-size: 12px; line-height: 1.6; padding: 8px; resize: none;
+    font-family: var(--font-sans); outline: none;
+}
+.split-notes-body textarea:focus { border-color: var(--accent); }
+.split-annotations-list { display: flex; flex-direction: column; gap: 6px; }
+.split-annotation-item {
+    display: flex; gap: 8px; padding: 6px 8px; background: var(--bg-elevated);
+    border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;
+    border: 1px solid var(--border-subtle);
+}
+.split-annotation-item:hover { border-color: var(--accent); }
+.split-annotation-line { color: var(--accent); font-family: var(--font-mono); min-width: 36px; }
+.split-annotation-text { color: var(--text-secondary); flex: 1; }
+.split-annotation-del {
+    background: none; border: none; color: var(--text-tertiary); cursor: pointer;
+    font-size: 12px; padding: 0 2px;
+}
+.split-annotation-del:hover { color: var(--danger); }
+
+/* ── Project Card Grouping ── */
+.project-group-header {
+    grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;
+    padding: 8px 4px 4px; cursor: pointer; user-select: none;
+}
+.project-group-chevron {
+    color: var(--text-tertiary); font-size: 12px; transition: transform 0.2s;
+    width: 16px; text-align: center;
+}
+.project-group-header.collapsed .project-group-chevron { transform: rotate(-90deg); }
+.project-group-name {
+    font-size: 12px; font-weight: 700; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+.project-group-count {
+    font-size: 10px; color: var(--text-tertiary); font-family: var(--font-mono);
+    background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 8px;
+}
+.project-group-header.collapsed + .agent-card,
+.project-group-header.collapsed ~ .agent-card { }
+
+/* ── Line Annotations ── */
+.terminal-line { position: relative; }
+.terminal-line.has-annotation { background: rgba(99,102,241,0.06); border-left: 2px solid var(--accent); padding-left: 8px; }
+.line-annotation {
+    display: block; font-size: 10px; color: var(--accent); font-family: var(--font-sans);
+    padding: 2px 0 2px 16px; font-style: italic; line-height: 1.4;
+    border-left: 2px solid var(--accent); margin-left: -2px;
+    background: rgba(99,102,241,0.03);
+}
+.line-annotation-icon { margin-right: 4px; opacity: 0.7; }
+.line-annotation-del {
+    background: none; border: none; color: var(--text-tertiary); cursor: pointer;
+    font-size: 10px; margin-left: 8px; padding: 0;
+}
+.line-annotation-del:hover { color: var(--danger); }
+.annotation-input-inline {
+    display: flex; gap: 4px; padding: 4px 0 4px 16px; align-items: center;
+}
+.annotation-input-inline input {
+    flex: 1; background: var(--bg-input); border: 1px solid var(--accent);
+    border-radius: var(--radius-sm); color: var(--text-primary); font-size: 11px;
+    padding: 3px 6px; font-family: var(--font-sans); outline: none;
+}
+.annotation-input-inline button {
+    background: var(--accent); color: white; border: none; border-radius: var(--radius-sm);
+    font-size: 10px; padding: 3px 8px; cursor: pointer;
+}
 </style>
 </head>
 <body>
@@ -4709,6 +4807,7 @@ body {
             <button class="view-toggle-btn" id="viewCompactBtn" onclick="setViewMode('compact')" title="Compact view"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
             <button class="view-toggle-btn" id="viewTableBtn" onclick="setViewMode('table')" title="Table view"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg></button>
         </div>
+        <button class="btn btn-secondary btn-sm" id="groupByProjectBtn" onclick="toggleGroupByProject()" title="Group cards by project">⊞ Group</button>
         <button class="btn btn-secondary btn-sm" id="pauseAllBtn" onclick="togglePauseAll()" title="Pause/Resume all agents">⏸ Pause All</button>
         <button class="btn btn-secondary btn-sm" onclick="openTimeline()" title="Activity Timeline (Cmd+T)"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12H3"/><path d="M16 6H3"/><path d="M12 18H3"/><path d="m16 12 5 3-5 3v-6Z"/></svg> Timeline</button>
         <button class="btn btn-secondary btn-sm" onclick="openAnalytics()" title="Fleet Analytics"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg> Analytics</button>
@@ -4963,6 +5062,7 @@ body {
         <button class="terminal-toolbar-btn" id="toolbarDedup" onclick="toggleDedup()" title="Collapse repeated and empty lines">⊞ Dedup</button>
         <button class="terminal-toolbar-btn" id="toolbarToolFilter" onclick="toggleToolFilterBar()" title="Filter by tool type">⚙ Filter</button>
         <button class="terminal-toolbar-btn" id="toolbarHighlight" onclick="toggleHighlightPopover()" title="Custom highlight rules">✦ Highlight</button>
+        <button class="terminal-toolbar-btn" id="toolbarSplitPane" onclick="toggleSplitPane()" title="Split pane with notes (Cmd+\\)">⫿ Split</button>
         <div class="highlight-popover" id="highlightPopover">
             <div style="font-size:11px;font-weight:700;color:var(--text-primary);margin-bottom:8px">Custom Highlights</div>
             <div id="highlightRulesList"></div>
@@ -5082,6 +5182,22 @@ body {
             <button class="deep-search-btn" onclick="closeDeepSearch()">✕</button>
         </div>
         <button class="jump-to-bottom" id="jumpToBottom" onclick="scrollDeepToBottom()">↓ Jump to bottom</button>
+        <div class="split-divider" id="splitDivider"></div>
+        <div class="split-notes-pane" id="splitNotesPane">
+            <div class="split-notes-header">
+                <div class="split-notes-tabs">
+                    <button class="split-notes-tab active" data-stab="notes" onclick="switchSplitTab('notes')">Notes</button>
+                    <button class="split-notes-tab" data-stab="annotations" onclick="switchSplitTab('annotations')">Annotations</button>
+                </div>
+                <button class="btn btn-ghost" style="font-size:10px;padding:2px 6px" onclick="closeSplitPane()">✕</button>
+            </div>
+            <div class="split-notes-body" id="splitNotesBody">
+                <textarea id="splitNotesTextarea" placeholder="Add notes about this agent..." oninput="debounceSplitNoteSave()"></textarea>
+            </div>
+            <div class="split-notes-body" id="splitAnnotationsBody" style="display:none">
+                <div class="split-annotations-list" id="splitAnnotationsList"></div>
+            </div>
+        </div>
     </div>
     <div class="quick-commands" id="quickCommands"></div>
     <div class="deep-input-bar" style="position:relative">
@@ -8802,6 +8918,11 @@ function openDeepView(agentId) {
             scrollDeepToBottom();
         }).catch(e => console.warn('Deep view progressive load failed:', e.message));
     }
+    // Apply line annotations from localStorage
+    requestAnimationFrame(() => applyAnnotationsToTerminal());
+    // Load split notes if split pane is active
+    if (_splitPaneActive) { loadSplitNotes(); renderSplitAnnotations(); }
+
     // Restore saved scroll position or scroll to bottom
     if (savedScrollPos != null) {
         requestAnimationFrame(() => {
@@ -9320,6 +9441,9 @@ function closeDeepView() {
     }
     document.getElementById('deepView').classList.remove('active', 'archived-view');
     closeDeepSearch();
+    // Reset split pane grid template on close
+    const wrap = document.querySelector('.deep-terminal-wrap');
+    if (wrap) wrap.style.gridTemplateColumns = '';
     state.focusedAgentId = null;
     state.view = 'grid';
     _cmdHistIdx = -1;
@@ -16709,6 +16833,320 @@ if (_origBuildWfRow) {
         return html;
     };
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Split Pane (Terminal + Notes side-by-side) ──
+// ═══════════════════════════════════════════════════════════════════
+let _splitPaneActive = false;
+let _splitNotesSaveTimer = null;
+
+function toggleSplitPane() {
+    const wrap = document.querySelector('.deep-terminal-wrap');
+    const btn = document.getElementById('toolbarSplitPane');
+    if (!wrap) return;
+    _splitPaneActive = !_splitPaneActive;
+    wrap.classList.toggle('split-active', _splitPaneActive);
+    if (btn) btn.classList.toggle('active', _splitPaneActive);
+    if (_splitPaneActive) {
+        loadSplitNotes();
+        renderSplitAnnotations();
+    }
+}
+
+function closeSplitPane() {
+    _splitPaneActive = false;
+    const wrap = document.querySelector('.deep-terminal-wrap');
+    const btn = document.getElementById('toolbarSplitPane');
+    if (wrap) wrap.classList.remove('split-active');
+    if (btn) btn.classList.remove('active');
+}
+
+function switchSplitTab(tab) {
+    document.querySelectorAll('.split-notes-tab').forEach(t => t.classList.toggle('active', t.dataset.stab === tab));
+    document.getElementById('splitNotesBody').style.display = tab === 'notes' ? '' : 'none';
+    document.getElementById('splitAnnotationsBody').style.display = tab === 'annotations' ? '' : 'none';
+    if (tab === 'annotations') renderSplitAnnotations();
+}
+
+function loadSplitNotes() {
+    const ta = document.getElementById('splitNotesTextarea');
+    if (!ta || !state.focusedAgentId) return;
+    const key = `ashlar_notes_${state.focusedAgentId}`;
+    ta.value = localStorage.getItem(key) || '';
+}
+
+function debounceSplitNoteSave() {
+    clearTimeout(_splitNotesSaveTimer);
+    _splitNotesSaveTimer = setTimeout(() => {
+        const ta = document.getElementById('splitNotesTextarea');
+        if (ta && state.focusedAgentId) {
+            localStorage.setItem(`ashlar_notes_${state.focusedAgentId}`, ta.value);
+        }
+    }, 500);
+}
+
+// Split pane drag divider
+(function() {
+    const divider = document.getElementById('splitDivider');
+    if (!divider) return;
+    let dragging = false, startX = 0, startWidth = 0;
+    divider.addEventListener('mousedown', (e) => {
+        dragging = true; startX = e.clientX;
+        const pane = document.getElementById('splitNotesPane');
+        startWidth = pane.offsetWidth;
+        divider.classList.add('dragging');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const diff = startX - e.clientX;
+        const newWidth = Math.max(180, Math.min(600, startWidth + diff));
+        const wrap = document.querySelector('.deep-terminal-wrap');
+        if (wrap) wrap.style.gridTemplateColumns = `1fr 4px ${newWidth}px`;
+    });
+    document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        divider.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+    });
+})();
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Line Annotations ──
+// ═══════════════════════════════════════════════════════════════════
+function getAnnotations(agentId) {
+    try { return JSON.parse(localStorage.getItem(`ashlar_annot_${agentId}`) || '{}'); }
+    catch { return {}; }
+}
+
+function saveAnnotations(agentId, annots) {
+    localStorage.setItem(`ashlar_annot_${agentId}`, JSON.stringify(annots));
+}
+
+function addLineAnnotation(lineIdx) {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal || !state.focusedAgentId) return;
+    const lines = terminal.querySelectorAll('.terminal-line');
+    if (lineIdx < 0 || lineIdx >= lines.length) return;
+    const line = lines[lineIdx];
+
+    // Remove any existing input
+    terminal.querySelectorAll('.annotation-input-inline').forEach(el => el.remove());
+
+    const form = document.createElement('div');
+    form.className = 'annotation-input-inline';
+    form.innerHTML = '<input type="text" placeholder="Add annotation..." autofocus><button>Add</button>';
+    line.after(form);
+    const input = form.querySelector('input');
+    input.focus();
+
+    const submit = () => {
+        const text = input.value.trim();
+        if (text) {
+            const annots = getAnnotations(state.focusedAgentId);
+            annots[lineIdx] = text;
+            saveAnnotations(state.focusedAgentId, annots);
+            renderLineAnnotation(line, lineIdx, text);
+            renderSplitAnnotations();
+        }
+        form.remove();
+    };
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); submit(); }
+        if (e.key === 'Escape') form.remove();
+    });
+    form.querySelector('button').onclick = submit;
+}
+
+function renderLineAnnotation(lineEl, lineIdx, text) {
+    lineEl.classList.add('has-annotation');
+    // Remove existing annotation display
+    const next = lineEl.nextElementSibling;
+    if (next && next.classList.contains('line-annotation')) next.remove();
+    const annDiv = document.createElement('div');
+    annDiv.className = 'line-annotation';
+    annDiv.dataset.lineIdx = lineIdx;
+    annDiv.innerHTML = `<span class="line-annotation-icon">📝</span> ${escapeHtml(text)} <button class="line-annotation-del" onclick="deleteLineAnnotation(${lineIdx}, this)" title="Remove">✕</button>`;
+    lineEl.after(annDiv);
+}
+
+function deleteLineAnnotation(lineIdx, btn) {
+    if (!state.focusedAgentId) return;
+    const annots = getAnnotations(state.focusedAgentId);
+    delete annots[lineIdx];
+    saveAnnotations(state.focusedAgentId, annots);
+    // Remove from DOM
+    const annDiv = btn.closest('.line-annotation');
+    if (annDiv) {
+        const prevLine = annDiv.previousElementSibling;
+        if (prevLine) prevLine.classList.remove('has-annotation');
+        annDiv.remove();
+    }
+    renderSplitAnnotations();
+}
+
+function applyAnnotationsToTerminal() {
+    if (!state.focusedAgentId) return;
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const annots = getAnnotations(state.focusedAgentId);
+    const lines = terminal.querySelectorAll('.terminal-line');
+    for (const [idx, text] of Object.entries(annots)) {
+        const i = parseInt(idx);
+        if (i >= 0 && i < lines.length) {
+            renderLineAnnotation(lines[i], i, text);
+        }
+    }
+}
+
+function renderSplitAnnotations() {
+    const list = document.getElementById('splitAnnotationsList');
+    if (!list || !state.focusedAgentId) return;
+    const annots = getAnnotations(state.focusedAgentId);
+    const entries = Object.entries(annots).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+    if (entries.length === 0) {
+        list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-tertiary);font-size:11px">No annotations. Double-click a line to add one.</div>';
+        return;
+    }
+    list.innerHTML = entries.map(([idx, text]) =>
+        `<div class="split-annotation-item" onclick="scrollToAnnotation(${idx})">
+            <span class="split-annotation-line">L${parseInt(idx) + 1}</span>
+            <span class="split-annotation-text">${escapeHtml(text)}</span>
+            <button class="split-annotation-del" onclick="event.stopPropagation();deleteLineAnnotation(${idx},this);renderSplitAnnotations()">✕</button>
+        </div>`
+    ).join('');
+}
+
+function scrollToAnnotation(lineIdx) {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const lines = terminal.querySelectorAll('.terminal-line');
+    if (lineIdx >= 0 && lineIdx < lines.length) {
+        lines[lineIdx].scrollIntoView({ block: 'center', behavior: 'smooth' });
+        lines[lineIdx].style.background = 'rgba(99,102,241,0.2)';
+        setTimeout(() => { lines[lineIdx].style.background = ''; }, 2000);
+    }
+    // Switch to terminal tab if not visible
+    if (document.getElementById('deepTerminal').style.display === 'none') {
+        switchDeepTab('terminal');
+    }
+}
+
+// Wire double-click on terminal lines for annotations
+document.getElementById('deepTerminal')?.addEventListener('dblclick', (e) => {
+    const line = e.target.closest('.terminal-line');
+    if (!line) return;
+    const terminal = document.getElementById('deepTerminal');
+    const lines = Array.from(terminal.querySelectorAll('.terminal-line'));
+    const idx = lines.indexOf(line);
+    if (idx >= 0) addLineAnnotation(idx);
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Project Card Grouping ──
+// ═══════════════════════════════════════════════════════════════════
+let _groupByProject = JSON.parse(localStorage.getItem('ashlar_group_by_project') || 'false');
+const _collapsedGroups = new Set(JSON.parse(localStorage.getItem('ashlar_collapsed_groups') || '[]'));
+
+function toggleGroupByProject() {
+    _groupByProject = !_groupByProject;
+    localStorage.setItem('ashlar_group_by_project', JSON.stringify(_groupByProject));
+    const btn = document.getElementById('groupByProjectBtn');
+    if (btn) btn.classList.toggle('active', _groupByProject);
+    scheduleRender();
+}
+
+function toggleProjectGroup(projectId) {
+    if (_collapsedGroups.has(projectId)) _collapsedGroups.delete(projectId);
+    else _collapsedGroups.add(projectId);
+    localStorage.setItem('ashlar_collapsed_groups', JSON.stringify([..._collapsedGroups]));
+    scheduleRender();
+}
+
+// Patch renderAgentGrid to support project grouping
+const _origRenderAgentGrid = renderAgentGrid;
+renderAgentGrid = function() {
+    if (!_groupByProject || state.agents.size === 0) {
+        // Remove any project group headers
+        document.querySelectorAll('.project-group-header').forEach(h => h.remove());
+        return _origRenderAgentGrid();
+    }
+
+    const grid = document.getElementById('agentGrid');
+    const emptyState = document.getElementById('emptyState');
+    updateCommandTarget();
+    updateFleetSummary();
+    updateConflictBanner();
+
+    emptyState.style.display = 'none';
+
+    // Group agents by project
+    const groups = new Map();
+    for (const [id, agent] of state.agents) {
+        if (state.selectedProjectId && agent.project_id !== state.selectedProjectId) continue;
+        const projKey = agent.project_id || '_ungrouped';
+        if (!groups.has(projKey)) groups.set(projKey, []);
+        groups.get(projKey).push([id, agent]);
+    }
+
+    // Remove old group headers
+    grid.querySelectorAll('.project-group-header').forEach(h => h.remove());
+
+    // Remove cards for deleted agents
+    for (const [id, el] of cardElements) {
+        if (!state.agents.has(id) && !el.classList.contains('exiting')) {
+            el.remove();
+            cardElements.delete(id);
+        }
+    }
+
+    const newCard = document.getElementById('newAgentCard') || createNewAgentCard();
+
+    for (const [projKey, agents] of groups) {
+        // Create or update group header
+        let header = document.createElement('div');
+        header.className = 'project-group-header' + (_collapsedGroups.has(projKey) ? ' collapsed' : '');
+        header.dataset.projectId = projKey;
+        header.onclick = () => toggleProjectGroup(projKey);
+
+        const projName = projKey === '_ungrouped' ? 'Ungrouped' :
+            (state.projects?.find(p => p.id === projKey)?.name || projKey);
+        header.innerHTML = `<span class="project-group-chevron">▾</span><span class="project-group-name">${escapeHtml(projName)}</span><span class="project-group-count">${agents.length}</span>`;
+        grid.insertBefore(header, newCard);
+
+        const collapsed = _collapsedGroups.has(projKey);
+        for (const [id, agent] of agents) {
+            let card = cardElements.get(id);
+            if (!card) {
+                card = createAgentCard(agent);
+                cardElements.set(id, card);
+            }
+            grid.insertBefore(card, newCard);
+            card.style.display = collapsed ? 'none' : '';
+            if (!collapsed) updateAgentCard(card, agent);
+        }
+    }
+
+    if (!newCard.parentNode) grid.appendChild(newCard);
+};
+
+// Init group button state
+if (_groupByProject) {
+    const btn = document.getElementById('groupByProjectBtn');
+    if (btn) btn.classList.add('active');
+}
+
+// Keyboard shortcut: Cmd+\ for split pane
+document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === '\\' && state.view === 'deep') {
+        e.preventDefault();
+        toggleSplitPane();
+    }
+});
 
 const EMPTY_STATE_HTML = document.getElementById('emptyState').innerHTML;
 socket.connect();
