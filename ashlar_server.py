@@ -247,6 +247,14 @@ class Config:
     # Cost budget
     cost_budget_usd: float = 0.0  # 0 = no limit
     cost_budget_auto_pause: bool = False
+    # Pattern alerting — regex patterns that trigger high-priority notifications
+    alert_patterns: list = field(default_factory=lambda: [
+        {"pattern": r"(?i)CRITICAL|FATAL|panic|segfault|segmentation fault", "severity": "critical", "label": "Critical Error"},
+        {"pattern": r"(?i)out of memory|OOM|memory exhausted|MemoryError", "severity": "critical", "label": "Memory Issue"},
+        {"pattern": r"(?i)permission denied|access denied|unauthorized", "severity": "warning", "label": "Access Error"},
+        {"pattern": r"(?i)disk full|no space left|ENOSPC", "severity": "critical", "label": "Disk Full"},
+        {"pattern": r"(?i)connection refused|ECONNREFUSED|timeout exceeded", "severity": "warning", "label": "Connection Error"},
+    ])
 
     def to_dict(self) -> dict:
         return {
@@ -274,6 +282,7 @@ class Config:
             "intelligence_model": self.intelligence_model,
             "cost_budget_usd": self.cost_budget_usd,
             "cost_budget_auto_pause": self.cost_budget_auto_pause,
+            "alert_patterns": self.alert_patterns,
         }
 
 
@@ -536,6 +545,17 @@ KNOWN_BACKENDS: dict[str, BackendConfig] = {
         args=[],
         supports_json_output=True,
         auto_approve_flag="--full-auto",
+        status_patterns={
+            "working": [r"Generating", r"Applying changes", r"Reviewing",
+                        r"Searching codebase", r"Editing ", r"Writing ",
+                        r"Running command", r"Installing", r"Testing",
+                        r"Building", r"Compiling"],
+            "waiting": [r"Do you want to", r"Confirm", r"Y/n",
+                        r"Select an option", r"Enter a value"],
+            "planning": [r"Analyzing", r"Understanding", r"Planning",
+                         r"Thinking", r"Researching"],
+            "complete": [r"Complete", r"Done", r"Finished", r"All changes applied"],
+        },
         cost_input_per_1k=0.003,
         cost_output_per_1k=0.012,
         context_window=128_000,
@@ -546,6 +566,17 @@ KNOWN_BACKENDS: dict[str, BackendConfig] = {
         args=[],
         supports_model_select=True,
         auto_approve_flag="-y",
+        status_patterns={
+            "working": [r"Editing ", r"Applied edit to", r"Creating ",
+                        r"Committing", r"Running ", r"Added .+ to the chat",
+                        r"Searching", r"tokens used", r"Sending"],
+            "waiting": [r"Do you want to", r"y/n", r"Enter",
+                        r"would you like", r"Type your response",
+                        r"aider>"],
+            "planning": [r"Thinking", r"Analyzing", r"Understanding",
+                         r"Looking at", r"Let me"],
+            "complete": [r"Completed", r"All done", r"Finished"],
+        },
         cost_input_per_1k=0.003,
         cost_output_per_1k=0.015,
         context_window=128_000,
@@ -556,6 +587,17 @@ KNOWN_BACKENDS: dict[str, BackendConfig] = {
         args=[],
         supports_session_resume=True,
         auto_approve_flag="-y",
+        status_patterns={
+            "working": [r"Executing", r"Running", r"Modifying",
+                        r"Creating", r"Writing", r"Editing",
+                        r"Installing", r"Building", r"Testing"],
+            "waiting": [r"Do you want", r"Confirm", r"Select",
+                        r"goose>", r"Enter"],
+            "planning": [r"Planning", r"Analyzing", r"Thinking",
+                         r"Reviewing", r"Investigating"],
+            "complete": [r"Complete", r"Done", r"Finished",
+                         r"Successfully"],
+        },
         cost_input_per_1k=0.003,
         cost_output_per_1k=0.015,
         context_window=200_000,
@@ -3392,6 +3434,9 @@ class OutputIntelligenceParser:
 
 # Singleton parser instance
 _intelligence_parser = OutputIntelligenceParser()
+
+# Pattern alerting throttle: {f"{agent_id}:{label}": last_alert_monotonic_time}
+_alert_throttle: dict[str, float] = {}
 
 
 # ── LLM-Powered Summary Generation ──
@@ -6498,6 +6543,66 @@ async def get_agent_file_operations(request: web.Request) -> web.Response:
     })
 
 
+async def search_agent_output(request: web.Request) -> web.Response:
+    """GET /api/agents/{id}/output/search?q=pattern&regex=false&context=2&limit=100 — search agent output."""
+    if r := _check_rate(request, cost=2):
+        return r
+    manager: AgentManager = request.app["agent_manager"]
+    agent_id = request.match_info["id"]
+    agent = manager.agents.get(agent_id)
+    if not agent:
+        return web.json_response({"error": "Agent not found"}, status=404)
+
+    query = request.query.get("q", "").strip()
+    if not query or len(query) > 500:
+        return web.json_response({"error": "Query 'q' required (max 500 chars)"}, status=400)
+
+    use_regex = request.query.get("regex", "false").lower() in ("true", "1")
+    try:
+        context_lines = max(0, min(int(request.query.get("context", "2")), 10))
+    except ValueError:
+        context_lines = 2
+    try:
+        limit = max(1, min(int(request.query.get("limit", "100")), 500))
+    except ValueError:
+        limit = 100
+
+    # Compile pattern
+    try:
+        if use_regex:
+            pattern = re.compile(query, re.IGNORECASE)
+        else:
+            pattern = re.compile(re.escape(query), re.IGNORECASE)
+    except re.error as e:
+        return web.json_response({"error": f"Invalid regex: {e}"}, status=400)
+
+    lines = list(agent.output_lines)
+    matches = []
+    for i, line in enumerate(lines):
+        stripped = _strip_ansi(line) if callable(_strip_ansi) else line
+        if pattern.search(stripped):
+            # Gather context
+            start = max(0, i - context_lines)
+            end = min(len(lines), i + context_lines + 1)
+            ctx = [_strip_ansi(lines[j]) if callable(_strip_ansi) else lines[j] for j in range(start, end)]
+            matches.append({
+                "line_index": i + agent._archived_lines,
+                "line": stripped[:500],
+                "context": ctx,
+            })
+            if len(matches) >= limit:
+                break
+
+    return web.json_response({
+        "agent_id": agent_id,
+        "query": query,
+        "regex": use_regex,
+        "matches": matches,
+        "total_matches": len(matches),
+        "total_lines": len(lines) + agent._archived_lines,
+    })
+
+
 async def get_agent_snapshots(request: web.Request) -> web.Response:
     """GET /api/agents/{id}/snapshots — output snapshots at key lifecycle points."""
     manager: AgentManager = request.app["agent_manager"]
@@ -7803,6 +7908,33 @@ async def output_capture_loop(app: web.Application) -> None:
                     except Exception as e:
                         log.debug(f"Intelligence parser error for {agent_id}: {e}")
 
+                    # Pattern alerting — check new lines against configured alert patterns
+                    try:
+                        compiled_alerts = app.get("_compiled_alert_patterns")
+                        if compiled_alerts:
+                            for line in new_lines:
+                                stripped_line = _strip_ansi(line) if callable(_strip_ansi) else line
+                                for pat_re, severity, label in compiled_alerts:
+                                    if pat_re.search(stripped_line):
+                                        # Throttle: max 1 alert per pattern per agent per 30s
+                                        alert_key = f"{agent_id}:{label}"
+                                        last_alert_time = _alert_throttle.get(alert_key, 0)
+                                        if now_mono - last_alert_time >= 30.0:
+                                            _alert_throttle[alert_key] = now_mono
+                                            await hub.broadcast({
+                                                "type": "pattern_alert",
+                                                "agent_id": agent_id,
+                                                "agent_name": agent.name,
+                                                "severity": severity,
+                                                "label": label,
+                                                "line": stripped_line[:300],
+                                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                            })
+                                            log.warning(f"Pattern alert [{severity}] {label} on agent {agent.name}: {stripped_line[:100]}")
+                                        break  # One alert per line max
+                    except Exception as e:
+                        log.debug(f"Pattern alerting error for {agent_id}: {e}")
+
                     # LLM summary with throttling
                     summarizer: LLMSummarizer | None = app.get("llm_summarizer")
                     if summarizer and app["config"].llm_enabled:
@@ -8444,6 +8576,17 @@ def create_app(config: Config) -> web.Application:
         log.info(f"Intelligence enabled: Anthropic/{config.intelligence_model}")
     else:
         log.info("Intelligence disabled (set ANTHROPIC_API_KEY env var)")
+
+    # Compile alert patterns for pattern alerting in capture loop
+    compiled_alerts = []
+    for ap in config.alert_patterns:
+        try:
+            compiled_alerts.append((re.compile(ap["pattern"]), ap.get("severity", "warning"), ap.get("label", "Alert")))
+        except (re.error, KeyError) as e:
+            log.warning(f"Skipping invalid alert pattern: {ap} — {e}")
+    app["_compiled_alert_patterns"] = compiled_alerts if compiled_alerts else None
+    if compiled_alerts:
+        log.info(f"Pattern alerting enabled: {len(compiled_alerts)} patterns")
     app["anthropic_client"] = anthropic_client
     app["intelligence_insights"] = []  # list[AgentInsight]
     app["_meta_state_hash"] = ""  # For skipping unchanged fleet analysis
@@ -8487,6 +8630,7 @@ def create_app(config: Config) -> web.Application:
     app.router.add_get("/api/agents/{id}/tool-invocations", get_agent_tool_invocations)
     app.router.add_get("/api/agents/{id}/file-operations", get_agent_file_operations)
     app.router.add_get("/api/agents/{id}/output/export", export_agent_output)
+    app.router.add_get("/api/agents/{id}/output/search", search_agent_output)
     app.router.add_get("/api/agents/{id}/snapshots", get_agent_snapshots)
     app.router.add_post("/api/agents/{id}/snapshots", create_agent_snapshot)
 

@@ -2557,3 +2557,171 @@ class TestServerAuditFixes:
         # After our fix, each DB call should be wrapped in try/except
         assert src.count("projects = await") >= 1
         assert src.count("workflows = await") >= 1
+
+
+class TestBackendStatusPatterns:
+    """Tests for backend-specific status detection patterns."""
+
+    def test_codex_has_status_patterns(self):
+        """Codex backend config should have status_patterns."""
+        bc = KNOWN_BACKENDS.get("codex")
+        assert bc is not None
+        assert hasattr(bc, "status_patterns")
+        assert "working" in bc.status_patterns
+        assert "waiting" in bc.status_patterns
+
+    def test_aider_has_status_patterns(self):
+        """Aider backend config should have status_patterns."""
+        bc = KNOWN_BACKENDS.get("aider")
+        assert bc is not None
+        assert "working" in bc.status_patterns
+        assert "planning" in bc.status_patterns
+
+    def test_goose_has_status_patterns(self):
+        """Goose backend config should have status_patterns."""
+        bc = KNOWN_BACKENDS.get("goose")
+        assert bc is not None
+        assert "working" in bc.status_patterns
+
+    def test_claude_code_has_status_patterns(self):
+        """Claude Code backend config should have status_patterns."""
+        bc = KNOWN_BACKENDS.get("claude-code")
+        assert bc is not None
+        assert "working" in bc.status_patterns
+        assert "waiting" in bc.status_patterns
+
+    def test_status_patterns_are_valid_regex(self):
+        """All status patterns should be valid regex."""
+        import re
+        for name, bc in KNOWN_BACKENDS.items():
+            if bc.status_patterns:
+                for category, patterns in bc.status_patterns.items():
+                    for pat in patterns:
+                        try:
+                            re.compile(pat)
+                        except re.error:
+                            pytest.fail(f"Invalid regex in {name}.{category}: {pat}")
+
+
+class TestOutputSearchEndpoint:
+    """Tests for the search_agent_output REST endpoint."""
+
+    def test_search_endpoint_exists(self):
+        """search_agent_output function should exist."""
+        assert hasattr(ashlar_server, "search_agent_output")
+        assert asyncio.iscoroutinefunction(ashlar_server.search_agent_output)
+
+    def test_search_endpoint_registered(self):
+        """Search endpoint should be registered in create_app route setup."""
+        import inspect
+        src = inspect.getsource(ashlar_server.create_app)
+        assert "/api/agents/{id}/output/search" in src
+
+    def test_search_supports_regex_param(self):
+        """search_agent_output should support regex query parameter."""
+        import inspect
+        src = inspect.getsource(ashlar_server.search_agent_output)
+        assert "regex" in src
+        assert "re.compile" in src
+
+    def test_search_supports_context_lines(self):
+        """search_agent_output should support context lines parameter."""
+        import inspect
+        src = inspect.getsource(ashlar_server.search_agent_output)
+        assert "context" in src
+        assert "context_lines" in src
+
+    def test_search_limits_query_length(self):
+        """Search query should be limited to 500 chars."""
+        import inspect
+        src = inspect.getsource(ashlar_server.search_agent_output)
+        assert "500" in src
+
+    def test_search_limits_result_count(self):
+        """Search results should be limited."""
+        import inspect
+        src = inspect.getsource(ashlar_server.search_agent_output)
+        assert "limit" in src
+
+
+class TestPatternAlerting:
+    """Tests for the alert_patterns config and pattern alerting in capture loop."""
+
+    def test_config_has_alert_patterns(self):
+        """Config should have alert_patterns field with defaults."""
+        config = ashlar_server.Config()
+        assert hasattr(config, "alert_patterns")
+        assert isinstance(config.alert_patterns, list)
+        assert len(config.alert_patterns) >= 5
+
+    def test_alert_patterns_have_required_fields(self):
+        """Each alert pattern should have pattern, severity, and label."""
+        config = ashlar_server.Config()
+        for ap in config.alert_patterns:
+            assert "pattern" in ap
+            assert "severity" in ap
+            assert "label" in ap
+
+    def test_alert_patterns_are_valid_regex(self):
+        """All default alert patterns should be valid regex."""
+        import re
+        config = ashlar_server.Config()
+        for ap in config.alert_patterns:
+            try:
+                re.compile(ap["pattern"])
+            except re.error:
+                pytest.fail(f"Invalid regex in alert pattern: {ap['pattern']}")
+
+    def test_alert_patterns_in_to_dict(self):
+        """alert_patterns should appear in Config.to_dict()."""
+        config = ashlar_server.Config()
+        d = config.to_dict()
+        assert "alert_patterns" in d
+        assert len(d["alert_patterns"]) >= 5
+
+    def test_alert_patterns_match_critical_errors(self):
+        """Alert patterns should match critical error strings."""
+        import re
+        config = ashlar_server.Config()
+        test_lines = [
+            "FATAL error in process",
+            "out of memory",
+            "permission denied: /etc/secrets",
+            "disk full: no space left on device",
+            "ECONNREFUSED: connection refused",
+        ]
+        for line in test_lines:
+            matched = False
+            for ap in config.alert_patterns:
+                if re.search(ap["pattern"], line):
+                    matched = True
+                    break
+            assert matched, f"No alert pattern matched: {line}"
+
+    def test_alert_patterns_dont_match_normal_output(self):
+        """Alert patterns should NOT match normal agent output."""
+        import re
+        config = ashlar_server.Config()
+        normal_lines = [
+            "Reading file src/main.py",
+            "Edit completed successfully",
+            "Running tests...",
+            "3 tests passed",
+            "Writing to output.json",
+        ]
+        for line in normal_lines:
+            for ap in config.alert_patterns:
+                assert not re.search(ap["pattern"], line), f"False positive: '{line}' matched '{ap['label']}'"
+
+    def test_alert_throttle_dict_exists(self):
+        """Module-level _alert_throttle dict should exist."""
+        assert hasattr(ashlar_server, "_alert_throttle")
+        assert isinstance(ashlar_server._alert_throttle, dict)
+
+    def test_capture_loop_checks_alert_patterns(self):
+        """Output capture loop should check alert patterns."""
+        import inspect
+        src = inspect.getsource(ashlar_server.output_capture_loop)
+        assert "pattern_alert" in src
+        assert "_compiled_alert_patterns" in src
+        assert "_alert_throttle" in src
