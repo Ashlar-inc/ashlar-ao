@@ -873,6 +873,33 @@ BUILTIN_ROLES: dict[str, Role] = {
 
 
 @dataclass
+class OutputSnapshot:
+    """Capture of agent output at a key lifecycle point."""
+    id: str
+    agent_id: str
+    trigger: str  # "error", "waiting", "complete", "manual"
+    status: str
+    summary: str
+    line_count: int
+    output_tail: str  # Last N lines of output
+    context_pct: float
+    created_at: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "agent_id": self.agent_id,
+            "trigger": self.trigger,
+            "status": self.status,
+            "summary": self.summary,
+            "line_count": self.line_count,
+            "output_tail": self.output_tail,
+            "context_pct": self.context_pct,
+            "created_at": self.created_at,
+        }
+
+
+@dataclass
 class Agent:
     id: str
     name: str
@@ -947,6 +974,7 @@ class Agent:
     _file_operations: list = field(default_factory=list, repr=False)  # list[FileOperation], capped at 500
     _git_operations: list = field(default_factory=list, repr=False)  # list[GitOperation], capped at 200
     _test_results: list = field(default_factory=list, repr=False)  # list[TestResult], capped at 50
+    _snapshots: list = field(default_factory=list, repr=False)  # list[OutputSnapshot], capped at 20
     _last_parse_index: int = field(default=0, repr=False)  # Incremental parsing watermark
     _overflow_to_archive: bool = field(default=False, repr=False)
     # Notes and tags
@@ -963,6 +991,25 @@ class Agent:
             self._status_updated_at = now
             return True
         return False
+
+    def create_snapshot(self, trigger: str) -> OutputSnapshot:
+        """Create a snapshot of current output state."""
+        tail_lines = list(self.output_lines)[-50:]
+        snap = OutputSnapshot(
+            id=uuid.uuid4().hex[:8],
+            agent_id=self.id,
+            trigger=trigger,
+            status=self.status,
+            summary=self.summary,
+            line_count=self.total_output_lines,
+            output_tail="\n".join(tail_lines),
+            context_pct=self.context_pct,
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
+        self._snapshots.append(snap)
+        if len(self._snapshots) > 20:
+            self._snapshots = self._snapshots[-20:]
+        return snap
 
     def to_dict(self) -> dict:
         role_obj = BUILTIN_ROLES.get(self.role)
@@ -1012,6 +1059,7 @@ class Agent:
             "tool_invocations_count": len(self._tool_invocations),
             "file_operations_count": len(self._file_operations),
             "last_test_result": self._test_results[-1].to_dict() if self._test_results else None,
+            "snapshot_count": len(self._snapshots),
             "notes": self.notes,
             "tags": list(self.tags),
             "bookmarks": list(self.bookmarks),
@@ -6046,6 +6094,31 @@ async def get_agent_file_operations(request: web.Request) -> web.Response:
     })
 
 
+async def get_agent_snapshots(request: web.Request) -> web.Response:
+    """GET /api/agents/{id}/snapshots — output snapshots at key lifecycle points."""
+    manager: AgentManager = request.app["agent_manager"]
+    agent_id = request.match_info["id"]
+    agent = manager.agents.get(agent_id)
+    if not agent:
+        return web.json_response({"error": "Agent not found"}, status=404)
+    return web.json_response({
+        "agent_id": agent_id,
+        "snapshots": [s.to_dict() for s in agent._snapshots],
+        "total": len(agent._snapshots),
+    })
+
+
+async def create_agent_snapshot(request: web.Request) -> web.Response:
+    """POST /api/agents/{id}/snapshots — create a manual snapshot."""
+    manager: AgentManager = request.app["agent_manager"]
+    agent_id = request.match_info["id"]
+    agent = manager.agents.get(agent_id)
+    if not agent:
+        return web.json_response({"error": "Agent not found"}, status=404)
+    snap = agent.create_snapshot(trigger="manual")
+    return web.json_response(snap.to_dict(), status=201)
+
+
 async def get_intelligence_insights(request: web.Request) -> web.Response:
     """GET /api/intelligence/insights — current cross-agent insights."""
     insights: list[AgentInsight] = request.app.get("intelligence_insights", [])
@@ -7247,6 +7320,13 @@ async def output_capture_loop(app: web.Application) -> None:
                         agent.updated_at = datetime.now(timezone.utc).isoformat()
                         log.debug(f"Agent {agent_id} status: {old_status} -> {new_status}")
 
+                        # Auto-snapshot on key status transitions
+                        if new_status in ("error", "waiting", "idle"):
+                            try:
+                                agent.create_snapshot(trigger=new_status if new_status != "idle" else "complete")
+                            except Exception as snap_err:
+                                log.debug(f"Snapshot creation failed for {agent_id}: {snap_err}")
+
                         if new_status == "error" and old_status != "error":
                             agent._error_entered_at = time.monotonic()
                             # Reset health warning flags so they can re-fire on recovery+relapse
@@ -7810,6 +7890,8 @@ def create_app(config: Config) -> web.Application:
     app.router.add_get("/api/agents/{id}/tool-invocations", get_agent_tool_invocations)
     app.router.add_get("/api/agents/{id}/file-operations", get_agent_file_operations)
     app.router.add_get("/api/agents/{id}/output/export", export_agent_output)
+    app.router.add_get("/api/agents/{id}/snapshots", get_agent_snapshots)
+    app.router.add_post("/api/agents/{id}/snapshots", create_agent_snapshot)
 
     # REST API — Search
     app.router.add_get("/api/search", search_agents)

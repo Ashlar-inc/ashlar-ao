@@ -1878,3 +1878,77 @@ class TestServerStats:
         mgr = ashlar_server.AgentManager(config)
         assert mgr._start_time > 0
         assert time.monotonic() - mgr._start_time < 2  # should be very recent
+
+
+class TestOutputSnapshots:
+    """Tests for OutputSnapshot creation and agent snapshot lifecycle."""
+
+    def _make_agent(self):
+        agent = ashlar_server.Agent(
+            id="snap1", name="test-snap", role="general", status="working",
+            working_dir="/tmp", backend="demo", task="test task",
+            summary="Doing things", tmux_session="ashlar-snap1",
+            created_at="2026-01-01T00:00:00Z", updated_at="2026-01-01T00:00:00Z",
+        )
+        agent.output_lines.extend(["line 1", "line 2", "line 3"])
+        agent.total_output_lines = 3
+        agent.context_pct = 0.42
+        return agent
+
+    def test_create_snapshot_basic(self):
+        """create_snapshot should return an OutputSnapshot with correct fields."""
+        agent = self._make_agent()
+        snap = agent.create_snapshot("error")
+        assert snap.agent_id == "snap1"
+        assert snap.trigger == "error"
+        assert snap.status == "working"
+        assert snap.summary == "Doing things"
+        assert snap.line_count == 3
+        assert "line 1" in snap.output_tail
+        assert snap.context_pct == 0.42
+        assert len(snap.id) == 8
+
+    def test_snapshot_appended_to_list(self):
+        """Snapshots should be stored on the agent."""
+        agent = self._make_agent()
+        agent.create_snapshot("waiting")
+        agent.create_snapshot("complete")
+        assert len(agent._snapshots) == 2
+        assert agent._snapshots[0].trigger == "waiting"
+        assert agent._snapshots[1].trigger == "complete"
+
+    def test_snapshot_cap_at_20(self):
+        """Snapshots should be capped at 20, keeping the most recent."""
+        agent = self._make_agent()
+        for i in range(25):
+            agent.create_snapshot("manual")
+        assert len(agent._snapshots) == 20
+
+    def test_snapshot_to_dict(self):
+        """OutputSnapshot.to_dict should include all fields."""
+        agent = self._make_agent()
+        snap = agent.create_snapshot("manual")
+        d = snap.to_dict()
+        assert d["trigger"] == "manual"
+        assert d["agent_id"] == "snap1"
+        assert "output_tail" in d
+        assert "created_at" in d
+
+    def test_snapshot_count_in_agent_to_dict(self):
+        """Agent.to_dict should include snapshot_count."""
+        agent = self._make_agent()
+        assert agent.to_dict()["snapshot_count"] == 0
+        agent.create_snapshot("error")
+        assert agent.to_dict()["snapshot_count"] == 1
+
+    def test_snapshot_tail_limited(self):
+        """Snapshot output_tail should capture last 50 lines max."""
+        agent = self._make_agent()
+        agent.output_lines.clear()
+        for i in range(100):
+            agent.output_lines.append(f"line-{i}")
+        snap = agent.create_snapshot("complete")
+        lines = snap.output_tail.split("\n")
+        assert len(lines) == 50
+        assert lines[-1] == "line-99"
+        assert lines[0] == "line-50"

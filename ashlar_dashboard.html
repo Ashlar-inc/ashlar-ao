@@ -1224,7 +1224,9 @@ body {
     font-size: 13px;
     flex-shrink: 0;
 }
-.deep-prompt-text { flex: 1; color: var(--warning); font-weight: 500; }
+.deep-prompt-text { flex: 1; color: var(--warning); font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deep-prompt-input { background: var(--bg-input); border: 1px solid var(--border-default); border-radius: 6px; color: var(--text-primary); font-size: 12px; font-family: var(--font-sans); padding: 4px 8px; min-width: 120px; max-width: 300px; }
+.deep-prompt-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(99,102,241,0.2); }
 
 .back-btn {
     background: var(--bg-surface);
@@ -4540,6 +4542,12 @@ body {
         <div class="cheatsheet-row"><span class="desc">Search in terminal</span><span class="keys"><span class="kbd">⌘F</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Search all agents</span><span class="keys"><span class="kbd">⌘⇧F</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Activity timeline</span><span class="keys"><span class="kbd">⌘T</span></span></div>
+        <div class="cheatsheet-row"><span class="desc">Navigate agents</span><span class="keys"><span class="kbd">⇧←</span><span class="kbd">⇧→</span></span></div>
+        <div class="cheatsheet-row"><span class="desc">Terminal tab</span><span class="keys"><span class="kbd">T</span></span></div>
+        <div class="cheatsheet-row"><span class="desc">Activity tab</span><span class="keys"><span class="kbd">A</span></span></div>
+        <div class="cheatsheet-row"><span class="desc">Notes tab</span><span class="keys"><span class="kbd">N</span></span></div>
+        <div class="cheatsheet-row"><span class="desc">Focus input</span><span class="keys"><span class="kbd">I</span></span></div>
+        <div class="cheatsheet-row"><span class="desc">Jump to bottom</span><span class="keys"><span class="kbd">G</span></span></div>
         <div style="font-size:11px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin:8px 0 4px">Spawn Dialog</div>
         <div class="cheatsheet-row"><span class="desc">Spawn agent</span><span class="keys"><span class="kbd">⌘↵</span></span></div>
         <div class="cheatsheet-row"><span class="desc">Navigate roles</span><span class="keys"><span class="kbd">←</span><span class="kbd">→</span></span></div>
@@ -6863,8 +6871,10 @@ function updateDeepViewHeader(agent) {
             const approveLabel = isPlan ? 'Approve Plan' : 'Approve';
             deepPromptBar.innerHTML =
                 '<span class="deep-prompt-text">' + escapeHtml(promptText) + '</span>' +
+                '<input type="text" class="deep-prompt-input" id="deepPromptInput" placeholder="Custom response..." onkeydown="if(event.key===\'Enter\'){sendDeepPromptCustom();event.preventDefault()}">' +
                 '<button class="btn btn-primary btn-sm" onclick="sendDeepPromptResponse(\'yes\')">' + approveLabel + '</button>' +
-                '<button class="btn btn-secondary btn-sm" onclick="sendDeepPromptResponse(\'no\')">Reject</button>';
+                '<button class="btn btn-secondary btn-sm" onclick="sendDeepPromptResponse(\'no\')">Reject</button>' +
+                '<button class="btn btn-ghost btn-sm" onclick="sendDeepPromptCustom()" title="Send custom response">Send</button>';
             deepPromptBar.style.display = '';
         } else {
             deepPromptBar.style.display = 'none';
@@ -7232,6 +7242,15 @@ function sendDeepPromptResponse(msg) {
     if (!state.focusedAgentId) return;
     socket.send({ type: 'send', agent_id: state.focusedAgentId, message: msg });
     showToast('Response sent', 'success');
+}
+
+function sendDeepPromptCustom() {
+    const input = document.getElementById('deepPromptInput');
+    const msg = input?.value?.trim();
+    if (!msg || !state.focusedAgentId) return;
+    socket.send({ type: 'send', agent_id: state.focusedAgentId, message: msg });
+    input.value = '';
+    showToast('Custom response sent', 'success');
 }
 
 async function restartAgent(id) {
@@ -8101,6 +8120,16 @@ document.addEventListener('keydown', (e) => {
     if (state.view === 'deep' && e.shiftKey && !isInput) {
         if (e.key === 'ArrowLeft') { e.preventDefault(); deepNavAgent(-1); return; }
         if (e.key === 'ArrowRight') { e.preventDefault(); deepNavAgent(1); return; }
+    }
+
+    // Deep view tab shortcuts (when not in input)
+    if (state.view === 'deep' && !isInput && !e.metaKey && !e.ctrlKey) {
+        if (e.key === 't' && !e.shiftKey) { e.preventDefault(); switchDeepTab('terminal'); return; }
+        if (e.key === 'a' && !e.shiftKey) { e.preventDefault(); switchDeepTab('activity'); return; }
+        if (e.key === 'n' && !e.shiftKey) { e.preventDefault(); switchDeepTab('notes'); return; }
+        if (e.key === 's' && !e.shiftKey) { e.preventDefault(); switchDeepTab('scratchpad'); return; }
+        if (e.key === 'i') { e.preventDefault(); document.getElementById('deepInput')?.focus(); return; }
+        if (e.key === 'g') { e.preventDefault(); scrollDeepToBottom(); return; }
     }
 
     // Cmd+Shift+S — toggle bulk select mode
@@ -9453,30 +9482,45 @@ setInterval(() => {
 // ── Theme Toggle ──
 
 function toggleTheme() {
-    const html = document.documentElement;
-    const current = html.getAttribute('data-theme') || 'dark';
-    const next = current === 'dark' ? 'light' : 'dark';
-    html.setAttribute('data-theme', next);
+    // Cycle: dark → light → auto → dark
+    const saved = localStorage.getItem('ashlar_theme') || 'dark';
+    const cycle = { dark: 'light', light: 'auto', auto: 'dark' };
+    const next = cycle[saved] || 'dark';
     localStorage.setItem('ashlar_theme', next);
-    // Update icon
-    const btn = document.getElementById('themeToggleBtn');
-    if (next === 'light') {
-        btn.innerHTML = '<svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
-    } else {
-        btn.innerHTML = '<svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>';
-    }
+    applyTheme(next);
 }
 
-// Restore saved theme on load
-(function() {
-    const saved = localStorage.getItem('ashlar_theme');
-    if (saved === 'light') {
-        document.documentElement.setAttribute('data-theme', 'light');
-        setTimeout(() => {
-            const btn = document.getElementById('themeToggleBtn');
-            if (btn) btn.innerHTML = '<svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
-        }, 0);
+function applyTheme(pref) {
+    const html = document.documentElement;
+    let effective = pref;
+    if (pref === 'auto') {
+        effective = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
     }
+    html.setAttribute('data-theme', effective);
+    updateThemeIcon(pref);
+}
+
+function updateThemeIcon(pref) {
+    const btn = document.getElementById('themeToggleBtn');
+    if (!btn) return;
+    const icons = {
+        light: '<svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>',
+        dark: '<svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>',
+        auto: '<svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 0 0 20z" fill="currentColor"/></svg>',
+    };
+    btn.innerHTML = icons[pref] || icons.dark;
+    btn.title = `Theme: ${pref} (click to cycle)`;
+}
+
+// Restore saved theme on load + listen for system preference changes
+(function() {
+    const saved = localStorage.getItem('ashlar_theme') || 'dark';
+    applyTheme(saved);
+    // Listen for system preference changes (matters in auto mode)
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+        const current = localStorage.getItem('ashlar_theme') || 'dark';
+        if (current === 'auto') applyTheme('auto');
+    });
 })();
 
 // Restore saved card sort
