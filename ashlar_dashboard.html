@@ -1151,6 +1151,30 @@ body {
     flex-shrink: 0;
 }
 
+.deep-nav-btn {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    padding: 0;
+}
+.deep-nav-btn:hover { background: var(--bg-elevated); border-color: var(--accent); color: var(--accent); }
+.deep-line-count {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    margin-left: 8px;
+}
+
 .deep-prompt-bar {
     display: flex;
     align-items: center;
@@ -4052,11 +4076,14 @@ body {
 <div class="deep-view" id="deepView">
     <div class="deep-header">
         <button class="back-btn" onclick="closeDeepView()">← Back</button>
+        <button class="deep-nav-btn" id="deepPrevBtn" onclick="deepNavAgent(-1)" title="Previous agent (Shift+←)">‹</button>
         <div class="deep-agent-info">
             <span id="deepIcon"></span>
             <span class="deep-agent-name" id="deepName"></span>
             <span class="deep-agent-role" id="deepRole"></span>
+            <span class="deep-line-count" id="deepLineCount" title="Output lines"></span>
         </div>
+        <button class="deep-nav-btn" id="deepNextBtn" onclick="deepNavAgent(1)" title="Next agent (Shift+→)">›</button>
         <div class="deep-stats">
             <div><span class="metric-label">Status </span><span class="deep-stat-value" id="deepStatus"></span></div>
             <div><span class="metric-label">Phase </span><span class="deep-stat-value" id="deepPhase"></span></div>
@@ -6629,6 +6656,9 @@ function updateDeepViewHeader(agent) {
                                                             '0 0 4px rgba(34,197,94,0.25)';
     }
     document.getElementById('deepMemory').textContent = `${Math.round(agent.memory_mb || 0)} MB`;
+    // Line count
+    const lineCount = (agent._outputBuffer || []).length;
+    document.getElementById('deepLineCount').textContent = lineCount > 0 ? `${lineCount} lines` : '';
 
     // Health score
     const healthEl = document.getElementById('deepHealth');
@@ -6713,6 +6743,15 @@ function closeDeepView() {
     state.view = 'grid';
     _cmdHistIdx = -1;
     _cmdHistDraft = '';
+}
+
+function deepNavAgent(direction) {
+    const ids = [...state.agents.keys()];
+    if (ids.length < 2) return;
+    const currentIdx = ids.indexOf(state.focusedAgentId);
+    if (currentIdx === -1) return;
+    const nextIdx = (currentIdx + direction + ids.length) % ids.length;
+    openDeepView(ids[nextIdx]);
 }
 
 let _cmdHistIdx = -1;
@@ -7868,6 +7907,12 @@ document.addEventListener('keydown', (e) => {
 
     // Cmd+F — search in deep view
     if (e.metaKey && e.key === 'f' && state.view === 'deep') { e.preventDefault(); openDeepSearch(); return; }
+
+    // Shift+Arrow in deep view — navigate between agents
+    if (state.view === 'deep' && e.shiftKey && !isInput) {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); deepNavAgent(-1); return; }
+        if (e.key === 'ArrowRight') { e.preventDefault(); deepNavAgent(1); return; }
+    }
 
     // Cmd+Shift+S — toggle bulk select mode
     if (e.metaKey && e.shiftKey && e.key === 'S') {
