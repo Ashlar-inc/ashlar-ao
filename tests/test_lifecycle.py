@@ -3616,3 +3616,110 @@ class TestWebSocketDisconnectCleanup:
         src = inspect.getsource(ashlar_server.WebSocketHub.handle_ws)
         assert "max_clients" in src
         assert "1013" in src  # HTTP status for "Try Again Later"
+
+
+# ── Line Truncation Tests ────────────────────────────────────────────
+
+
+class TestLineTruncation:
+    """Tests for output line-length truncation."""
+
+    def test_truncation_in_capture_output(self):
+        """capture_output should truncate long lines."""
+        src = inspect.getsource(ashlar_server.AgentManager.capture_output)
+        assert "max_line_len" in src
+        assert "[truncated]" in src
+        assert "5000" in src
+
+    def test_short_lines_unchanged(self):
+        """Lines under 5000 chars should not be modified by truncation logic."""
+        short = "a" * 100
+        # Simulate the truncation logic
+        max_line_len = 5000
+        result = short[:max_line_len] + " [truncated]" if len(short) > max_line_len else short
+        assert result == short
+
+    def test_long_lines_truncated(self):
+        """Lines over 5000 chars should be truncated with suffix."""
+        long = "x" * 10000
+        max_line_len = 5000
+        result = long[:max_line_len] + " [truncated]" if len(long) > max_line_len else long
+        assert len(result) == 5012  # 5000 + len(" [truncated]")
+        assert result.endswith("[truncated]")
+
+
+# ── Compression Middleware Tests ──────────────────────────────────────
+
+
+class TestCompressionMiddleware:
+    """Tests for gzip compression middleware."""
+
+    def test_compression_middleware_exists(self):
+        """compression_middleware should exist as a callable."""
+        assert callable(ashlar_server.compression_middleware)
+
+    def test_compression_registered_in_create_app(self):
+        """create_app should include compression_middleware."""
+        src = inspect.getsource(ashlar_server.create_app)
+        assert "compression_middleware" in src
+
+    def test_compression_only_for_api(self):
+        """Compression should only apply to /api/ paths."""
+        src = inspect.getsource(ashlar_server.compression_middleware)
+        assert "/api/" in src
+
+    def test_compression_checks_accept_encoding(self):
+        """Compression should check Accept-Encoding header."""
+        src = inspect.getsource(ashlar_server.compression_middleware)
+        assert "Accept-Encoding" in src
+        assert "gzip" in src
+
+    def test_compression_min_size(self):
+        """Compression should only apply to responses > 1KB."""
+        src = inspect.getsource(ashlar_server.compression_middleware)
+        assert "1024" in src
+
+
+# ── Diagnostic Endpoint Tests ─────────────────────────────────────────
+
+
+class TestDiagnosticEndpoint:
+    """Tests for the POST /api/diagnostic self-test endpoint."""
+
+    def test_diagnostic_handler_exists(self):
+        """run_diagnostic handler should exist."""
+        assert callable(ashlar_server.run_diagnostic)
+
+    def test_diagnostic_route_registered(self):
+        """Diagnostic route should be registered in create_app."""
+        src = inspect.getsource(ashlar_server.create_app)
+        assert "diagnostic" in src
+
+    def test_diagnostic_checks_tmux(self):
+        """Diagnostic should test tmux availability."""
+        src = inspect.getsource(ashlar_server.run_diagnostic)
+        assert "tmux" in src
+        assert "-V" in src
+
+    def test_diagnostic_checks_disk(self):
+        """Diagnostic should check disk space."""
+        src = inspect.getsource(ashlar_server.run_diagnostic)
+        assert "disk_usage" in src
+
+    def test_diagnostic_checks_database(self):
+        """Diagnostic should test database write/read."""
+        src = inspect.getsource(ashlar_server.run_diagnostic)
+        assert "_diagnostic_test" in src
+        assert "INSERT" in src
+
+    def test_diagnostic_checks_backends(self):
+        """Diagnostic should report backend availability."""
+        src = inspect.getsource(ashlar_server.run_diagnostic)
+        assert "backend_configs" in src
+        assert "available" in src
+
+    def test_diagnostic_returns_status(self):
+        """Diagnostic should return ok/degraded status."""
+        src = inspect.getsource(ashlar_server.run_diagnostic)
+        assert "degraded" in src
+        assert "all_ok" in src

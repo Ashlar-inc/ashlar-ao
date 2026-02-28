@@ -2486,6 +2486,13 @@ class AgentManager:
         # Apply secret redaction
         new_lines = [redact_secrets(line) for line in new_lines]
 
+        # Truncate excessively long lines to prevent memory bloat
+        max_line_len = 5000
+        new_lines = [
+            line[:max_line_len] + " [truncated]" if len(line) > max_line_len else line
+            for line in new_lines
+        ]
+
         # Archive overflow lines before they're dropped by the deque
         overflow_count = len(agent.output_lines) + len(new_lines) - agent.output_lines.maxlen
         if overflow_count > 0:
@@ -4976,6 +4983,28 @@ async def rate_limit_middleware(request: web.Request, handler):
     return await handler(request)
 
 
+@web.middleware
+async def compression_middleware(request: web.Request, handler):
+    """Enable gzip compression for large API responses when client supports it."""
+    response = await handler(request)
+    # Only compress API JSON responses larger than 1KB
+    if (
+        request.path.startswith("/api/")
+        and "gzip" in request.headers.get("Accept-Encoding", "")
+        and isinstance(response, web.Response)
+        and response.content_type == "application/json"
+        and response.body
+        and len(response.body) > 1024
+    ):
+        import gzip as gzip_mod
+        compressed = gzip_mod.compress(response.body, compresslevel=6)
+        if len(compressed) < len(response.body):
+            response.body = compressed
+            response.headers["Content-Encoding"] = "gzip"
+            response.headers["Content-Length"] = str(len(compressed))
+    return response
+
+
 # ─────────────────────────────────────────────
 # Section 6: Metrics Collector
 # ─────────────────────────────────────────────
@@ -6019,6 +6048,76 @@ async def health_detailed(request: web.Request) -> web.Response:
             "port": config.port,
             "cost_budget_usd": config.cost_budget_usd,
         },
+    })
+
+
+async def run_diagnostic(request: web.Request) -> web.Response:
+    """POST /api/diagnostic — run server self-test and report capabilities."""
+    results: dict[str, dict] = {}
+
+    # 1. tmux check
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "tmux", "-V", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        results["tmux"] = {"ok": True, "version": stdout.decode().strip()}
+    except Exception as e:
+        results["tmux"] = {"ok": False, "error": str(e)}
+
+    # 2. Python version
+    results["python"] = {"ok": True, "version": sys.version, "executable": sys.executable}
+
+    # 3. Disk space
+    try:
+        disk = psutil.disk_usage("/")
+        free_gb = disk.free / (1024**3)
+        results["disk"] = {"ok": free_gb > 1.0, "free_gb": round(free_gb, 1), "pct_used": disk.percent}
+    except Exception as e:
+        results["disk"] = {"ok": False, "error": str(e)}
+
+    # 4. Database write/read test
+    try:
+        db: Database = request.app["db"]
+        if db and db._db:
+            await db._db.execute("CREATE TABLE IF NOT EXISTS _diagnostic_test (id INTEGER PRIMARY KEY, val TEXT)")
+            await db._db.execute("INSERT OR REPLACE INTO _diagnostic_test (id, val) VALUES (1, 'ok')")
+            async with db._db.execute("SELECT val FROM _diagnostic_test WHERE id = 1") as cursor:
+                row = await cursor.fetchone()
+            await db._db.execute("DROP TABLE IF EXISTS _diagnostic_test")
+            await db._db.commit()
+            results["database"] = {"ok": row and row[0] == "ok", "write_read": "pass"}
+        else:
+            results["database"] = {"ok": False, "error": "Database not available"}
+    except Exception as e:
+        results["database"] = {"ok": False, "error": str(e)}
+
+    # 5. System resources
+    try:
+        mem = psutil.virtual_memory()
+        results["system"] = {
+            "ok": True,
+            "cpu_count": psutil.cpu_count(),
+            "cpu_pct": psutil.cpu_percent(interval=None),
+            "memory_total_gb": round(mem.total / (1024**3), 1),
+            "memory_available_gb": round(mem.available / (1024**3), 1),
+            "memory_pct": mem.percent,
+        }
+    except Exception as e:
+        results["system"] = {"ok": False, "error": str(e)}
+
+    # 6. Backend availability
+    manager: AgentManager = request.app["agent_manager"]
+    backends = {}
+    for name, bc in manager.backend_configs.items():
+        backends[name] = {"available": bc.available, "command": bc.command}
+    results["backends"] = {"ok": any(bc.available for bc in manager.backend_configs.values()), "backends": backends}
+
+    all_ok = all(r.get("ok", False) for r in results.values())
+    return web.json_response({
+        "status": "ok" if all_ok else "degraded",
+        "results": results,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
 
@@ -9110,7 +9209,7 @@ async def cleanup_background_tasks(app: web.Application) -> None:
 
 
 def create_app(config: Config) -> web.Application:
-    middlewares = [rate_limit_middleware]
+    middlewares = [compression_middleware, rate_limit_middleware]
     if config.require_auth:
         middlewares.append(auth_middleware)
     app = web.Application(middlewares=middlewares)
@@ -9222,6 +9321,7 @@ def create_app(config: Config) -> web.Application:
     # REST API — System
     app.router.add_get("/api/health", health_check)
     app.router.add_get("/api/health/detailed", health_detailed)
+    app.router.add_post("/api/diagnostic", run_diagnostic)
     app.router.add_get("/api/system", system_metrics)
     app.router.add_get("/api/roles", list_roles)
     app.router.add_get("/api/config", get_config)
