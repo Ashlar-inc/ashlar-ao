@@ -2863,6 +2863,13 @@ body {
 .terminal-line.hl-success { background: rgba(34,197,94,0.06); border-left: 2px solid rgba(34,197,94,0.3); padding-left: 12px; margin-left: -2px; }
 .terminal-line.hl-warning { background: rgba(234,179,8,0.06); border-left: 2px solid rgba(234,179,8,0.3); padding-left: 12px; margin-left: -2px; }
 .terminal-line.hl-git { background: rgba(139,92,246,0.06); border-left: 2px solid rgba(139,92,246,0.3); padding-left: 12px; margin-left: -2px; }
+.terminal-line.truncated { position: relative; }
+.terminal-line.truncated .trunc-fade { display: inline; }
+.terminal-line.truncated .trunc-full { display: none; }
+.terminal-line.truncated.expanded .trunc-fade { display: none; }
+.terminal-line.truncated.expanded .trunc-full { display: inline; }
+.trunc-expand-btn { display: inline-block; margin-left: 4px; padding: 0 6px; font-size: 10px; font-family: var(--font-mono); color: var(--accent); background: rgba(99,102,241,0.1); border-radius: 3px; cursor: pointer; user-select: none; vertical-align: baseline; }
+.trunc-expand-btn:hover { background: rgba(99,102,241,0.2); }
 .sh-kw { color: #C084FC; }       /* keywords: if, else, for, return, function, class, import, def, const, let, var */
 .sh-str { color: #4ADE80; }      /* strings */
 .sh-num { color: #F59E0B; }      /* numbers */
@@ -3637,6 +3644,26 @@ body {
 .card-select.checked::after { content: '✓'; color: white; font-size: 11px; display: flex; align-items: center; justify-content: center; height: 100%; }
 .bulk-mode .card-select { display: flex; }
 .bulk-mode .agent-card { padding-left: 32px; }
+/* ── Batch Send Dialog ── */
+.batch-send-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1200; display: none; align-items: center; justify-content: center; }
+.batch-send-overlay.active { display: flex; }
+.batch-send-dialog { background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-xl); padding: 24px; width: min(480px, 92vw); max-height: 85vh; overflow-y: auto; }
+.batch-send-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.batch-send-header h3 { font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 0; }
+.batch-send-header .batch-count { font-size: 12px; color: var(--text-tertiary); font-family: var(--font-mono); }
+.batch-send-templates { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.batch-tpl-btn { padding: 4px 10px; border-radius: var(--radius-sm); background: var(--bg-overlay); border: 1px solid var(--border-subtle); color: var(--text-secondary); font-size: 11px; cursor: pointer; transition: all 0.15s; font-family: var(--font-mono); }
+.batch-tpl-btn:hover { background: var(--accent); color: white; border-color: var(--accent); }
+.batch-send-textarea { width: 100%; min-height: 80px; background: var(--bg-input); border: 1px solid var(--border-default); border-radius: var(--radius-md); color: var(--text-primary); font-family: var(--font-mono); font-size: 12px; padding: 10px; resize: vertical; box-sizing: border-box; }
+.batch-send-textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.15); }
+.batch-vars { margin: 10px 0; padding: 8px 10px; background: var(--bg-page); border-radius: var(--radius-sm); }
+.batch-vars-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-tertiary); font-weight: 700; margin-bottom: 6px; }
+.batch-var-chip { display: inline-block; padding: 2px 7px; margin: 2px; border-radius: var(--radius-xs); background: var(--bg-overlay); color: var(--accent); font-size: 11px; font-family: var(--font-mono); cursor: pointer; transition: all 0.12s; }
+.batch-var-chip:hover { background: var(--accent); color: white; }
+.batch-preview { margin-top: 12px; padding: 10px; background: var(--bg-page); border-radius: var(--radius-sm); border-left: 2px solid var(--accent); }
+.batch-preview-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-tertiary); font-weight: 700; margin-bottom: 4px; }
+.batch-preview-text { font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); white-space: pre-wrap; word-break: break-word; }
+.batch-send-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 /* ── Agent Edit Modal ── */
 .edit-agent-dialog {
     background: rgba(13,21,32,0.95);
@@ -3698,6 +3725,22 @@ body {
 .compare-stat-val.right { color: #F472B6; }
 .compare-stat-val.better { color: var(--success); }
 .compare-stat-val.worse { color: var(--danger); }
+.compare-mode-btn { font-size: 11px !important; padding: 4px 10px !important; }
+.compare-mode-btn.active { background: var(--accent) !important; color: white !important; border-color: var(--accent) !important; }
+.compare-diff-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.compare-diff-legend { display: flex; gap: 14px; padding: 8px 16px; border-bottom: 1px solid var(--border-subtle); flex-shrink: 0; }
+.diff-legend-item { font-size: 11px; display: flex; align-items: center; gap: 5px; color: var(--text-secondary); }
+.diff-legend-item::before { content: ''; width: 10px; height: 10px; border-radius: 2px; }
+.diff-legend-item.removed::before { background: rgba(239,68,68,0.25); border: 1px solid rgba(239,68,68,0.4); }
+.diff-legend-item.added::before { background: rgba(34,197,94,0.2); border: 1px solid rgba(34,197,94,0.35); }
+.diff-legend-item.common::before { background: var(--bg-overlay); border: 1px solid var(--border-subtle); }
+.compare-diff-terminal { flex: 1; overflow-y: auto; padding: 8px 0; font-family: var(--font-mono); font-size: 12px; }
+.diff-line { padding: 1px 14px; white-space: pre-wrap; word-break: break-all; line-height: 1.5; }
+.diff-line.diff-removed { background: rgba(239,68,68,0.1); color: #FCA5A5; border-left: 3px solid rgba(239,68,68,0.5); }
+.diff-line.diff-added { background: rgba(34,197,94,0.08); color: #86EFAC; border-left: 3px solid rgba(34,197,94,0.4); }
+.diff-line.diff-common { color: var(--text-tertiary); border-left: 3px solid transparent; }
+.diff-line .diff-prefix { display: inline-block; width: 16px; font-weight: 700; opacity: 0.6; }
+.diff-section-header { padding: 6px 14px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-tertiary); background: var(--bg-page); border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); margin: 4px 0; }
 /* ── Fleet Timeline ── */
 .fleet-timeline-panel { background: var(--bg-surface); width: 95vw; max-width: 1200px; height: 70vh; border-radius: 16px; display: flex; flex-direction: column; box-shadow: 0 32px 80px rgba(0,0,0,0.6); animation: modalScaleIn 0.2s cubic-bezier(0.22, 1, 0.36, 1); overflow: hidden; }
 .fleet-timeline-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border-bottom: 1px solid var(--border-subtle); flex-shrink: 0; }
@@ -4483,6 +4526,8 @@ body {
             <option value="status">Status</option>
             <option value="cost">Cost</option>
             <option value="age">Age</option>
+            <option value="output_rate">Output Rate</option>
+            <option value="context">Context %</option>
             <option value="manual">Manual</option>
         </select>
         <div class="view-toggle">
@@ -5230,11 +5275,13 @@ body {
                 <span style="color:var(--text-tertiary)">vs</span>
                 <select class="form-input" id="compareRightSelect" style="width:140px;padding:4px 8px;font-size:12px" onchange="refreshCompare()"></select>
                 <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-secondary);cursor:pointer"><input type="checkbox" id="compareSyncScroll" checked onchange="toggleCompareSync()"> Sync scroll</label>
+                <button class="btn btn-secondary btn-sm compare-mode-btn active" id="compareSideBtn" onclick="setCompareMode('side')">Side by Side</button>
+                <button class="btn btn-secondary btn-sm compare-mode-btn" id="compareDiffBtn" onclick="setCompareMode('diff')">Unified Diff</button>
                 <button class="btn btn-secondary btn-sm" onclick="closeCompare()">Close</button>
             </div>
         </div>
         <div class="compare-stats" id="compareStats"></div>
-        <div class="compare-body">
+        <div class="compare-body" id="compareSideBody">
             <div class="compare-pane">
                 <div class="compare-pane-header" id="compareLeftHeader"></div>
                 <div class="compare-pane-terminal" id="compareLeftTerminal"></div>
@@ -5243,6 +5290,14 @@ body {
                 <div class="compare-pane-header" id="compareRightHeader"></div>
                 <div class="compare-pane-terminal" id="compareRightTerminal"></div>
             </div>
+        </div>
+        <div class="compare-diff-body" id="compareDiffBody" style="display:none">
+            <div class="compare-diff-legend">
+                <span class="diff-legend-item removed">Left only</span>
+                <span class="diff-legend-item added">Right only</span>
+                <span class="diff-legend-item common">Common</span>
+            </div>
+            <div class="compare-diff-terminal" id="compareDiffTerminal"></div>
         </div>
     </div>
 </div>
@@ -5405,6 +5460,35 @@ body {
         <div class="handoff-actions">
             <button class="btn btn-secondary" onclick="closeHandoff()">Cancel</button>
             <button class="btn btn-primary" id="handoffSendBtn" onclick="sendHandoff()">Send Handoff</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Batch Send Dialog ── -->
+<div class="batch-send-overlay" id="batchSendOverlay">
+    <div class="batch-send-dialog">
+        <div class="batch-send-header">
+            <span id="batchSendIcon"></span>
+            <h3>Send to <span id="batchSendCount">0</span> Agents</h3>
+            <span class="batch-count" id="batchSendNames"></span>
+        </div>
+        <div class="batch-send-templates" id="batchSendTemplates"></div>
+        <textarea class="batch-send-textarea" id="batchSendInput" placeholder="Type a message... use {name}, {role}, {task} for per-agent values"></textarea>
+        <div class="batch-vars">
+            <div class="batch-vars-title">Template Variables</div>
+            <span class="batch-var-chip" onclick="insertBatchVar('{name}')">{name}</span>
+            <span class="batch-var-chip" onclick="insertBatchVar('{role}')">{role}</span>
+            <span class="batch-var-chip" onclick="insertBatchVar('{task}')">{task}</span>
+            <span class="batch-var-chip" onclick="insertBatchVar('{id}')">{id}</span>
+            <span class="batch-var-chip" onclick="insertBatchVar('{status}')">{status}</span>
+        </div>
+        <div class="batch-preview" id="batchPreview" style="display:none">
+            <div class="batch-preview-title">Preview (first agent)</div>
+            <div class="batch-preview-text" id="batchPreviewText"></div>
+        </div>
+        <div class="batch-send-actions">
+            <button class="btn btn-secondary" onclick="closeBatchSend()">Cancel</button>
+            <button class="btn btn-primary" id="batchSendBtn" onclick="executeBatchSend()">Send</button>
         </div>
     </div>
 </div>
@@ -5948,7 +6032,36 @@ function classifyTerminalLine(line, agentId) {
     } else if (/\bgit (commit|push|merge)|committed|→ [a-f0-9]{7,}/i.test(stripped)) {
         cls += ' hl-git';
     }
+
+    // Smart truncation for very long lines
+    const TRUNC_THRESHOLD = 300;
+    if (stripped.length > TRUNC_THRESHOLD) {
+        const fullHtml = ansiToHtml(line);
+        const truncText = stripped.substring(0, TRUNC_THRESHOLD);
+        const truncHtml = ansiToHtml(line.substring(0, findRawIndex(line, TRUNC_THRESHOLD)));
+        cls += ' truncated';
+        const truncatedContent = `<span class="trunc-fade">${truncHtml}…</span><span class="trunc-full">${fullHtml}</span><span class="trunc-expand-btn" onclick="this.parentElement.classList.toggle('expanded');this.textContent=this.parentElement.classList.contains('expanded')?'▼ less':'▶ +${stripped.length - TRUNC_THRESHOLD} chars'">▶ +${stripped.length - TRUNC_THRESHOLD} chars</span>`;
+        return { html: truncatedContent, className: cls };
+    }
     return { html: ansiToHtml(line), className: cls };
+}
+
+// Find the raw string index corresponding to N visible characters (skipping ANSI codes)
+function findRawIndex(raw, visibleCount) {
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\[[^m]*[a-zA-Z]/g;
+    let visible = 0;
+    let i = 0;
+    while (i < raw.length && visible < visibleCount) {
+        ansiRe.lastIndex = i;
+        const m = ansiRe.exec(raw);
+        if (m && m.index === i) {
+            i = m.index + m[0].length;
+        } else {
+            visible++;
+            i++;
+        }
+    }
+    return i;
 }
 
 // Lightweight regex-based syntax highlighter
@@ -6543,6 +6656,42 @@ async function handleSync(data) {
 }
 
 let _lastAriaAnnounce = 0;
+let _fleetMilestones = { firstComplete: false, allComplete: false, firstError: false };
+
+function checkFleetMilestones(agent, prevStatus) {
+    const agents = [...state.agents.values()];
+    const activeAgents = agents.filter(a => !['idle', 'paused'].includes(a.status));
+    if (activeAgents.length === 0) return;
+
+    // First agent completion
+    if (agent.status === 'idle' && prevStatus === 'working' && !_fleetMilestones.firstComplete) {
+        _fleetMilestones.firstComplete = true;
+        showToast(`First agent complete: ${agent.name}`, 'success');
+        playTone([880, 1100], 0.15);
+    }
+
+    // All agents complete
+    if (agent.status === 'idle' || agent.status === 'error') {
+        const allDone = activeAgents.every(a => a.status === 'idle' || a.status === 'error');
+        if (allDone && agents.length > 1 && !_fleetMilestones.allComplete) {
+            _fleetMilestones.allComplete = true;
+            const errorCount = activeAgents.filter(a => a.status === 'error').length;
+            if (errorCount > 0) {
+                showToast(`Fleet complete — ${errorCount} agent${errorCount > 1 ? 's' : ''} with errors`, 'warning');
+            } else {
+                showToast('All agents complete!', 'success');
+                playTone([660, 880, 1100], 0.2);
+            }
+        }
+    }
+
+    // First error in fleet
+    if (agent.status === 'error' && prevStatus !== 'error' && !_fleetMilestones.firstError) {
+        _fleetMilestones.firstError = true;
+        showToast(`Error detected in ${agent.name}`, 'error');
+    }
+}
+
 function handleAgentUpdate(agent) {
     const prev = state.agents.get(agent.id);
     state.agents.set(agent.id, agent);
@@ -6571,6 +6720,11 @@ function handleAgentUpdate(agent) {
                 region.textContent = msg;
             }
         }
+    }
+
+    // Fleet milestone detection
+    if (prev && prev.status !== agent.status) {
+        checkFleetMilestones(agent, prev.status);
     }
 
     scheduleRender();
@@ -12612,10 +12766,128 @@ async function bulkAction(action, extraPayload = {}) {
 
 async function bulkSendPrompt() {
     if (selectedAgents.size === 0) return;
-    const count = selectedAgents.size;
-    const msg = await promptInput(`Send to ${count} Agents`, 'Type a message to broadcast...', { iconKey: 'send', confirmText: 'Send' });
-    if (!msg) return;
-    bulkAction('send', { message: msg });
+    openBatchSend();
+}
+
+function openBatchSend() {
+    const overlay = document.getElementById('batchSendOverlay');
+    const input = document.getElementById('batchSendInput');
+    const countEl = document.getElementById('batchSendCount');
+    const namesEl = document.getElementById('batchSendNames');
+    const iconEl = document.getElementById('batchSendIcon');
+    const tplContainer = document.getElementById('batchSendTemplates');
+    if (!overlay) return;
+
+    const ids = [...selectedAgents];
+    countEl.textContent = ids.length;
+    iconEl.innerHTML = icon('send', 20);
+
+    // Show agent names
+    const names = ids.map(id => state.agents.get(id)?.name || id).slice(0, 4);
+    namesEl.textContent = names.join(', ') + (ids.length > 4 ? ` +${ids.length - 4}` : '');
+
+    // Populate templates
+    const templates = getReplyTemplates();
+    tplContainer.innerHTML = templates.map(t =>
+        `<button class="batch-tpl-btn" onclick="setBatchTemplate('${t.message.replace(/'/g, "\\'")}')">${t.label}</button>`
+    ).join('');
+
+    input.value = '';
+    document.getElementById('batchPreview').style.display = 'none';
+    overlay.classList.add('active');
+    setTimeout(() => input.focus(), 50);
+
+    // Live preview on input
+    input.oninput = updateBatchPreview;
+    input.onkeydown = function(e) {
+        if (e.key === 'Escape') closeBatchSend();
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) executeBatchSend();
+    };
+    overlay.onclick = function(e) { if (e.target === overlay) closeBatchSend(); };
+}
+
+function closeBatchSend() {
+    const overlay = document.getElementById('batchSendOverlay');
+    if (overlay) overlay.classList.remove('active');
+}
+
+function setBatchTemplate(msg) {
+    const input = document.getElementById('batchSendInput');
+    if (input) { input.value = msg; updateBatchPreview(); input.focus(); }
+}
+
+function insertBatchVar(varName) {
+    const input = document.getElementById('batchSendInput');
+    if (!input) return;
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    const text = input.value;
+    input.value = text.substring(0, start) + varName + text.substring(end);
+    input.selectionStart = input.selectionEnd = start + varName.length;
+    input.focus();
+    updateBatchPreview();
+}
+
+function resolveBatchTemplate(template, agent) {
+    return template
+        .replace(/\{name\}/g, agent.name || agent.id)
+        .replace(/\{role\}/g, agent.role || 'general')
+        .replace(/\{task\}/g, agent.task || '')
+        .replace(/\{id\}/g, agent.id)
+        .replace(/\{status\}/g, agent.status || 'unknown');
+}
+
+function updateBatchPreview() {
+    const input = document.getElementById('batchSendInput');
+    const previewWrap = document.getElementById('batchPreview');
+    const previewText = document.getElementById('batchPreviewText');
+    if (!input || !previewWrap || !previewText) return;
+
+    const msg = input.value.trim();
+    const hasVars = /\{(name|role|task|id|status)\}/.test(msg);
+    if (!msg || !hasVars) { previewWrap.style.display = 'none'; return; }
+
+    const firstId = [...selectedAgents][0];
+    const agent = state.agents.get(firstId);
+    if (!agent) { previewWrap.style.display = 'none'; return; }
+
+    previewWrap.style.display = '';
+    previewText.textContent = resolveBatchTemplate(msg, agent);
+}
+
+async function executeBatchSend() {
+    const input = document.getElementById('batchSendInput');
+    if (!input) return;
+    const msg = input.value.trim();
+    if (!msg) { showToast('Enter a message to send', 'warning'); return; }
+
+    const ids = [...selectedAgents].filter(id => {
+        const card = cardElements.get(id);
+        return card && card.style.display !== 'none';
+    });
+    if (ids.length === 0) { showToast('No visible agents selected', 'warning'); return; }
+
+    const hasVars = /\{(name|role|task|id|status)\}/.test(msg);
+    closeBatchSend();
+
+    if (hasVars) {
+        // Send personalized messages via WebSocket
+        let sent = 0;
+        for (const id of ids) {
+            const agent = state.agents.get(id);
+            if (!agent) continue;
+            const resolved = resolveBatchTemplate(msg, agent);
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ type: 'send', agent_id: id, message: resolved }));
+                sent++;
+            }
+        }
+        showToast(`Sent personalized message to ${sent} agent${sent !== 1 ? 's' : ''}`, 'success');
+        clearBulkSelection();
+    } else {
+        // Plain message — use bulk API
+        bulkAction('send', { message: msg });
+    }
 }
 
 // ── Agent Edit ──
@@ -12896,6 +13168,7 @@ function refreshCompare() {
     renderComparePane(leftId, 'compareLeftHeader', 'compareLeftTerminal');
     renderComparePane(rightId, 'compareRightHeader', 'compareRightTerminal');
     renderCompareStats(leftId, rightId);
+    if (_compareMode === 'diff') renderCompareDiff();
 }
 
 function renderComparePane(agentId, headerElId, termElId) {
@@ -12916,6 +13189,76 @@ function renderComparePane(agentId, headerElId, termElId) {
     const shouldScroll = term.scrollTop + term.clientHeight >= term.scrollHeight - 50;
     term.innerHTML = tail.map(l => `<div class="terminal-line">${ansiToHtml(l)}</div>`).join('');
     if (shouldScroll) term.scrollTop = term.scrollHeight;
+}
+
+let _compareMode = 'side'; // 'side' or 'diff'
+
+function setCompareMode(mode) {
+    _compareMode = mode;
+    document.getElementById('compareSideBtn').classList.toggle('active', mode === 'side');
+    document.getElementById('compareDiffBtn').classList.toggle('active', mode === 'diff');
+    document.getElementById('compareSideBody').style.display = mode === 'side' ? '' : 'none';
+    document.getElementById('compareDiffBody').style.display = mode === 'diff' ? '' : 'none';
+    if (mode === 'diff') renderCompareDiff();
+}
+
+function renderCompareDiff() {
+    const leftId = document.getElementById('compareLeftSelect').value;
+    const rightId = document.getElementById('compareRightSelect').value;
+    const left = state.agents.get(leftId);
+    const right = state.agents.get(rightId);
+    const term = document.getElementById('compareDiffTerminal');
+    if (!term) return;
+
+    if (!left && !right) { term.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary)">Select agents to compare</div>'; return; }
+
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const leftLines = (left?.output_lines || []).slice(-200).map(l => l.replace(ansiRe, '').trim()).filter(l => l);
+    const rightLines = (right?.output_lines || []).slice(-200).map(l => l.replace(ansiRe, '').trim()).filter(l => l);
+
+    // Build set-based diff: find common, left-only, right-only
+    const leftSet = new Set(leftLines);
+    const rightSet = new Set(rightLines);
+    const commonSet = new Set([...leftSet].filter(l => rightSet.has(l)));
+
+    const html = [];
+    const leftName = left?.name || leftId || 'Left';
+    const rightName = right?.name || rightId || 'Right';
+
+    // Left-only lines
+    const leftOnly = leftLines.filter(l => !commonSet.has(l));
+    const rightOnly = rightLines.filter(l => !commonSet.has(l));
+
+    if (leftOnly.length > 0) {
+        html.push(`<div class="diff-section-header">Only in ${escapeHtml(leftName)} (${leftOnly.length} lines)</div>`);
+        for (const l of leftOnly.slice(0, 100)) {
+            html.push(`<div class="diff-line diff-removed"><span class="diff-prefix">-</span>${escapeHtml(l)}</div>`);
+        }
+        if (leftOnly.length > 100) html.push(`<div class="diff-line diff-common" style="text-align:center">... ${leftOnly.length - 100} more lines</div>`);
+    }
+
+    if (rightOnly.length > 0) {
+        html.push(`<div class="diff-section-header">Only in ${escapeHtml(rightName)} (${rightOnly.length} lines)</div>`);
+        for (const l of rightOnly.slice(0, 100)) {
+            html.push(`<div class="diff-line diff-added"><span class="diff-prefix">+</span>${escapeHtml(l)}</div>`);
+        }
+        if (rightOnly.length > 100) html.push(`<div class="diff-line diff-common" style="text-align:center">... ${rightOnly.length - 100} more lines</div>`);
+    }
+
+    if (commonSet.size > 0) {
+        html.push(`<div class="diff-section-header">Common lines (${commonSet.size})</div>`);
+        const commonArr = [...commonSet];
+        for (const l of commonArr.slice(0, 50)) {
+            html.push(`<div class="diff-line diff-common"><span class="diff-prefix"> </span>${escapeHtml(l)}</div>`);
+        }
+        if (commonArr.length > 50) html.push(`<div class="diff-line diff-common" style="text-align:center">... ${commonArr.length - 50} more common lines</div>`);
+    }
+
+    if (html.length === 0) {
+        html.push('<div style="padding:24px;text-align:center;color:var(--text-tertiary)">No output to compare</div>');
+    }
+
+    term.innerHTML = html.join('');
 }
 
 function renderCompareStats(leftId, rightId) {
@@ -15209,6 +15552,7 @@ PALETTE_ACTIONS.push(
     { icon: 'table', label: 'Toggle Table View', shortcut: '', action: () => { closePalette(); setViewMode(state.viewMode === 'table' ? 'grid' : 'table'); }, section: 'view' },
     { icon: 'list', label: 'Toggle Compact View', shortcut: '', action: () => { closePalette(); setViewMode(state.viewMode === 'compact' ? 'grid' : 'compact'); }, section: 'view' },
     { icon: 'columns', label: 'Split Terminal View', shortcut: '', action: () => { closePalette(); openSplitView(); }, section: 'view' },
+    { icon: 'git-merge', label: 'Diff Compare Agents', shortcut: '', action: () => { closePalette(); openCompare(); setTimeout(() => setCompareMode('diff'), 100); }, section: 'view' },
     { icon: 'save', label: 'Manage Presets', shortcut: '', action: () => { closePalette(); openSettings(); }, section: 'config' },
     { icon: 'file-text', label: 'View Scratchpad', shortcut: '', action: () => { closePalette(); if (state.focusedAgentId) { switchDeepTab('scratchpad'); } else { showToast('Open an agent first to view its scratchpad', 'info'); } }, section: 'view' },
 );
@@ -15299,6 +15643,13 @@ renderAgentGrid = function() {
                 return (agB.estimated_cost_usd || 0) - (agA.estimated_cost_usd || 0);
             case 'age':
                 return (agA.created_at || '').localeCompare(agB.created_at || '');
+            case 'output_rate': {
+                const rateA = agA.output_rate || (agA._outputHistory?.slice(-5).reduce((s, v) => s + v, 0) || 0);
+                const rateB = agB.output_rate || (agB._outputHistory?.slice(-5).reduce((s, v) => s + v, 0) || 0);
+                return rateB - rateA;
+            }
+            case 'context':
+                return (agB.context_pct || 0) - (agA.context_pct || 0);
             case 'manual': {
                 const order = state.cardOrder;
                 const ia = order.indexOf(a[0]);
