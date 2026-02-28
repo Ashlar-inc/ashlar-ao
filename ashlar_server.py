@@ -4758,6 +4758,19 @@ async def spawn_agent(request: web.Request) -> web.Response:
         # Assign project after spawn
         if project_id:
             agent.project_id = project_id
+        else:
+            # Auto-assign project based on working directory match
+            db: Database = request.app["db"]
+            projects = await db.get_projects()
+            best_match = None
+            best_len = 0
+            for proj in projects:
+                proj_path = os.path.abspath(os.path.expanduser(proj.get("path", "")))
+                if agent.working_dir.startswith(proj_path) and len(proj_path) > best_len:
+                    best_match = proj
+                    best_len = len(proj_path)
+            if best_match:
+                agent.project_id = best_match["id"]
 
         # Broadcast to WebSocket clients
         hub: WebSocketHub = request.app["ws_hub"]
@@ -5359,7 +5372,14 @@ async def put_config(request: web.Request) -> web.Response:
 
 async def list_projects(request: web.Request) -> web.Response:
     db: Database = request.app["db"]
+    manager: AgentManager = request.app["agent_manager"]
     projects = await db.get_projects()
+    # Enrich with agent counts and cost
+    for proj in projects:
+        agents = [a for a in manager.agents.values() if a.project_id == proj["id"]]
+        proj["agent_count"] = len(agents)
+        proj["active_count"] = sum(1 for a in agents if a.status in ("working", "planning", "reading"))
+        proj["total_cost"] = round(sum(a.estimated_cost_usd for a in agents), 4)
     return web.json_response(projects)
 
 

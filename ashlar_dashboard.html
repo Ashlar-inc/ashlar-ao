@@ -3972,6 +3972,7 @@ body {
         </div>
         <div class="deep-search-bar" id="deepSearchBar">
             <button class="deep-search-toggle" id="deepRegexToggle" onclick="toggleDeepRegex()" title="Toggle regex mode">.*</button>
+            <button class="deep-search-toggle" id="deepCaseToggle" onclick="toggleDeepCase()" title="Toggle case sensitivity">Aa</button>
             <select class="deep-log-filter" id="deepLogFilter" onchange="applyLogFilter()">
                 <option value="all">All</option>
                 <option value="errors">Errors</option>
@@ -6650,10 +6651,17 @@ function deepRestart() {
 // ── Deep View Search ──
 
 let deepRegexMode = false;
+let deepCaseSensitive = false;
 
 function toggleDeepRegex() {
     deepRegexMode = !deepRegexMode;
     document.getElementById('deepRegexToggle').classList.toggle('active', deepRegexMode);
+    deepSearch();
+}
+
+function toggleDeepCase() {
+    deepCaseSensitive = !deepCaseSensitive;
+    document.getElementById('deepCaseToggle').classList.toggle('active', deepCaseSensitive);
     deepSearch();
 }
 
@@ -6700,9 +6708,10 @@ function deepSearch() {
     if (!query) { document.getElementById('deepSearchCount').textContent = ''; return; }
 
     const terminal = document.getElementById('deepTerminal');
+    const flags = 'g' + (deepCaseSensitive ? '' : 'i');
     let regex;
     if (deepRegexMode) {
-        try { regex = new RegExp(query, 'gi'); }
+        try { regex = new RegExp(query, flags); }
         catch (e) {
             document.getElementById('deepSearchCount').textContent = 'Invalid regex';
             document.getElementById('deepSearchCount').style.color = 'var(--danger)';
@@ -6710,7 +6719,7 @@ function deepSearch() {
         }
     } else {
         const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        regex = new RegExp(escaped, 'gi');
+        regex = new RegExp(escaped, flags);
     }
 
     const isVirtual = virtualTermData.length > 0 && document.getElementById('vtContent') !== null;
@@ -7613,7 +7622,8 @@ function renderProjectSelector() {
     state.projects.forEach(p => {
         const opt = document.createElement('option');
         opt.value = p.id;
-        opt.textContent = p.name;
+        const countStr = p.agent_count ? ` (${p.agent_count})` : '';
+        opt.textContent = p.name + countStr;
         sel.appendChild(opt);
     });
     sel.value = current;

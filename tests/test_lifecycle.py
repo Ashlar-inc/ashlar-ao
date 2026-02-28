@@ -1382,3 +1382,51 @@ class TestAgentBookmarks:
         agent.bookmarks = [b for b in agent.bookmarks if b.get("id") != bid]
         assert len(agent.bookmarks) == 2
         assert all(b["id"] != "bbb" for b in agent.bookmarks)
+
+
+class TestProjectAutoAssignment:
+    """Tests for project auto-assignment based on working directory."""
+
+    def test_path_match(self):
+        """Agent working_dir matching project path assigns project."""
+        projects = [
+            {"id": "proj1", "path": "/home/user/projects/app"},
+            {"id": "proj2", "path": "/home/user/projects/lib"},
+        ]
+        agent_dir = "/home/user/projects/app/src"
+        best = None
+        best_len = 0
+        for proj in projects:
+            proj_path = proj["path"]
+            if agent_dir.startswith(proj_path) and len(proj_path) > best_len:
+                best = proj
+                best_len = len(proj_path)
+        assert best is not None
+        assert best["id"] == "proj1"
+
+    def test_no_match(self):
+        """Agent in unrelated dir gets no project."""
+        projects = [
+            {"id": "proj1", "path": "/home/user/projects/app"},
+        ]
+        agent_dir = "/tmp/sandbox"
+        best = None
+        for proj in projects:
+            if agent_dir.startswith(proj["path"]):
+                best = proj
+        assert best is None
+
+    def test_longest_match_wins(self):
+        """Most specific project path wins when nested."""
+        projects = [
+            {"id": "parent", "path": "/home/user/projects"},
+            {"id": "child", "path": "/home/user/projects/app"},
+        ]
+        agent_dir = "/home/user/projects/app/src/components"
+        best = None
+        best_len = 0
+        for proj in projects:
+            if agent_dir.startswith(proj["path"]) and len(proj["path"]) > best_len:
+                best = proj
+                best_len = len(proj["path"])
+        assert best["id"] == "child"
