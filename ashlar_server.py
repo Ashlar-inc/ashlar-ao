@@ -4095,6 +4095,14 @@ class Database:
         except Exception:
             pass  # Columns already exist
 
+        try:
+            await self._db.execute("ALTER TABLE agents_history ADD COLUMN resumable INTEGER DEFAULT 0")
+            await self._db.execute("ALTER TABLE agents_history ADD COLUMN system_prompt TEXT DEFAULT ''")
+            await self._db.execute("ALTER TABLE agents_history ADD COLUMN plan_mode INTEGER DEFAULT 0")
+            await self._db.commit()
+        except Exception:
+            pass  # Columns already exist
+
         # Seed built-in workflows if empty
         async with self._db.execute("SELECT COUNT(*) FROM workflows") as cur:
             row = await cur.fetchone()
@@ -4190,16 +4198,21 @@ class Database:
 
         output_preview = "\n".join(list(agent.output_lines)[-50:])
 
+        # An agent is resumable if it completed normally or was killed while working
+        resumable = 1 if agent.status in ("complete", "working", "planning", "idle") else 0
+
         await self._db.execute(
             """INSERT OR REPLACE INTO agents_history
                (id, name, role, project_id, task, summary, status, working_dir,
                 backend, created_at, completed_at, duration_sec, context_pct, output_preview,
-                tokens_input, tokens_output, estimated_cost_usd)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                tokens_input, tokens_output, estimated_cost_usd,
+                resumable, system_prompt, plan_mode)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (agent.id, agent.name, agent.role, agent.project_id, agent.task,
              agent.summary, agent.status, agent.working_dir, agent.backend,
              agent.created_at, completed_at, duration, agent.context_pct, output_preview,
-             agent.tokens_input, agent.tokens_output, agent.estimated_cost_usd),
+             agent.tokens_input, agent.tokens_output, agent.estimated_cost_usd,
+             resumable, getattr(agent, 'system_prompt', ''), int(agent.plan_mode)),
         )
         await self._db.commit()
 
@@ -4228,6 +4241,25 @@ class Database:
         ) as cur:
             row = await cur.fetchone()
             return dict(row) if row else None
+
+    async def get_resumable_sessions(self, limit: int = 20) -> list[dict]:
+        """Get recently completed agents that can be resumed."""
+        if not self._db:
+            return []
+        try:
+            async with self._db.execute(
+                """SELECT id, name, role, project_id, task, summary, status, working_dir,
+                          backend, created_at, completed_at, duration_sec, context_pct,
+                          resumable, plan_mode
+                   FROM agents_history
+                   WHERE resumable = 1
+                   ORDER BY completed_at DESC LIMIT ?""",
+                (limit,),
+            ) as cur:
+                rows = await cur.fetchall()
+                return [dict(r) for r in rows]
+        except Exception:
+            return []
 
     async def get_historical_analytics(self) -> dict:
         """Compute historical success rates, cost breakdowns, and performance metrics."""
@@ -6968,6 +7000,84 @@ async def delete_preset(request: web.Request) -> web.Response:
 
 # ── Agent Clone endpoint ──
 
+async def get_resumable_sessions(request: web.Request) -> web.Response:
+    """GET /api/sessions/resumable — list recently completed agents that can be resumed."""
+    db: Database = request.app["db"]
+    try:
+        limit = max(1, min(int(request.query.get("limit", "20")), 50))
+    except ValueError:
+        limit = 20
+    sessions = await db.get_resumable_sessions(limit)
+    return web.json_response({"sessions": sessions})
+
+
+async def resume_from_history(request: web.Request) -> web.Response:
+    """POST /api/sessions/{id}/resume — re-spawn an agent from its archived session.
+
+    Optionally override task or append instructions via 'task' and 'continue_message' fields.
+    """
+    if r := _check_rate(request, cost=3, rate=1, burst=5):
+        return r
+    db: Database = request.app["db"]
+    manager: AgentManager = request.app["agent_manager"]
+    hub: WebSocketHub = request.app["ws_hub"]
+    session_id = request.match_info["id"]
+
+    # Look up the archived session
+    session = await db.get_agent_history_item(session_id)
+    if not session:
+        return web.json_response({"error": "Session not found"}, status=404)
+
+    # Parse optional override fields
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+
+    task = data.get("task", session.get("task", ""))
+    continue_msg = data.get("continue_message", "")
+    if continue_msg:
+        task = f"{task}\n\nContinuation: {continue_msg}" if task else continue_msg
+    plan_mode = data.get("plan_mode", bool(session.get("plan_mode", 0)))
+
+    # Verify working directory still exists
+    working_dir = session.get("working_dir", os.getcwd())
+    if not os.path.isdir(working_dir):
+        return web.json_response({"error": f"Working directory no longer exists: {working_dir}"}, status=400)
+
+    # Check agent limit
+    config: Config = request.app["config"]
+    active_count = sum(1 for a in manager.agents.values() if a.status not in ("error", "complete"))
+    if active_count >= config.max_agents:
+        return web.json_response({"error": f"Agent limit reached ({config.max_agents})"}, status=409)
+
+    # Spawn a new agent with the archived session's config
+    try:
+        new_agent = await manager.spawn(
+            name=session.get("name", "resumed"),
+            role=session.get("role", "general"),
+            task=task,
+            working_dir=working_dir,
+            backend=session.get("backend", config.default_backend),
+            project_id=session.get("project_id"),
+            plan_mode=plan_mode,
+        )
+    except Exception as e:
+        return web.json_response({"error": f"Failed to resume: {e}"}, status=500)
+
+    # Broadcast the new agent
+    await hub.broadcast({
+        "type": "agent_update",
+        "agent": new_agent.to_dict(),
+    })
+    await hub.broadcast_event("agent_spawned", f"Resumed {new_agent.name} from session {session_id[:8]}", new_agent.id)
+
+    return web.json_response({
+        "agent": new_agent.to_dict(),
+        "resumed_from": session_id,
+    }, status=201)
+
+
 async def clone_agent(request: web.Request) -> web.Response:
     """POST /api/agents/{id}/clone — clone an agent's config into a new agent."""
     if r := _check_rate(request, cost=3, rate=1, burst=5):
@@ -8749,6 +8859,10 @@ def create_app(config: Config) -> web.Application:
 
     # REST API — Agent Clone
     app.router.add_post("/api/agents/{id}/clone", clone_agent)
+
+    # REST API — Session Resume
+    app.router.add_get("/api/sessions/resumable", get_resumable_sessions)
+    app.router.add_post("/api/sessions/{id}/resume", resume_from_history)
 
     # REST API — Task Queue
     app.router.add_get("/api/queue", list_queue)

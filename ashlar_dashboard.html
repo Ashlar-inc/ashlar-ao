@@ -11952,11 +11952,13 @@ async function openHistory() {
             const dur = item.duration_sec ? formatDuration(item.duration_sec) : '';
             const el = document.createElement('div');
             el.className = 'history-item';
+            const resumable = item.resumable ? `<button class="btn-ghost" style="font-size:11px;padding:2px 8px;color:var(--accent);border:1px solid var(--accent);border-radius:var(--radius-sm)" onclick="event.stopPropagation();resumeSession('${item.id}')" title="Resume this agent session">Resume</button>` : '';
             el.innerHTML = `
                 <span class="hi-icon">${info.icon}</span>
                 <span class="hi-name">${escapeHtml(item.name)}</span>
                 <span class="hi-task">${escapeHtml(item.task || item.summary || '')}</span>
                 <span class="hi-meta">${dur}</span>
+                ${resumable}
             `;
             el.onclick = () => showHistoryDetail(item);
             list.appendChild(el);
@@ -11965,6 +11967,26 @@ async function openHistory() {
         list.innerHTML = '<div class="history-empty">Failed to load history</div>';
     }
     trapFocus(document.getElementById('historyOverlay'));
+}
+
+async function resumeSession(sessionId) {
+    try {
+        const res = await apiFetch(`/api/sessions/${sessionId}/resume`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            showToast(err.error || 'Failed to resume session', 'error');
+            return;
+        }
+        const result = await res.json();
+        showToast(`Resumed ${result.agent?.name || 'agent'} from session`, 'success');
+        closeHistory();
+    } catch (e) {
+        showToast('Failed to resume session', 'error');
+    }
 }
 
 function closeHistory() {

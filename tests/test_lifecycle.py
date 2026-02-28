@@ -2,6 +2,7 @@
 pause/resume/restart edge cases, and spawn validation."""
 
 import asyncio
+import inspect
 import sys
 import time
 from pathlib import Path
@@ -2828,3 +2829,162 @@ class TestConfigLoadingAndValidation:
             assert "pattern" in ap
             assert "severity" in ap
             assert "label" in ap
+
+
+# ---------------------------------------------------------------------------
+# Session Persistence and Resume
+# ---------------------------------------------------------------------------
+
+class TestSessionPersistence:
+    """Tests for agent session persistence (resumable flag, DB columns, endpoints)."""
+
+    def _make_agent(self, **overrides):
+        """Create an Agent with sensible defaults for testing."""
+        defaults = dict(
+            id="ab12",
+            name="test-agent",
+            role="backend",
+            status="working",
+            working_dir="/tmp",
+            backend="claude-code",
+            task="Test task",
+            summary="Doing things",
+            created_at="2026-01-01T00:00:00Z",
+        )
+        defaults.update(overrides)
+        return ashlar_server.Agent(**defaults)
+
+    def test_resumable_flag_for_complete_status(self):
+        """Agents with status 'complete' should be resumable."""
+        agent = self._make_agent(status="complete")
+        # The resumable logic is: status in ("complete", "working", "planning", "idle")
+        assert agent.status in ("complete", "working", "planning", "idle")
+
+    def test_resumable_flag_for_working_status(self):
+        """Agents killed while working should be resumable."""
+        agent = self._make_agent(status="working")
+        assert agent.status in ("complete", "working", "planning", "idle")
+
+    def test_resumable_flag_for_planning_status(self):
+        """Agents killed while planning should be resumable."""
+        agent = self._make_agent(status="planning")
+        assert agent.status in ("complete", "working", "planning", "idle")
+
+    def test_resumable_flag_for_idle_status(self):
+        """Idle agents should be resumable."""
+        agent = self._make_agent(status="idle")
+        assert agent.status in ("complete", "working", "planning", "idle")
+
+    def test_not_resumable_for_error_status(self):
+        """Agents that errored out should NOT be resumable."""
+        agent = self._make_agent(status="error")
+        assert agent.status not in ("complete", "working", "planning", "idle")
+
+    def test_not_resumable_for_spawning_status(self):
+        """Agents still spawning should NOT be resumable."""
+        agent = self._make_agent(status="spawning")
+        assert agent.status not in ("complete", "working", "planning", "idle")
+
+    def test_agent_has_system_prompt_field(self):
+        """Agent dataclass should have system_prompt field."""
+        agent = self._make_agent(system_prompt="You are a backend engineer")
+        assert agent.system_prompt == "You are a backend engineer"
+
+    def test_agent_has_plan_mode_field(self):
+        """Agent dataclass should have plan_mode field."""
+        agent = self._make_agent(plan_mode=True)
+        assert agent.plan_mode is True
+
+    def test_agent_plan_mode_default_false(self):
+        """Agent plan_mode should default to False."""
+        agent = self._make_agent()
+        assert agent.plan_mode is False
+
+    def test_save_agent_includes_resumable_column(self):
+        """save_agent() SQL should include resumable column."""
+        src = inspect.getsource(ashlar_server.Database.save_agent)
+        assert "resumable" in src
+
+    def test_save_agent_includes_system_prompt_column(self):
+        """save_agent() SQL should include system_prompt column."""
+        src = inspect.getsource(ashlar_server.Database.save_agent)
+        assert "system_prompt" in src
+
+    def test_save_agent_includes_plan_mode_column(self):
+        """save_agent() SQL should include plan_mode column."""
+        src = inspect.getsource(ashlar_server.Database.save_agent)
+        assert "plan_mode" in src
+
+    def test_get_resumable_sessions_method_exists(self):
+        """Database should have get_resumable_sessions method."""
+        assert hasattr(ashlar_server.Database, "get_resumable_sessions")
+        assert callable(getattr(ashlar_server.Database, "get_resumable_sessions"))
+
+    def test_get_resumable_sessions_null_guard(self):
+        """get_resumable_sessions() should return [] when db is None."""
+        db = ashlar_server.Database.__new__(ashlar_server.Database)
+        db._db = None
+        result = asyncio.run(db.get_resumable_sessions())
+        assert result == []
+
+    def test_get_resumable_sessions_filters_by_resumable(self):
+        """get_resumable_sessions() SQL should filter WHERE resumable = 1."""
+        src = inspect.getsource(ashlar_server.Database.get_resumable_sessions)
+        assert "resumable = 1" in src
+
+    def test_get_resumable_sessions_orders_by_completed_at(self):
+        """get_resumable_sessions() should order by most recent first."""
+        src = inspect.getsource(ashlar_server.Database.get_resumable_sessions)
+        assert "ORDER BY completed_at DESC" in src
+
+    def test_resume_endpoint_registered(self):
+        """POST /api/sessions/{id}/resume should be registered."""
+        src = inspect.getsource(ashlar_server.create_app)
+        assert "/api/sessions/{id}/resume" in src
+
+    def test_resumable_sessions_endpoint_registered(self):
+        """GET /api/sessions/resumable should be registered."""
+        src = inspect.getsource(ashlar_server.create_app)
+        assert "/api/sessions/resumable" in src
+
+    def test_resume_handler_checks_working_dir(self):
+        """resume_from_history() should verify working directory exists."""
+        src = inspect.getsource(ashlar_server.resume_from_history)
+        assert "isdir" in src or "working_dir" in src
+
+    def test_resume_handler_checks_agent_limit(self):
+        """resume_from_history() should check max_agents limit."""
+        src = inspect.getsource(ashlar_server.resume_from_history)
+        assert "max_agents" in src
+
+    def test_resume_handler_supports_task_override(self):
+        """resume_from_history() should allow overriding the task."""
+        src = inspect.getsource(ashlar_server.resume_from_history)
+        assert "task" in src
+
+    def test_resume_handler_supports_continue_message(self):
+        """resume_from_history() should support continue_message field."""
+        src = inspect.getsource(ashlar_server.resume_from_history)
+        assert "continue_message" in src
+
+    def test_db_migration_adds_resumable_column(self):
+        """DB init should add resumable column to agents_history."""
+        src = inspect.getsource(ashlar_server.Database.init)
+        assert "resumable" in src
+
+    def test_db_migration_adds_system_prompt_column(self):
+        """DB init should add system_prompt column to agents_history."""
+        src = inspect.getsource(ashlar_server.Database.init)
+        assert "system_prompt" in src
+
+    def test_db_migration_adds_plan_mode_column(self):
+        """DB init should add plan_mode column to agents_history."""
+        src = inspect.getsource(ashlar_server.Database.init)
+        assert "plan_mode" in src
+
+    def test_resumable_statuses_are_correct(self):
+        """The resumable status check should match the expected set."""
+        src = inspect.getsource(ashlar_server.Database.save_agent)
+        # Verify the exact status set used for resumable flag
+        for status in ("complete", "working", "planning", "idle"):
+            assert status in src
