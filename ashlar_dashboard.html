@@ -5743,6 +5743,7 @@ body {
             <div class="settings-row" style="gap:8px">
                 <button class="btn btn-secondary btn-sm" onclick="exportSettings()">Export Settings</button>
                 <button class="btn btn-secondary btn-sm" onclick="importSettings()">Import Settings</button>
+                <button class="btn btn-secondary btn-sm" onclick="exportFleetState()" title="Export current fleet state (all agents, projects, config)">Export Fleet</button>
             </div>
         </div>
         <div class="settings-actions">
@@ -16460,6 +16461,27 @@ async function exportSettings() {
         showToast('Settings exported', 'success');
     } catch (e) {
         showToast('Export failed', 'error');
+    }
+}
+
+async function exportFleetState() {
+    try {
+        const res = await apiFetch('/api/fleet/export');
+        if (!res.ok) { showToast('Fleet export failed', 'error'); return; }
+        const data = await res.json();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        a.download = `ashlar_fleet_${ts}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast(`Fleet exported (${data.agents_count} agents)`, 'success');
+    } catch (e) {
+        showToast('Fleet export failed', 'error');
     }
 }
 

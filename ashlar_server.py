@@ -1696,16 +1696,16 @@ class AgentManager:
                 log.error(f"tmux new-session failed: {result.stderr}")
                 try:
                     await self._run_tmux(["kill-session", "-t", session_name])
-                except Exception:
-                    pass
+                except Exception as cleanup_err:
+                    log.warning(f"Failed to cleanup tmux session {session_name}: {cleanup_err}")
                 return agent
         except Exception as e:
             agent.status = "error"
             agent.error_message = str(e)
             try:
                 await self._run_tmux(["kill-session", "-t", session_name])
-            except Exception:
-                pass
+            except Exception as cleanup_err:
+                log.warning(f"Failed to cleanup tmux session {session_name}: {cleanup_err}")
             return agent
 
         # Get pane PID
@@ -1725,13 +1725,13 @@ class AgentManager:
                     try:
                         Path(agent.script_path).unlink(missing_ok=True)
                         agent.script_path = None
-                    except Exception:
-                        pass
+                    except Exception as cleanup_err:
+                        log.warning(f"Failed to remove script {agent.script_path}: {cleanup_err}")
                 # Kill orphaned tmux session
                 try:
                     await self._run_tmux(["kill-session", "-t", session_name])
-                except Exception:
-                    pass
+                except Exception as cleanup_err:
+                    log.warning(f"Failed to cleanup tmux session {session_name}: {cleanup_err}")
                 return agent
         else:
             # Real mode: launch backend CLI using BackendConfig capabilities
@@ -1747,8 +1747,8 @@ class AgentManager:
                     # Kill orphaned tmux session
                     try:
                         await self._run_tmux(["kill-session", "-t", session_name])
-                    except Exception:
-                        pass
+                    except Exception as cleanup_err:
+                        log.warning(f"Failed to cleanup tmux session {session_name}: {cleanup_err}")
                     return agent
 
             cmd_parts = [bc.command]
@@ -5038,7 +5038,7 @@ class WebSocketHub:
         async def _send(ws: web.WebSocketResponse) -> None:
             try:
                 await asyncio.wait_for(ws.send_json(message), timeout=2.0)
-            except (ConnectionError, RuntimeError, ConnectionResetError, asyncio.TimeoutError):
+            except (ConnectionError, RuntimeError, ConnectionResetError, asyncio.TimeoutError, asyncio.CancelledError):
                 dead.add(ws)
 
         await asyncio.gather(*[_send(ws) for ws in self.clients], return_exceptions=True)
@@ -7078,6 +7078,53 @@ async def resume_from_history(request: web.Request) -> web.Response:
     }, status=201)
 
 
+async def export_fleet_state(request: web.Request) -> web.Response:
+    """GET /api/fleet/export — export current fleet state as JSON for backup/restore."""
+    manager: AgentManager = request.app["agent_manager"]
+    config: Config = request.app["config"]
+    db: Database = request.app["db"]
+
+    agents_data = []
+    for agent in list(manager.agents.values()):
+        agents_data.append({
+            "id": agent.id,
+            "name": agent.name,
+            "role": agent.role,
+            "status": agent.status,
+            "task": agent.task,
+            "summary": agent.summary,
+            "working_dir": agent.working_dir,
+            "backend": agent.backend,
+            "project_id": agent.project_id,
+            "plan_mode": agent.plan_mode,
+            "context_pct": agent.context_pct,
+            "tokens_input": agent.tokens_input,
+            "tokens_output": agent.tokens_output,
+            "estimated_cost_usd": agent.estimated_cost_usd,
+            "created_at": agent.created_at,
+            "health_score": agent.health_score,
+            "error_count": agent.error_count,
+            "restart_count": agent.restart_count,
+        })
+
+    projects = await db.get_projects() if db else []
+
+    export_data = {
+        "version": 1,
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "agents": agents_data,
+        "agents_count": len(agents_data),
+        "projects": projects,
+        "config_summary": {
+            "max_agents": config.max_agents,
+            "default_backend": config.default_backend,
+            "fleet_cost_limit": config.fleet_cost_limit,
+            "intelligence_enabled": config.intelligence_enabled,
+        },
+    }
+    return web.json_response(export_data)
+
+
 async def clone_agent(request: web.Request) -> web.Response:
     """POST /api/agents/{id}/clone — clone an agent's config into a new agent."""
     if r := _check_rate(request, cost=3, rate=1, burst=5):
@@ -8308,11 +8355,20 @@ async def health_check_loop(app: web.Application) -> None:
 
     while True:
         _tick += 1
-        # Periodic rate limiter cleanup (~every 300s at 5s interval)
+        # Periodic rate limiter + alert throttle cleanup (~every 300s at 5s interval)
         if _tick % 60 == 0:
             rl: RateLimiter | None = app.get("rate_limiter")
             if rl:
                 rl.cleanup_stale()
+            # Evict stale alert throttle entries (>120s old) and cap at 500
+            now_mono = time.monotonic()
+            stale_keys = [k for k, t in _alert_throttle.items() if now_mono - t > 120.0]
+            for k in stale_keys:
+                del _alert_throttle[k]
+            if len(_alert_throttle) > 500:
+                sorted_keys = sorted(_alert_throttle, key=_alert_throttle.get)  # type: ignore[arg-type]
+                for k in sorted_keys[:len(_alert_throttle) - 500]:
+                    del _alert_throttle[k]
         try:
             for agent_id, agent in list(manager.agents.items()):
                 # -- Auto-restart logic for agents in error state --
@@ -8863,6 +8919,9 @@ def create_app(config: Config) -> web.Application:
     # REST API — Session Resume
     app.router.add_get("/api/sessions/resumable", get_resumable_sessions)
     app.router.add_post("/api/sessions/{id}/resume", resume_from_history)
+
+    # REST API — Fleet Export
+    app.router.add_get("/api/fleet/export", export_fleet_state)
 
     # REST API — Task Queue
     app.router.add_get("/api/queue", list_queue)

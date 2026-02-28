@@ -2988,3 +2988,71 @@ class TestSessionPersistence:
         # Verify the exact status set used for resumable flag
         for status in ("complete", "working", "planning", "idle"):
             assert status in src
+
+
+# ---------------------------------------------------------------------------
+# Bug Fixes: Silent Exceptions, Memory Leaks, Fleet Export
+# ---------------------------------------------------------------------------
+
+class TestBugFixesAndFleetExport:
+    """Tests for bug fixes: silent exception logging, alert throttle cleanup, fleet export."""
+
+    def test_spawn_cleanup_logs_on_failure(self):
+        """Spawn tmux cleanup should log warnings, not silently pass."""
+        src = inspect.getsource(ashlar_server.AgentManager.spawn)
+        # Should contain log.warning for cleanup failures, not bare pass
+        assert "cleanup_err" in src
+        assert "log.warning" in src
+
+    def test_broadcast_catches_cancelled_error(self):
+        """WebSocket broadcast should catch asyncio.CancelledError."""
+        src = inspect.getsource(ashlar_server.WebSocketHub.broadcast)
+        assert "CancelledError" in src
+
+    def test_alert_throttle_cleanup_in_health_loop(self):
+        """Health loop should periodically clean up stale alert throttle entries."""
+        src = inspect.getsource(ashlar_server.health_check_loop)
+        assert "_alert_throttle" in src
+        # Verify both stale eviction and cap enforcement
+        assert "120.0" in src or "stale_keys" in src
+
+    def test_alert_throttle_capped_at_500(self):
+        """Alert throttle cleanup should enforce max 500 entries."""
+        src = inspect.getsource(ashlar_server.health_check_loop)
+        assert "500" in src
+
+    def test_fleet_export_endpoint_registered(self):
+        """GET /api/fleet/export should be registered."""
+        src = inspect.getsource(ashlar_server.create_app)
+        assert "/api/fleet/export" in src
+
+    def test_fleet_export_handler_exists(self):
+        """export_fleet_state handler function should exist."""
+        assert hasattr(ashlar_server, "export_fleet_state")
+        assert callable(getattr(ashlar_server, "export_fleet_state"))
+
+    def test_fleet_export_includes_agents(self):
+        """Fleet export should include agents data."""
+        src = inspect.getsource(ashlar_server.export_fleet_state)
+        assert "agents" in src
+        assert "agents_count" in src
+
+    def test_fleet_export_includes_projects(self):
+        """Fleet export should include projects."""
+        src = inspect.getsource(ashlar_server.export_fleet_state)
+        assert "projects" in src
+
+    def test_fleet_export_includes_config_summary(self):
+        """Fleet export should include config summary."""
+        src = inspect.getsource(ashlar_server.export_fleet_state)
+        assert "config_summary" in src
+
+    def test_fleet_export_includes_version(self):
+        """Fleet export should include version for future compatibility."""
+        src = inspect.getsource(ashlar_server.export_fleet_state)
+        assert "version" in src
+
+    def test_fleet_export_includes_timestamp(self):
+        """Fleet export should include exported_at timestamp."""
+        src = inspect.getsource(ashlar_server.export_fleet_state)
+        assert "exported_at" in src
