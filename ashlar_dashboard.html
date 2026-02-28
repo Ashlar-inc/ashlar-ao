@@ -751,6 +751,18 @@ body {
     margin-bottom: 8px;
     min-height: 32px;
 }
+.card-last-file {
+    font-size: 9px;
+    color: var(--accent);
+    font-family: var(--font-mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.7;
+    cursor: pointer;
+    padding: 1px 0;
+}
+.card-last-file:hover { opacity: 1; text-decoration: underline; }
 .card-last-action {
     font-size: 10px;
     color: var(--text-tertiary);
@@ -3999,6 +4011,17 @@ body {
     padding: 1px 5px;
     border-radius: 8px;
     white-space: nowrap;
+}
+.card-error-count-badge {
+    font-size: 9px;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    background: rgba(239,68,68,0.15);
+    color: #EF4444;
+    padding: 1px 5px;
+    border-radius: 8px;
+    white-space: nowrap;
+    cursor: pointer;
     cursor: pointer;
 }
 
@@ -4773,6 +4796,7 @@ body {
         <button class="terminal-toolbar-btn" onclick="clearTerminalDisplay()">⌫ Clear</button>
         <button class="terminal-toolbar-btn" onclick="toggleBookmarksPanel()" id="toolbarBookmarks">★ Bookmarks <span class="bookmark-count-badge" id="bookmarkCountBadge" style="display:none">0</span></button>
         <button class="terminal-toolbar-btn" onclick="markOutputPosition()" id="toolbarMark" title="Mark current position to track new output">⚑ Mark</button>
+        <button class="terminal-toolbar-btn" id="toolbarTailMode" onclick="toggleTailMode()" title="Show only last 50 lines">⊟ Tail</button>
         <div class="toolbar-spacer"></div>
         <div class="follow-indicator" id="followIndicator" style="display:none">FOLLOWING</div>
         <span class="scroll-speed-indicator" id="scrollSpeedIndicator" style="display:none"></span>
@@ -7181,6 +7205,7 @@ function createAgentCard(agent) {
             <span class="card-conflict-badge"></span>
             <span class="card-files-badge"></span>
             <span class="card-bookmarks-badge" style="display:none" title="Bookmarked output lines"></span>
+            <span class="card-error-count-badge" style="display:none" title="Error lines detected"></span>
             <button class="card-menu-btn" onclick="event.stopPropagation();toggleCardMenu('${agent.id}')">⋯</button>
         </div>
         <div class="card-info-row">
@@ -7194,6 +7219,7 @@ function createAgentCard(agent) {
         <div class="card-dir" onclick="event.stopPropagation();copyWorkingDir('${agent.id}')" title="Click to copy path"></div>
         <div class="card-summary"></div>
         <div class="card-last-action" style="display:none"></div>
+        <div class="card-last-file" style="display:none" title="Last file touched"></div>
         <div class="card-input-section">
             <div class="card-input-row">
                 <div class="card-input-prompt"></div>
@@ -7337,6 +7363,23 @@ function detectLastAction(agent) {
     return null;
 }
 
+function detectLastFile(agent) {
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    if (lines.length === 0) return null;
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const recent = lines.slice(-30);
+    for (let i = recent.length - 1; i >= 0; i--) {
+        const l = recent[i].replace(ansiRe, '').trim();
+        if (!l) continue;
+        let m;
+        if ((m = l.match(/\b(?:Edit|Write|Read)\("([^"]+)"\)/))) return m[1];
+        if ((m = l.match(/\b(?:Glob|Grep)\("[^"]*".*?"([^"]+)"\)/))) return m[1];
+        // Match file paths in common output patterns
+        if ((m = l.match(/(?:^|\s)((?:\/[\w.-]+)+\.\w{1,10})\b/))) return m[1];
+    }
+    return null;
+}
+
 function updateAgentCard(card, agent) {
     const prevStatus = card.dataset.status;
     if (prevStatus && prevStatus !== agent.status) {
@@ -7373,6 +7416,25 @@ function updateAgentCard(card, agent) {
             lastActionEl.style.display = '';
         } else {
             lastActionEl.style.display = 'none';
+        }
+    }
+
+    // Last file badge
+    const lastFileEl = card.querySelector('.card-last-file');
+    if (lastFileEl) {
+        const lastFile = detectLastFile(agent);
+        if (lastFile) {
+            const shortName = lastFile.split('/').pop();
+            lastFileEl.textContent = shortName;
+            lastFileEl.title = lastFile;
+            lastFileEl.style.display = '';
+            lastFileEl.onclick = (e) => {
+                e.stopPropagation();
+                openDeepView(agent.id);
+                setTimeout(() => switchDeepTab('activity'), 150);
+            };
+        } else {
+            lastFileEl.style.display = 'none';
         }
     }
 
@@ -7542,6 +7604,33 @@ function updateAgentCard(card, agent) {
             bmBadge.onclick = (e) => { e.stopPropagation(); openDeepView(agent.id); setTimeout(() => switchDeepTab('terminal'), 100); setTimeout(() => toggleBookmarksPanel(), 200); };
         } else {
             bmBadge.style.display = 'none';
+        }
+    }
+
+    // Error count badge
+    const errBadge = card.querySelector('.card-error-count-badge');
+    if (errBadge) {
+        const lines = agent._outputBuffer || agent.output_lines || [];
+        const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+        let errCount = 0;
+        const tail = lines.slice(-200);
+        for (const l of tail) {
+            const s = l.replace(ansiRe, '');
+            if (/\b(error|exception|traceback|FAIL(ED)?|ERROR|panic|fatal)\b/i.test(s)) errCount++;
+        }
+        if (errCount > 0) {
+            errBadge.textContent = `${errCount} err${errCount > 1 ? 's' : ''}`;
+            errBadge.style.display = '';
+            errBadge.onclick = (e) => {
+                e.stopPropagation();
+                openDeepView(agent.id);
+                setTimeout(() => {
+                    const searchInput = document.getElementById('deepSearchInput');
+                    if (searchInput) { searchInput.value = 'error|exception|traceback|FAIL'; deepSearch(); }
+                }, 200);
+            };
+        } else {
+            errBadge.style.display = 'none';
         }
     }
 
@@ -9881,6 +9970,17 @@ function quickRespond(agentId, response) {
     showToast(`Sent "${response}" to ${agent.name}`, 'success');
 }
 
+let _waitingCycleIdx = -1;
+
+function cycleWaitingAgents() {
+    const waiting = [...state.agents.values()].filter(a => a.needs_input || a.status === 'waiting');
+    if (waiting.length === 0) { showToast('No agents waiting for input', 'info'); return; }
+    _waitingCycleIdx = (_waitingCycleIdx + 1) % waiting.length;
+    const agent = waiting[_waitingCycleIdx];
+    openInteraction(agent.id);
+    showToast(`Waiting agent ${_waitingCycleIdx + 1}/${waiting.length}: ${agent.name}`, 'info');
+}
+
 function openInteraction(agentId) {
     const agent = state.agents.get(agentId);
     if (!agent) return;
@@ -10658,6 +10758,13 @@ document.addEventListener('keydown', (e) => {
         }
     }
 
+    // W — cycle through waiting agents and open interaction sheet
+    if (e.key === 'w' && state.view === 'grid' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        cycleWaitingAgents();
+        return;
+    }
+
     // 1-9 — focus agent (respects active filters)
     if (e.key >= '1' && e.key <= '9') {
         e.preventDefault();
@@ -11275,6 +11382,59 @@ function clearTerminalDisplay() {
     virtualTermData = [];
     _virtualSearchMatches = [];
     document.getElementById('deepTerminal').innerHTML = '<span style="color:var(--text-tertiary)">Display cleared (output continues collecting)</span>';
+}
+
+let _tailMode = false;
+const TAIL_LINES = 50;
+
+function toggleTailMode() {
+    _tailMode = !_tailMode;
+    const btn = document.getElementById('toolbarTailMode');
+    if (btn) btn.classList.toggle('active', _tailMode);
+    if (_tailMode) {
+        applyTailMode();
+        showToast(`Tail mode: showing last ${TAIL_LINES} lines`, 'info');
+    } else {
+        // Re-render full output
+        const agent = state.agents.get(state.focusedAgentId);
+        if (agent) {
+            const terminal = document.getElementById('deepTerminal');
+            const lines = agent._outputBuffer || agent.output_lines || [];
+            terminal.innerHTML = '';
+            resetCodeBlockState(state.focusedAgentId);
+            const frag = document.createDocumentFragment();
+            for (let li = 0; li < lines.length; li++) {
+                const cl = classifyTerminalLine(lines[li], state.focusedAgentId);
+                const div = document.createElement('div');
+                div.className = cl.className;
+                div.innerHTML = cl.html;
+                frag.appendChild(div);
+            }
+            terminal.appendChild(frag);
+        }
+        showToast('Full output restored', 'info');
+    }
+}
+
+function applyTailMode() {
+    if (!_tailMode) return;
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const allLines = terminal.querySelectorAll('.terminal-line');
+    if (allLines.length <= TAIL_LINES) return;
+    const cutoff = allLines.length - TAIL_LINES;
+    for (let i = 0; i < cutoff; i++) {
+        allLines[i].style.display = 'none';
+    }
+    // Add tail indicator
+    let indicator = terminal.querySelector('.tail-indicator');
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.className = 'tail-indicator';
+        indicator.style.cssText = 'padding:4px 12px;font-size:10px;color:var(--text-tertiary);text-align:center;border-bottom:1px solid var(--border-subtle);font-family:var(--font-mono)';
+        terminal.prepend(indicator);
+    }
+    indicator.textContent = `⊟ Tail mode — showing last ${TAIL_LINES} of ${allLines.length} lines`;
 }
 
 // ── Toasts with Progress Bar ──
