@@ -2761,6 +2761,7 @@ body {
 
 /* ── Bookmarks Panel ── */
 .bookmarks-panel { position: absolute; right: 0; top: 0; bottom: 0; width: 280px; background: var(--bg-surface); border-left: 1px solid var(--border-subtle); display: flex; flex-direction: column; z-index: 5; animation: slideInRight 0.2s ease; }
+.bookmark-count-badge { display: inline-block; background: var(--accent); color: #fff; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 8px; margin-left: 4px; vertical-align: middle; }
 @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
 .bookmark-item { padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); cursor: pointer; transition: background 0.15s; }
 .bookmark-item:hover { background: var(--bg-elevated); }
@@ -2776,6 +2777,9 @@ body {
 .terminal-line.marked-new { background: rgba(99,102,241,0.06); }
 .terminal-line.mark-boundary { border-top: 1px dashed rgba(99,102,241,0.3); position: relative; }
 .terminal-line.mark-boundary::before { content: '⚑ marked'; position: absolute; top: -10px; right: 8px; font-size: 9px; color: var(--accent); font-family: var(--font-mono); opacity: 0.6; }
+.capture-separator { display: flex; align-items: center; gap: 8px; padding: 4px 0; margin: 2px 0; }
+.capture-sep-line { flex: 1; height: 1px; background: rgba(99,102,241,0.2); }
+.capture-sep-label { font-size: 9px; font-family: var(--font-mono); color: var(--accent); opacity: 0.6; white-space: nowrap; }
 
 /* ── Code Block Syntax Highlighting ── */
 .terminal-line.code-fence { color: var(--text-tertiary); }
@@ -4586,7 +4590,7 @@ body {
         <button class="terminal-toolbar-btn" id="toolbarLineWrap" onclick="toggleLineWrap()">⇔ Wrap</button>
         <button class="terminal-toolbar-btn" onclick="exportTerminalTxt()">⬇ Export .txt</button>
         <button class="terminal-toolbar-btn" onclick="clearTerminalDisplay()">⌫ Clear</button>
-        <button class="terminal-toolbar-btn" onclick="toggleBookmarksPanel()" id="toolbarBookmarks">★ Bookmarks</button>
+        <button class="terminal-toolbar-btn" onclick="toggleBookmarksPanel()" id="toolbarBookmarks">★ Bookmarks <span class="bookmark-count-badge" id="bookmarkCountBadge" style="display:none">0</span></button>
         <button class="terminal-toolbar-btn" onclick="markOutputPosition()" id="toolbarMark" title="Mark current position to track new output">⚑ Mark</button>
         <div class="toolbar-spacer"></div>
         <div class="follow-indicator" id="followIndicator" style="display:none">FOLLOWING</div>
@@ -8220,6 +8224,9 @@ function updateDeepViewHeader(agent) {
 
     // Error summary panel
     updateErrorSummary(agent);
+
+    // Bookmark count badge
+    updateBookmarkBadge();
 }
 
 function updateActivityHeatmap(agent) {
@@ -8306,6 +8313,14 @@ function appendDeepOutput(lines) {
     const aid = state.focusedAgentId || '';
     // Count existing lines for line numbering
     let existingCount = terminal.querySelectorAll('.terminal-line').length;
+    // Add capture separator when not auto-scrolling and there's existing content
+    if (!deepAutoScroll && existingCount > 0 && lines.length > 0) {
+        const sep = document.createElement('div');
+        sep.className = 'capture-separator';
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        sep.innerHTML = `<span class="capture-sep-line"></span><span class="capture-sep-label">+${lines.length} lines at ${time}</span><span class="capture-sep-line"></span>`;
+        frag.appendChild(sep);
+    }
     for (const line of lines) {
         const cl = classifyTerminalLine(line, aid);
         const div = document.createElement('div');
@@ -8716,6 +8731,16 @@ function renderBookmarksList() {
             </div>
         </div>
     `).join('');
+    updateBookmarkBadge();
+}
+
+function updateBookmarkBadge() {
+    const badge = document.getElementById('bookmarkCountBadge');
+    if (!badge) return;
+    const agent = state.agents.get(state.focusedAgentId);
+    const count = agent?.bookmarks?.length || 0;
+    badge.textContent = count;
+    badge.style.display = count > 0 ? '' : 'none';
 }
 
 async function addBookmarkFromSelection() {
