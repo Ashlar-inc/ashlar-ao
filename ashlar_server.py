@@ -1147,6 +1147,35 @@ class AgentInsight:
 
 
 @dataclass
+class QueuedTask:
+    """A task waiting to be auto-spawned when agent slots are available."""
+    id: str
+    role: str
+    name: str
+    task: str
+    working_dir: str = ""
+    backend: str = ""
+    plan_mode: bool = False
+    project_id: str | None = None
+    priority: int = 0  # Higher = spawned first
+    created_at: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "role": self.role,
+            "name": self.name,
+            "task": self.task,
+            "working_dir": self.working_dir,
+            "backend": self.backend,
+            "plan_mode": self.plan_mode,
+            "project_id": self.project_id,
+            "priority": self.priority,
+            "created_at": self.created_at,
+        }
+
+
+@dataclass
 class ParsedIntent:
     """Result of NLU command parsing."""
     action: str  # spawn, kill, pause, resume, send, status, query
@@ -1218,6 +1247,8 @@ class AgentManager:
         self.workflow_runs: dict[str, WorkflowRun] = {}
         # File activity tracking for conflict detection
         self.file_activity: dict[str, dict[str, str]] = {}  # file_path → {agent_id: operation}
+        # Task queue for auto-spawning
+        self.task_queue: list[QueuedTask] = []
 
     def _build_backend_configs(self) -> dict[str, BackendConfig]:
         """Build BackendConfig objects from known defaults + user config."""
@@ -4351,6 +4382,7 @@ class WebSocketHub:
                 "config": self.config.to_dict(),
                 "backends": backends_info,
                 "extensions": extensions_data,
+                "queue": [t.to_dict() for t in self.agent_manager.task_queue],
                 "db_ready": request.app.get("db_ready", False),
                 "db_available": request.app.get("db_available", True),
             })
@@ -5939,6 +5971,68 @@ async def clone_agent(request: web.Request) -> web.Response:
         return web.json_response({"error": str(e)}, status=400)
 
 
+# ── Task Queue endpoints ──
+
+async def list_queue(request: web.Request) -> web.Response:
+    """GET /api/queue — list all queued tasks."""
+    manager: AgentManager = request.app["agent_manager"]
+    return web.json_response([t.to_dict() for t in manager.task_queue])
+
+
+async def add_to_queue(request: web.Request) -> web.Response:
+    """POST /api/queue — add a task to the auto-spawn queue."""
+    if r := _check_rate(request, cost=2, rate=1, burst=5):
+        return r
+    manager: AgentManager = request.app["agent_manager"]
+    hub: WebSocketHub = request.app["ws_hub"]
+
+    try:
+        data = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    role = data.get("role", "general")
+    name = data.get("name", f"{role}-{uuid.uuid4().hex[:4]}")
+    task_desc = data.get("task", "")
+    if not task_desc:
+        return web.json_response({"error": "task is required"}, status=400)
+
+    config: Config = request.app["config"]
+    queued = QueuedTask(
+        id=uuid.uuid4().hex[:8],
+        role=role,
+        name=name,
+        task=task_desc,
+        working_dir=data.get("working_dir", config.default_working_dir),
+        backend=data.get("backend", config.default_backend),
+        plan_mode=data.get("plan_mode", False),
+        project_id=data.get("project_id"),
+        priority=data.get("priority", 0),
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
+    manager.task_queue.append(queued)
+    manager.task_queue.sort(key=lambda t: -t.priority)
+
+    await hub.broadcast({"type": "queue_update", "queue": [t.to_dict() for t in manager.task_queue]})
+    return web.json_response(queued.to_dict(), status=201)
+
+
+async def remove_from_queue(request: web.Request) -> web.Response:
+    """DELETE /api/queue/{id} — remove a task from the queue."""
+    if r := _check_rate(request, cost=1):
+        return r
+    manager: AgentManager = request.app["agent_manager"]
+    hub: WebSocketHub = request.app["ws_hub"]
+    task_id = request.match_info["id"]
+
+    for i, t in enumerate(manager.task_queue):
+        if t.id == task_id:
+            manager.task_queue.pop(i)
+            await hub.broadcast({"type": "queue_update", "queue": [t.to_dict() for t in manager.task_queue]})
+            return web.json_response({"status": "removed"})
+    return web.json_response({"error": "Task not found in queue"}, status=404)
+
+
 # ── Scratchpad endpoints ──
 
 async def get_scratchpad(request: web.Request) -> web.Response:
@@ -6804,6 +6898,37 @@ async def health_check_loop(app: web.Application) -> None:
         except Exception as e:
             log.error(f"Health check error: {e}")
 
+        # Auto-spawn from task queue when slots are available
+        try:
+            config: Config = app["config"]
+            active_count = sum(1 for a in list(manager.agents.values()) if a.status not in ("idle", "complete"))
+            while manager.task_queue and active_count < config.max_agents:
+                queued = manager.task_queue.pop(0)
+                try:
+                    agent = await manager.spawn(
+                        role=queued.role,
+                        name=queued.name,
+                        working_dir=queued.working_dir,
+                        task=queued.task,
+                        backend=queued.backend or config.default_backend,
+                        plan_mode=queued.plan_mode,
+                    )
+                    if queued.project_id:
+                        agent.project_id = queued.project_id
+                    await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
+                    await hub.broadcast_event(
+                        "agent_spawned",
+                        f"Auto-spawned from queue: {agent.name}",
+                        agent.id, agent.name,
+                    )
+                    await hub.broadcast({"type": "queue_update", "queue": [t.to_dict() for t in manager.task_queue]})
+                    active_count += 1
+                    log.info(f"Auto-spawned queued task: {queued.name} (role={queued.role})")
+                except Exception as e:
+                    log.warning(f"Failed to auto-spawn queued task {queued.name}: {e}")
+        except Exception as e:
+            log.debug(f"Queue auto-spawn check error: {e}")
+
         await asyncio.sleep(5.0)
 
 
@@ -7134,6 +7259,11 @@ def create_app(config: Config) -> web.Application:
 
     # REST API — Agent Clone
     app.router.add_post("/api/agents/{id}/clone", clone_agent)
+
+    # REST API — Task Queue
+    app.router.add_get("/api/queue", list_queue)
+    app.router.add_post("/api/queue", add_to_queue)
+    app.router.add_delete("/api/queue/{id}", remove_from_queue)
 
     # REST API — Scratchpad
     app.router.add_get("/api/scratchpad", get_scratchpad)

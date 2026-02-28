@@ -3637,6 +3637,7 @@ body {
         </div>
     </div>
     <div class="attention-badge" id="attentionBadge" onclick="focusFirstWaiting()" role="button" tabindex="0" aria-label="Agents needing attention" onkeydown="if(event.key==='Enter')focusFirstWaiting()">0</div>
+    <span class="queue-badge" id="queueBadge" style="display:none;cursor:pointer;font-size:10px;font-weight:700;font-family:var(--font-mono);background:var(--accent);color:white;border-radius:10px;padding:2px 6px;margin-left:4px" onclick="openQueuePanel()" title="Tasks queued for auto-spawn">0</span>
     <div style="position:relative">
         <button class="notification-bell" id="notifBell" onclick="toggleNotifications(event)" aria-label="Notifications">
             <svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span class="unread-dot" id="unreadDot"></span>
@@ -3798,6 +3799,7 @@ body {
 
         <div class="dialog-actions">
             <button class="btn btn-secondary" onclick="closeSpawnDialog()">Cancel</button>
+            <button class="btn btn-secondary" onclick="queueFromSpawnDialog()" title="Queue task for auto-spawn when slots are available">Queue</button>
             <button class="btn btn-primary" onclick="spawnAgent()">Spawn Agent</button>
         </div>
     </div>
@@ -4378,6 +4380,7 @@ const state = {
     extFilter: '',
     aqDismissedAt: 0,
     insights: [],
+    taskQueue: [],
 };
 
 const ROLE_INFO = {
@@ -4810,6 +4813,11 @@ class AshlarSocket {
                     }
                     break;
                 }
+                case 'queue_update': {
+                    state.taskQueue = data.queue || [];
+                    updateQueueBadge();
+                    break;
+                }
                 case 'command_parsed': {
                     if (data.intent) {
                         showToast(`Parsed: ${data.intent.action} (${Math.round(data.intent.confidence * 100)}% confidence)`, 'info');
@@ -4928,6 +4936,7 @@ async function handleSync(data) {
     state.presets = data.presets || [];
     state.backends = data.backends || {};
     if (data.extensions) state.extensions = data.extensions;
+    state.taskQueue = data.queue || [];
     // Clean stale pinned agents that no longer exist
     let pinsChanged = false;
     state.pinnedAgents.forEach(id => {
@@ -5739,6 +5748,18 @@ function closeSpawnDialog() {
     releaseFocus();
     document.getElementById('spawnOverlay').classList.remove('active');
     state.view = 'grid';
+}
+
+async function queueFromSpawnDialog() {
+    const name = document.getElementById('spawnName').value.trim();
+    const dir = document.getElementById('spawnDir').value.trim();
+    const task = document.getElementById('spawnTask').value.trim();
+    const planMode = document.getElementById('planModeToggle').classList.contains('active');
+    const backend = document.getElementById('spawnBackend').value || undefined;
+
+    if (!task) { showToast('Task is required', 'warning'); return; }
+    await addToQueue(state.selectedRole, name || undefined, task, dir || undefined, planMode);
+    closeSpawnDialog();
 }
 
 async function spawnAgent() {
@@ -6604,6 +6625,7 @@ const PALETTE_ACTIONS = [
     { icon: 'brain', label: 'View intelligence insights', shortcut: '', action: () => { closePalette(); toggleInsightsPanel(); } },
     { icon: 'activity', label: 'System metrics', shortcut: '', action: () => { closePalette(); toggleMetricsDropdown(); } },
     { icon: 'message-square', label: 'Natural language command...', shortcut: '', action: () => { closePalette(); openNlCommand(); } },
+    { icon: 'list', label: 'View task queue', shortcut: '', action: () => { closePalette(); openQueuePanel(); } },
 ];
 
 function openPalette() {
@@ -7526,6 +7548,64 @@ function openNlCommand() {
     input.focus();
     input.placeholder = 'Type a natural language command (e.g., "pause all backend agents")...';
     showToast('Type a command below — it will be parsed by AI', 'info');
+}
+
+// ── Task Queue ──
+
+function updateQueueBadge() {
+    const badge = document.getElementById('queueBadge');
+    if (!badge) return;
+    const count = (state.taskQueue || []).length;
+    badge.style.display = count > 0 ? '' : 'none';
+    badge.textContent = count;
+}
+
+async function addToQueue(role, name, task, workingDir, planMode) {
+    try {
+        const resp = await fetch('/api/queue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role, name, task, working_dir: workingDir, plan_mode: planMode })
+        });
+        if (resp.ok) {
+            showToast(`Queued: ${name || role}`, 'success');
+        } else {
+            const err = await resp.json();
+            showToast(err.error || 'Failed to queue task', 'error');
+        }
+    } catch (e) { showToast('Failed to queue task', 'error'); }
+}
+
+async function removeFromQueue(taskId) {
+    try {
+        const resp = await fetch(`/api/queue/${taskId}`, { method: 'DELETE' });
+        if (resp.ok) showToast('Removed from queue', 'info');
+    } catch (e) { showToast('Failed to remove from queue', 'error'); }
+}
+
+function openQueuePanel() {
+    const queue = state.taskQueue || [];
+    if (queue.length === 0) {
+        showToast('Task queue is empty — queue tasks when all agent slots are full', 'info');
+        return;
+    }
+    let html = '<div style="padding:16px"><h3 style="margin:0 0 12px;font-size:14px">Task Queue</h3>';
+    queue.forEach(t => {
+        const role = ROLE_INFO[t.role] || ROLE_INFO.general;
+        html += `<div style="display:flex;align-items:center;gap:8px;padding:8px;margin-bottom:6px;background:var(--bg-elevated);border-radius:8px;border:1px solid var(--border-subtle)">
+            <span style="font-size:12px">${icon(role.iconKey || 'bot', 14)}</span>
+            <div style="flex:1;min-width:0">
+                <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(t.name)}</div>
+                <div style="font-size:11px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(t.task.slice(0, 80))}</div>
+            </div>
+            <button onclick="removeFromQueue('${t.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;padding:4px" title="Remove">✕</button>
+        </div>`;
+    });
+    html += '</div>';
+    // Use notification dropdown as container
+    const dropdown = document.getElementById('notifDropdown');
+    dropdown.innerHTML = html;
+    dropdown.classList.add('active');
 }
 
 // PTT via Space

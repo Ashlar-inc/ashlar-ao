@@ -20,6 +20,7 @@ with patch("psutil.cpu_percent", return_value=0.0):
         KNOWN_BACKENDS,
         _suggest_followup,
         FOLLOWUP_SUGGESTIONS,
+        QueuedTask,
     )
 
 
@@ -853,3 +854,59 @@ class TestFollowupSuggestions:
         assert "security" in FOLLOWUP_SUGGESTIONS
         assert "reviewer" in FOLLOWUP_SUGGESTIONS
         assert "tester" in FOLLOWUP_SUGGESTIONS
+
+
+# ─────────────────────────────────────────────
+# T14: Task Queue
+# ─────────────────────────────────────────────
+
+class TestTaskQueue:
+    def test_queued_task_to_dict(self):
+        """QueuedTask.to_dict() should include all fields."""
+        task = QueuedTask(
+            id="abc123",
+            role="backend",
+            name="api-worker",
+            task="Build API",
+            working_dir="/tmp",
+            backend="claude-code",
+            priority=5,
+            created_at="2026-01-01T00:00:00Z",
+        )
+        d = task.to_dict()
+        assert d["id"] == "abc123"
+        assert d["role"] == "backend"
+        assert d["name"] == "api-worker"
+        assert d["task"] == "Build API"
+        assert d["priority"] == 5
+
+    def test_queued_task_defaults(self):
+        """QueuedTask should have sensible defaults."""
+        task = QueuedTask(id="x", role="general", name="t", task="do stuff")
+        assert task.working_dir == ""
+        assert task.backend == ""
+        assert task.plan_mode is False
+        assert task.project_id is None
+        assert task.priority == 0
+
+    def test_manager_has_task_queue(self):
+        """AgentManager should have a task_queue list."""
+        with patch.dict("os.environ", {"CLAUDECODE": "1"}):
+            from ashlar_server import Config, AgentManager
+            config = Config()
+            manager = AgentManager(config)
+            assert hasattr(manager, 'task_queue')
+            assert isinstance(manager.task_queue, list)
+            assert len(manager.task_queue) == 0
+
+    def test_queue_priority_sorting(self):
+        """Tasks should be sortable by priority (higher first)."""
+        tasks = [
+            QueuedTask(id="a", role="backend", name="low", task="t", priority=1),
+            QueuedTask(id="b", role="frontend", name="high", task="t", priority=10),
+            QueuedTask(id="c", role="tester", name="mid", task="t", priority=5),
+        ]
+        tasks.sort(key=lambda t: -t.priority)
+        assert tasks[0].name == "high"
+        assert tasks[1].name == "mid"
+        assert tasks[2].name == "low"
