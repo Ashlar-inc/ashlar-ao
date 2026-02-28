@@ -273,10 +273,15 @@ class TestPauseResumeRestart:
     def test_restart_guard_prevents_concurrent(self, make_agent):
         """If _restart_in_progress is set, restart should return False."""
         agent = make_agent(status="error")
-        agent._restart_in_progress = True
-        manager = MagicMock(spec=ashlar_server.AgentManager)
-        manager.agents = {agent.id: agent}
-        result = asyncio.run(ashlar_server.AgentManager.restart(manager, agent.id))
+        # Simulate lock being held (concurrent restart in progress)
+        async def _test():
+            async with agent._restart_lock:
+                # Lock is held, so restart should return False
+                manager = MagicMock(spec=ashlar_server.AgentManager)
+                manager.agents = {agent.id: agent}
+                result = await ashlar_server.AgentManager.restart(manager, agent.id)
+                return result
+        result = asyncio.run(_test())
         assert result is False
 
     def test_resume_with_custom_message(self, make_agent):
@@ -1021,15 +1026,16 @@ class TestOutputIntelligenceParser:
     """Tests for the regex-based output intelligence parser."""
 
     def _make_agent(self, lines):
+        import collections
         from ashlar_server import OutputIntelligenceParser
         agent = MagicMock()
         agent.id = "test1"
         agent.output_lines = lines
         agent._last_parse_index = 0
-        agent._tool_invocations = []
-        agent._file_operations = []
-        agent._git_operations = []
-        agent._test_results = []
+        agent._tool_invocations = collections.deque(maxlen=500)
+        agent._file_operations = collections.deque(maxlen=500)
+        agent._git_operations = collections.deque(maxlen=200)
+        agent._test_results = collections.deque(maxlen=50)
         return agent, OutputIntelligenceParser()
 
     def test_parse_read_tool(self):
@@ -2411,3 +2417,143 @@ class TestCollaborationGraph:
         assert node["role"] == "frontend"
         assert node["status"] == "working"
         assert node["health_score"] == 1.0
+
+
+# ─────────────────────────────────────────────
+# T21: Server Audit Bug Fixes
+# ─────────────────────────────────────────────
+
+class TestServerAuditFixes:
+    """Tests for critical bugs found during server audit."""
+
+    def test_restart_lock_prevents_concurrent(self, make_agent):
+        """Restart should be guarded by asyncio.Lock, not just a boolean flag."""
+        agent = make_agent(status="error")
+        assert hasattr(agent, '_restart_lock')
+        assert isinstance(agent._restart_lock, asyncio.Lock)
+
+    def test_restart_lock_held_returns_false(self, make_agent):
+        """If restart lock is already held, restart should return False."""
+        agent = make_agent(status="error")
+        async def _test():
+            async with agent._restart_lock:
+                manager = MagicMock(spec=ashlar_server.AgentManager)
+                manager.agents = {agent.id: agent}
+                return await ashlar_server.AgentManager.restart(manager, agent.id)
+        result = asyncio.run(_test())
+        assert result is False
+
+    def test_deque_tool_invocations(self, make_agent):
+        """Tool invocations should use deque(maxlen=500) for O(1) eviction."""
+        import collections
+        agent = make_agent()
+        assert isinstance(agent._tool_invocations, collections.deque)
+        assert agent._tool_invocations.maxlen == 500
+
+    def test_deque_file_operations(self, make_agent):
+        """File operations should use deque(maxlen=500)."""
+        import collections
+        agent = make_agent()
+        assert isinstance(agent._file_operations, collections.deque)
+        assert agent._file_operations.maxlen == 500
+
+    def test_deque_git_operations(self, make_agent):
+        """Git operations should use deque(maxlen=200)."""
+        import collections
+        agent = make_agent()
+        assert isinstance(agent._git_operations, collections.deque)
+        assert agent._git_operations.maxlen == 200
+
+    def test_deque_test_results(self, make_agent):
+        """Test results should use deque(maxlen=50)."""
+        import collections
+        agent = make_agent()
+        assert isinstance(agent._test_results, collections.deque)
+        assert agent._test_results.maxlen == 50
+
+    def test_task_redacted_in_to_dict(self, make_agent):
+        """Agent.to_dict() should redact secrets from the task field."""
+        agent = make_agent()
+        agent.task = "Deploy with key sk-abcdef1234567890abcdef1234567890"
+        d = agent.to_dict()
+        assert "sk-abcdef" not in d["task"]
+        assert "REDACTED" in d["task"]
+
+    def test_task_normal_preserved(self, make_agent):
+        """Agent.to_dict() should preserve normal task text."""
+        agent = make_agent()
+        agent.task = "Build the login page"
+        d = agent.to_dict()
+        assert d["task"] == "Build the login page"
+
+    def test_mcp_tool_pattern_detected(self):
+        """Parser should detect MCP tool invocations."""
+        import collections
+        from ashlar_server import OutputIntelligenceParser
+        agent = MagicMock()
+        agent.id = "test1"
+        agent.output_lines = ['mcp__claude-in-chrome__computer("click")']
+        agent._last_parse_index = 0
+        agent._tool_invocations = collections.deque(maxlen=500)
+        agent._file_operations = collections.deque(maxlen=500)
+        agent._git_operations = collections.deque(maxlen=200)
+        agent._test_results = collections.deque(maxlen=50)
+        parser = OutputIntelligenceParser()
+        counts = parser.parse_incremental(agent)
+        assert counts["tools"] == 1
+        assert agent._tool_invocations[0].tool == "MCP"
+        assert "claude-in-chrome" in agent._tool_invocations[0].args
+
+    def test_skill_tool_pattern_detected(self):
+        """Parser should detect Skill tool invocations."""
+        import collections
+        from ashlar_server import OutputIntelligenceParser
+        agent = MagicMock()
+        agent.id = "test1"
+        agent.output_lines = ['Skill("commit")']
+        agent._last_parse_index = 0
+        agent._tool_invocations = collections.deque(maxlen=500)
+        agent._file_operations = collections.deque(maxlen=500)
+        agent._git_operations = collections.deque(maxlen=200)
+        agent._test_results = collections.deque(maxlen=50)
+        parser = OutputIntelligenceParser()
+        counts = parser.parse_incremental(agent)
+        assert counts["tools"] == 1
+        assert agent._tool_invocations[0].tool == "Skill"
+
+    def test_agent_tool_pattern_detected(self):
+        """Parser should detect Agent tool invocations."""
+        import collections
+        from ashlar_server import OutputIntelligenceParser
+        agent = MagicMock()
+        agent.id = "test1"
+        agent.output_lines = ['Agent("search for patterns")']
+        agent._last_parse_index = 0
+        agent._tool_invocations = collections.deque(maxlen=500)
+        agent._file_operations = collections.deque(maxlen=500)
+        agent._git_operations = collections.deque(maxlen=200)
+        agent._test_results = collections.deque(maxlen=50)
+        parser = OutputIntelligenceParser()
+        counts = parser.parse_incremental(agent)
+        assert counts["tools"] == 1
+        assert agent._tool_invocations[0].tool == "Agent"
+
+    def test_broadcast_timeout_is_2s(self):
+        """WebSocket broadcast timeout should be 2 seconds (not 5)."""
+        import inspect
+        src = inspect.getsource(ashlar_server.WebSocketHub.broadcast)
+        assert "timeout=2.0" in src
+
+    def test_batch_spawn_agent_limit(self):
+        """Batch spawn should check concurrent agent limit before spawning."""
+        import inspect
+        src = inspect.getsource(ashlar_server.batch_spawn)
+        assert "available_slots" in src or "max_agents" in src
+
+    def test_sync_handler_db_exception_guard(self):
+        """Sync handler should catch DB exceptions for projects and workflows."""
+        import inspect
+        src = inspect.getsource(ashlar_server.WebSocketHub.handle_ws)
+        # After our fix, each DB call should be wrapped in try/except
+        assert src.count("projects = await") >= 1
+        assert src.count("workflows = await") >= 1

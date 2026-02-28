@@ -929,6 +929,7 @@ class Agent:
     last_restart_time: float = 0.0
     restarted_at: str = ""
     _restart_in_progress: bool = field(default=False, repr=False)
+    _restart_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     # Health scoring fields
     health_score: float = 1.0
     error_count: int = 0
@@ -970,10 +971,10 @@ class Agent:
     _workflow_hung_warned: bool = field(default=False, repr=False)
     _status_updated_at: float = field(default=0.0, repr=False)  # monotonic time of last status change
     # Intelligence fields — structured output parsing
-    _tool_invocations: list = field(default_factory=list, repr=False)  # list[ToolInvocation], capped at 500
-    _file_operations: list = field(default_factory=list, repr=False)  # list[FileOperation], capped at 500
-    _git_operations: list = field(default_factory=list, repr=False)  # list[GitOperation], capped at 200
-    _test_results: list = field(default_factory=list, repr=False)  # list[TestResult], capped at 50
+    _tool_invocations: collections.deque = field(default_factory=lambda: collections.deque(maxlen=500), repr=False)
+    _file_operations: collections.deque = field(default_factory=lambda: collections.deque(maxlen=500), repr=False)
+    _git_operations: collections.deque = field(default_factory=lambda: collections.deque(maxlen=200), repr=False)
+    _test_results: collections.deque = field(default_factory=lambda: collections.deque(maxlen=50), repr=False)
     _snapshots: list = field(default_factory=list, repr=False)  # list[OutputSnapshot], capped at 20
     _status_history: list = field(default_factory=list, repr=False)  # list of {"status": str, "at": float (monotonic)}
     _last_parse_index: int = field(default=0, repr=False)  # Incremental parsing watermark
@@ -1062,7 +1063,7 @@ class Agent:
             "status": self.status,
             "working_dir": self.working_dir,
             "backend": self.backend,
-            "task": self.task,
+            "task": redact_secrets(self.task) if self.task else "",
             "summary": self.summary,
             "context_pct": self.context_pct,
             "memory_mb": self.memory_mb,
@@ -2080,12 +2081,17 @@ class AgentManager:
         if not agent:
             return False
 
-        # Prevent concurrent restarts
-        if agent._restart_in_progress:
+        # Prevent concurrent restarts with async lock
+        if agent._restart_lock.locked():
             log.warning(f"Restart already in progress for agent {agent_id}")
             return False
 
-        agent._restart_in_progress = True
+        async with agent._restart_lock:
+            agent._restart_in_progress = True
+            return await self._restart_impl(agent_id, agent)
+
+    async def _restart_impl(self, agent_id: str, agent: "Agent") -> bool:
+        """Internal restart implementation. Must be called under agent._restart_lock."""
         try:
             log.info(f"Restarting agent {agent_id} ({agent.name}), attempt {agent.restart_count + 1}")
 
@@ -3206,6 +3212,11 @@ class OutputIntelligenceParser:
         (re.compile(r'WebFetch\("([^"]+)"\)'), "WebFetch"),
         (re.compile(r'WebSearch\("([^"]+)"\)'), "WebSearch"),
         (re.compile(r'NotebookEdit\("([^"]+)"\)'), "NotebookEdit"),
+        (re.compile(r'Skill\("([^"]+)"'), "Skill"),
+        (re.compile(r'Agent\("([^"]{0,100})'), "Agent"),
+        (re.compile(r'(mcp__[a-z0-9_-]+__\w+)\('), "MCP"),
+        (re.compile(r'TodoWrite\("([^"]{0,100})'), "TodoWrite"),
+        (re.compile(r'AskUser\("([^"]{0,100})'), "AskUser"),
     ]
 
     # Tool result patterns
@@ -3259,8 +3270,6 @@ class OutputIntelligenceParser:
                         line_index=line_idx,
                     )
                     agent._tool_invocations.append(inv)
-                    if len(agent._tool_invocations) > 500:
-                        agent._tool_invocations = agent._tool_invocations[-500:]
                     counts["tools"] += 1
 
                     # Also record file operations for Read/Edit/Write
@@ -3274,8 +3283,6 @@ class OutputIntelligenceParser:
                             tool=tool_name,
                         )
                         agent._file_operations.append(fop)
-                        if len(agent._file_operations) > 500:
-                            agent._file_operations = agent._file_operations[-500:]
                         counts["files"] += 1
                     break  # One tool per line
 
@@ -3305,8 +3312,6 @@ class OutputIntelligenceParser:
                         timestamp=now,
                     )
                     agent._git_operations.append(gop)
-                    if len(agent._git_operations) > 200:
-                        agent._git_operations = agent._git_operations[-200:]
                     counts["git"] += 1
                     break
 
@@ -3336,8 +3341,6 @@ class OutputIntelligenceParser:
                     if cov_m:
                         tr.coverage_pct = float(cov_m.group(1))
                     agent._test_results.append(tr)
-                    if len(agent._test_results) > 50:
-                        agent._test_results = agent._test_results[-50:]
                     counts["tests"] += 1
                     break
 
@@ -3355,8 +3358,6 @@ class OutputIntelligenceParser:
                         timestamp=now,
                     )
                     agent._file_operations.append(fop)
-                    if len(agent._file_operations) > 500:
-                        agent._file_operations = agent._file_operations[-500:]
                     counts["files"] += 1
                     break
 
@@ -4884,8 +4885,14 @@ class WebSocketHub:
                     await ws.send_json({"type": "error", "message": "sync_request throttled (max 1 per 2s)"})
                     return
                 self._last_sync_time[ws] = now
-                projects = await self.db.get_projects() if self.db else []
-                workflows = await self.db.get_workflows() if self.db else []
+                try:
+                    projects = await self.db.get_projects() if self.db else []
+                except Exception:
+                    projects = []
+                try:
+                    workflows = await self.db.get_workflows() if self.db else []
+                except Exception:
+                    workflows = []
                 try:
                     presets = await self.db.get_presets() if self.db else []
                 except Exception:
@@ -4921,7 +4928,7 @@ class WebSocketHub:
 
         async def _send(ws: web.WebSocketResponse) -> None:
             try:
-                await asyncio.wait_for(ws.send_json(message), timeout=5.0)
+                await asyncio.wait_for(ws.send_json(message), timeout=2.0)
             except (ConnectionError, RuntimeError, ConnectionResetError, asyncio.TimeoutError):
                 dead.add(ws)
 
@@ -7507,6 +7514,18 @@ async def batch_spawn(request: web.Request) -> web.Response:
     shared_plan_mode = data.get("plan_mode", False)
     shared_dir = data.get("working_dir")
 
+    # Check concurrent agent limit before spawning
+    current_count = len(manager.agents)
+    max_agents = config.max_agents
+    available_slots = max_agents - current_count
+    if available_slots <= 0:
+        return web.json_response({"error": f"Agent limit reached ({max_agents}). Kill some agents first."}, status=409)
+    if len(agent_specs) > available_slots:
+        return web.json_response(
+            {"error": f"Only {available_slots} agent slots available, but {len(agent_specs)} requested"},
+            status=409,
+        )
+
     spawned = []
     failed = []
 
@@ -7775,7 +7794,7 @@ async def output_capture_loop(app: web.Application) -> None:
                         parse_counts = _intelligence_parser.parse_incremental(agent)
                         if any(parse_counts.values()):
                             activity = _intelligence_parser.get_activity_summary(agent)
-                            await self.broadcast({
+                            await hub.broadcast({
                                 "type": "agent_activity",
                                 "agent_id": agent_id,
                                 "activity": activity,
