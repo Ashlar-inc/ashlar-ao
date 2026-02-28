@@ -4815,6 +4815,81 @@ body {
 .agent-card .card-border-left { transition: border-color 0.3s ease; }
 @keyframes cardEnterScale { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
 .agent-card.card-entering { animation: cardEnterScale 0.25s ease-out; }
+
+/* ── Pinned Messages Panel ── */
+.pinned-messages-panel {
+    display: none; position: absolute; top: 0; left: 0; right: 0;
+    background: var(--bg-elevated); border-bottom: 1px solid var(--accent);
+    z-index: 4; max-height: 150px; overflow-y: auto;
+}
+.pinned-messages-panel.active { display: block; }
+.pinned-messages-panel .pm-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 4px 12px; font-size: 10px; font-weight: 700; color: var(--accent);
+    border-bottom: 1px solid var(--border-subtle);
+}
+.pinned-message {
+    display: flex; align-items: flex-start; gap: 8px; padding: 4px 12px;
+    font-size: 11px; font-family: var(--font-mono); color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-subtle);
+}
+.pinned-message:last-child { border-bottom: none; }
+.pinned-message .pm-line { color: var(--accent); min-width: 36px; font-size: 10px; }
+.pinned-message .pm-text { flex: 1; white-space: pre-wrap; word-break: break-all; }
+.pinned-message .pm-unpin {
+    background: none; border: none; color: var(--text-tertiary); cursor: pointer;
+    font-size: 10px; padding: 0 2px; flex-shrink: 0;
+}
+.pinned-message .pm-unpin:hover { color: var(--danger); }
+
+/* ── Focus Mode ── */
+.deep-view.focus-mode .deep-header .deep-stats,
+.deep-view.focus-mode .deep-header .deep-keywords,
+.deep-view.focus-mode .deep-header .activity-heatmap,
+.deep-view.focus-mode .deep-header .status-timeline-bar,
+.deep-view.focus-mode .deep-tab-bar,
+.deep-view.focus-mode .terminal-toolbar,
+.deep-view.focus-mode .tool-filter-bar,
+.deep-view.focus-mode .output-minimap,
+.deep-view.focus-mode .deep-error-summary,
+.deep-view.focus-mode .quick-commands { display: none !important; }
+.deep-view.focus-mode .deep-header { padding: 4px 16px; min-height: auto; }
+.deep-view.focus-mode .deep-header .deep-actions { gap: 4px; }
+.focus-mode-bar {
+    display: none; align-items: center; justify-content: center;
+    padding: 3px 0; background: var(--accent); color: white;
+    font-size: 10px; font-weight: 600; cursor: pointer;
+}
+.deep-view.focus-mode .focus-mode-bar { display: flex; }
+
+/* ── Priority Badges ── */
+.card-priority-badge {
+    position: absolute; top: -4px; right: -4px;
+    min-width: 18px; height: 18px; border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 800; color: white;
+    z-index: 2; animation: badgePulse 2s ease infinite;
+}
+.card-priority-badge.priority-waiting { background: var(--warning); }
+.card-priority-badge.priority-error { background: var(--danger); }
+.card-priority-badge.priority-review { background: var(--status-planning); }
+@keyframes badgePulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+
+/* ── Language Badge ── */
+.deep-lang-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10px; font-family: var(--font-mono); font-weight: 600;
+    padding: 2px 8px; border-radius: var(--radius-sm);
+    background: rgba(255,255,255,0.06); color: var(--text-secondary);
+    margin-left: 8px;
+}
+
+/* ── Fleet Stats Auto-Refresh ── */
+.stats-refresh-select {
+    font-size: 10px; padding: 2px 6px; background: var(--bg-input);
+    border: 1px solid var(--border-default); border-radius: var(--radius-sm);
+    color: var(--text-secondary); outline: none;
+}
 </style>
 </head>
 <body>
@@ -5000,6 +5075,13 @@ body {
     <div class="fleet-stats-panel" id="fleetStatsPanel">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
             <span style="font-size:13px;font-weight:700;color:var(--text-primary)">Fleet Output Statistics</span>
+            <select class="stats-refresh-select" id="statsRefreshSelect" onchange="setStatsRefreshInterval(this.value)" title="Auto-refresh">
+                <option value="0">Manual</option>
+                <option value="5">5s</option>
+                <option value="10">10s</option>
+                <option value="30">30s</option>
+                <option value="60">60s</option>
+            </select>
             <button class="btn btn-ghost" style="font-size:11px" onclick="closeFleetStats()">✕</button>
         </div>
         <div class="fleet-stats-grid" id="fleetStatsGrid"></div>
@@ -5157,6 +5239,7 @@ body {
             <div><span class="metric-label">Tokens </span><span class="deep-stat-value" id="deepTokens" title="">-</span></div>
             <div><span class="metric-label">Cost </span><span class="deep-stat-value" id="deepCost">-</span></div>
             <div><span class="metric-label">Tools </span><span class="deep-stat-value" id="deepToolCount">-</span></div>
+            <span class="deep-lang-badge" id="deepLangBadge" style="display:none"></span>
             <div><span class="metric-label">Tests </span><span class="deep-stat-value" id="deepTestResult">-</span></div>
             <div><span class="metric-label">Chars </span><span class="deep-stat-value" id="deepCharCount">-</span></div>
             <div><span class="metric-label">Words </span><span class="deep-stat-value" id="deepWordCount">-</span></div>
@@ -5199,6 +5282,7 @@ body {
             <button class="deep-action-btn" onclick="openHandoff()" title="Handoff to another agent"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></span> Handoff</button>
             <button class="deep-action-btn" onclick="deepExportOutput()" title="Download output log"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg></span> Export</button>
             <button class="deep-action-btn danger" onclick="deepKill()">Kill</button>
+            <button class="deep-action-btn" id="focusModeBtn" onclick="toggleFocusMode()" title="Focus mode (⌘⇧F)">⊡ Focus</button>
             <button class="deep-action-btn" onclick="toggleDeepShortcutsRef()" title="Keyboard shortcuts" style="position:relative">?
                 <div class="deep-shortcuts-popover" id="deepShortcutsPopover">
                     <div class="dsp-title">Deep View Shortcuts</div>
@@ -5215,6 +5299,7 @@ body {
             </button>
         </div>
     </div>
+    <div class="focus-mode-bar" onclick="toggleFocusMode()">FOCUS MODE — Click or press ⌘⇧F to exit</div>
     <div id="deepPromptBar" class="deep-prompt-bar" style="display:none"></div>
     <div class="terminal-toolbar" id="terminalToolbar">
         <button class="terminal-toolbar-btn active" id="toolbarAutoScroll" onclick="toggleAutoScroll()">↓ Auto-scroll</button>
@@ -5286,6 +5371,10 @@ body {
         <div class="error-summary-list" id="errorSummaryList" style="display:none"></div>
     </div>
     <div class="deep-terminal-wrap">
+        <div class="pinned-messages-panel" id="pinnedMessagesPanel">
+            <div class="pm-header"><span>📌 Pinned Messages</span><button class="btn btn-ghost" style="font-size:10px;padding:1px 4px" onclick="closePinnedPanel()">✕</button></div>
+            <div id="pinnedMessagesList"></div>
+        </div>
         <div class="deep-terminal" id="deepTerminal"></div>
         <canvas class="output-minimap" id="outputMinimap" width="60" height="400" title="Output minimap — click to scroll"></canvas>
         <div class="bookmarks-panel" id="bookmarksPanel" style="display:none">
@@ -17811,6 +17900,208 @@ openDeepView = function(agentId) {
         const terminal = document.getElementById('deepTerminal');
         if (terminal) terminal.classList.add(`theme-${_termTheme}`);
     }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Pinned Messages Panel ──
+// ═══════════════════════════════════════════════════════════════════
+function getPinnedMessages(agentId) {
+    try { return JSON.parse(localStorage.getItem(`ashlar_pinned_${agentId}`) || '[]'); }
+    catch { return []; }
+}
+
+function savePinnedMessages(agentId, pins) {
+    localStorage.setItem(`ashlar_pinned_${agentId}`, JSON.stringify(pins));
+}
+
+function pinLine(lineIdx) {
+    if (!state.focusedAgentId) return;
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const lines = terminal.querySelectorAll('.terminal-line');
+    if (lineIdx < 0 || lineIdx >= lines.length) return;
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const text = (lines[lineIdx].textContent || '').replace(ansiRe, '').trim();
+    const pins = getPinnedMessages(state.focusedAgentId);
+    if (pins.some(p => p.line === lineIdx)) return;
+    pins.push({ line: lineIdx, text: text.substring(0, 200) });
+    savePinnedMessages(state.focusedAgentId, pins);
+    renderPinnedMessages();
+}
+
+function unpinLine(lineIdx) {
+    if (!state.focusedAgentId) return;
+    const pins = getPinnedMessages(state.focusedAgentId).filter(p => p.line !== lineIdx);
+    savePinnedMessages(state.focusedAgentId, pins);
+    renderPinnedMessages();
+}
+
+function renderPinnedMessages() {
+    const panel = document.getElementById('pinnedMessagesPanel');
+    const list = document.getElementById('pinnedMessagesList');
+    if (!panel || !list || !state.focusedAgentId) return;
+    const pins = getPinnedMessages(state.focusedAgentId);
+    if (pins.length === 0) { panel.classList.remove('active'); return; }
+    panel.classList.add('active');
+    list.innerHTML = pins.map(p =>
+        `<div class="pinned-message">
+            <span class="pm-line">L${p.line + 1}</span>
+            <span class="pm-text">${escapeHtml(p.text)}</span>
+            <button class="pm-unpin" onclick="unpinLine(${p.line})" title="Unpin">✕</button>
+        </div>`
+    ).join('');
+}
+
+function closePinnedPanel() {
+    document.getElementById('pinnedMessagesPanel')?.classList.remove('active');
+}
+
+// Right-click to pin a line
+document.getElementById('deepTerminal')?.addEventListener('contextmenu', (e) => {
+    const line = e.target.closest('.terminal-line');
+    if (!line) return;
+    // Only intercept if shift is held (to not block normal right-click)
+    if (!e.shiftKey) return;
+    e.preventDefault();
+    const terminal = document.getElementById('deepTerminal');
+    const lines = Array.from(terminal.querySelectorAll('.terminal-line'));
+    const idx = lines.indexOf(line);
+    if (idx >= 0) pinLine(idx);
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Focus Mode ──
+// ═══════════════════════════════════════════════════════════════════
+let _focusMode = false;
+
+function toggleFocusMode() {
+    _focusMode = !_focusMode;
+    const deepView = document.getElementById('deepView');
+    if (deepView) deepView.classList.toggle('focus-mode', _focusMode);
+}
+
+document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'f' && state.view === 'deep') {
+        e.preventDefault();
+        toggleFocusMode();
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Priority Badges ──
+// ═══════════════════════════════════════════════════════════════════
+function updatePriorityBadge(card, agent) {
+    let badge = card.querySelector('.card-priority-badge');
+    const needsBadge = agent.status === 'waiting' || agent.status === 'error' ||
+                       (agent.plan_mode && agent.status === 'waiting');
+    if (!needsBadge) {
+        if (badge) badge.remove();
+        return;
+    }
+    if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'card-priority-badge';
+        card.style.position = 'relative';
+        card.appendChild(badge);
+    }
+    if (agent.status === 'error') {
+        badge.className = 'card-priority-badge priority-error';
+        badge.textContent = '!!';
+    } else if (agent.plan_mode && agent.status === 'waiting') {
+        badge.className = 'card-priority-badge priority-review';
+        badge.textContent = '✓';
+    } else {
+        badge.className = 'card-priority-badge priority-waiting';
+        badge.textContent = '!';
+    }
+}
+
+// Patch updateAgentCard to add priority badges
+const _origUpdateAgentCard = updateAgentCard;
+updateAgentCard = function(card, agent) {
+    _origUpdateAgentCard(card, agent);
+    updatePriorityBadge(card, agent);
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Language Detection Badge ──
+// ═══════════════════════════════════════════════════════════════════
+const LANG_MAP = {
+    '.py': 'Python', '.js': 'JavaScript', '.ts': 'TypeScript', '.tsx': 'React/TSX',
+    '.jsx': 'React/JSX', '.rs': 'Rust', '.go': 'Go', '.java': 'Java',
+    '.rb': 'Ruby', '.php': 'PHP', '.cs': 'C#', '.cpp': 'C++', '.c': 'C',
+    '.swift': 'Swift', '.kt': 'Kotlin', '.html': 'HTML', '.css': 'CSS',
+    '.sql': 'SQL', '.sh': 'Shell', '.yml': 'YAML', '.json': 'JSON',
+    '.md': 'Markdown', '.vue': 'Vue', '.svelte': 'Svelte',
+};
+
+function detectPrimaryLanguage(agent) {
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const extCounts = {};
+    const fileRe = /(?:Read|Edit|Write|Glob|Grep)\s*\(\s*["']?([^"'\s)]+)/g;
+    for (const l of lines) {
+        const clean = l.replace(ansiRe, '');
+        let m;
+        while ((m = fileRe.exec(clean)) !== null) {
+            const file = m[1];
+            const dot = file.lastIndexOf('.');
+            if (dot > 0) {
+                const ext = file.substring(dot).toLowerCase();
+                if (LANG_MAP[ext]) extCounts[ext] = (extCounts[ext] || 0) + 1;
+            }
+        }
+    }
+    const sorted = Object.entries(extCounts).sort((a, b) => b[1] - a[1]);
+    return sorted.length > 0 ? LANG_MAP[sorted[0][0]] : null;
+}
+
+function updateLangBadge() {
+    const badge = document.getElementById('deepLangBadge');
+    if (!badge || !state.focusedAgentId) return;
+    const agent = state.agents.get(state.focusedAgentId);
+    if (!agent) { badge.style.display = 'none'; return; }
+    const lang = detectPrimaryLanguage(agent);
+    if (lang) {
+        badge.textContent = lang;
+        badge.style.display = '';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+// Wire lang badge into deep view header updates
+const _origUpdateDeepViewHeader = updateDeepViewHeader;
+updateDeepViewHeader = function(agent) {
+    _origUpdateDeepViewHeader(agent);
+    updateLangBadge();
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Fleet Stats Auto-Refresh ──
+// ═══════════════════════════════════════════════════════════════════
+let _statsRefreshTimer = null;
+
+function setStatsRefreshInterval(seconds) {
+    clearInterval(_statsRefreshTimer);
+    _statsRefreshTimer = null;
+    const sec = parseInt(seconds);
+    if (sec > 0) {
+        _statsRefreshTimer = setInterval(() => {
+            if (document.getElementById('fleetStatsPanel')?.classList.contains('active')) {
+                updateFleetStatsPanel();
+            }
+        }, sec * 1000);
+    }
+}
+
+// Wire pinned messages into deep view open
+const _origOpenDeepView3 = openDeepView;
+openDeepView = function(agentId) {
+    _origOpenDeepView3(agentId);
+    renderPinnedMessages();
+    _focusMode = false;
+    document.getElementById('deepView')?.classList.remove('focus-mode');
 };
 
 const EMPTY_STATE_HTML = document.getElementById('emptyState').innerHTML;
