@@ -2307,3 +2307,107 @@ class TestBookmarkPersistence:
         agent.bookmarks = [b for b in agent.bookmarks if b.get("id") != "a1"]
         assert len(agent.bookmarks) == 1
         assert agent.bookmarks[0]["id"] == "b2"
+
+
+class TestCollaborationGraph:
+    """Tests for agent collaboration graph data computation."""
+
+    def _make_agent(self, id, name="test", role="backend", project_id=None, files=None):
+        agent = ashlar_server.Agent(
+            id=id, name=name, role=role, status="working",
+            working_dir="/tmp", backend="demo", task="test task",
+            summary="", tmux_session=f"ashlar-{id}",
+            created_at="2026-01-01T00:00:00Z", updated_at="2026-01-01T00:00:00Z",
+        )
+        if project_id:
+            agent.project_id = project_id
+        if files:
+            for f in files:
+                agent._file_operations.append(FileOperation(
+                    agent_id=id, file_path=f, operation="write",
+                    timestamp="2026-01-01T00:00:00Z", tool="Edit"
+                ))
+        return agent
+
+    def test_shared_file_creates_edge(self):
+        """Agents writing to the same file should produce a shared_file edge."""
+        a1 = self._make_agent("a001", name="alpha", files=["/tmp/shared.py"])
+        a2 = self._make_agent("a002", name="beta", files=["/tmp/shared.py"])
+
+        # Build file_agents map (same logic as collaboration_graph endpoint)
+        file_agents = {}
+        for a in [a1, a2]:
+            for fop in a._file_operations:
+                path = fop.file_path
+                if path not in file_agents:
+                    file_agents[path] = set()
+                file_agents[path].add(a.id)
+
+        edges = []
+        for path, agent_ids in file_agents.items():
+            ids = list(agent_ids)
+            for i in range(len(ids)):
+                for j in range(i + 1, len(ids)):
+                    edges.append({"from": ids[i], "to": ids[j], "type": "shared_file"})
+
+        assert len(edges) == 1
+        assert edges[0]["type"] == "shared_file"
+
+    def test_same_project_creates_edge(self):
+        """Agents in the same project should produce a project edge."""
+        a1 = self._make_agent("a001", name="alpha", project_id="proj1")
+        a2 = self._make_agent("a002", name="beta", project_id="proj1")
+        a3 = self._make_agent("a003", name="gamma", project_id="proj2")
+
+        project_agents = {}
+        for a in [a1, a2, a3]:
+            if a.project_id:
+                if a.project_id not in project_agents:
+                    project_agents[a.project_id] = []
+                project_agents[a.project_id].append(a.id)
+
+        edges = []
+        for proj, agent_ids in project_agents.items():
+            for i in range(len(agent_ids)):
+                for j in range(i + 1, len(agent_ids)):
+                    edges.append({"from": agent_ids[i], "to": agent_ids[j], "type": "project"})
+
+        assert len(edges) == 1
+        assert edges[0]["from"] == "a001"
+        assert edges[0]["to"] == "a002"
+
+    def test_no_edges_for_separate_files(self):
+        """Agents working on different files should have no shared_file edges."""
+        a1 = self._make_agent("a001", files=["/tmp/file1.py"])
+        a2 = self._make_agent("a002", files=["/tmp/file2.py"])
+
+        file_agents = {}
+        for a in [a1, a2]:
+            for fop in a._file_operations:
+                path = fop.file_path
+                if path not in file_agents:
+                    file_agents[path] = set()
+                file_agents[path].add(a.id)
+
+        edges = []
+        for path, agent_ids in file_agents.items():
+            ids = list(agent_ids)
+            for i in range(len(ids)):
+                for j in range(i + 1, len(ids)):
+                    edges.append({"from": ids[i], "to": ids[j], "type": "shared_file"})
+
+        assert len(edges) == 0
+
+    def test_node_data_includes_role_and_status(self):
+        """Graph nodes should include role, status, and health info."""
+        agent = self._make_agent("a001", name="test-agent", role="frontend")
+        node = {
+            "id": agent.id,
+            "name": agent.name,
+            "role": agent.role,
+            "status": agent.status,
+            "health_score": agent.health_score,
+        }
+        assert node["role"] == "frontend"
+        assert node["status"] == "working"
+        assert node["health_score"] == 1.0
