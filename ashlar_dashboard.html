@@ -279,6 +279,12 @@ body {
 .metric-value.yellow { color: var(--warning); }
 .metric-value.red { color: var(--danger); }
 
+.fleet-health-value { font-weight: 700; transition: color 0.3s; }
+.fleet-health-value.excellent { color: var(--success); }
+.fleet-health-value.good { color: #6366F1; }
+.fleet-health-value.fair { color: var(--warning); }
+.fleet-health-value.poor { color: var(--danger); }
+
 .intelligence-status { cursor: pointer; }
 .intelligence-status:hover { opacity: 0.8; }
 .intelligence-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; vertical-align: middle; }
@@ -625,6 +631,30 @@ body {
 .agent-card.status-transition {
     animation: statusFlash 0.6s ease-out;
 }
+/* Card mini-terminal preview */
+.card-preview {
+    position: fixed;
+    z-index: 200;
+    background: rgba(10,15,26,0.95);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    width: 320px;
+    max-height: 120px;
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
+    box-shadow: var(--shadow-lg);
+    pointer-events: none;
+    animation: previewFadeIn 0.15s ease-out;
+    display: none;
+}
+.card-preview.active { display: block; }
+@keyframes previewFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes statusFlash {
     0% { box-shadow: inset 0 0 0 1px rgba(99,102,241,0.5); }
     50% { box-shadow: inset 0 0 12px rgba(99,102,241,0.15); }
@@ -1430,6 +1460,41 @@ body {
 }
 .deep-action-btn:hover { background: var(--bg-elevated); color: var(--text-primary); }
 .deep-action-btn.danger:hover { background: var(--danger-subtle); color: var(--danger); }
+
+.copy-dropdown-wrap {
+    position: relative;
+    display: inline-block;
+}
+.copy-dropdown {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: 4px;
+    min-width: 180px;
+    box-shadow: var(--shadow-lg);
+    z-index: 100;
+    display: none;
+    animation: previewFadeIn 0.12s ease-out;
+}
+.copy-dropdown.active { display: block; }
+.copy-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-secondary);
+    transition: all 0.1s;
+    white-space: nowrap;
+}
+.copy-dropdown-item:hover { background: var(--bg-overlay); color: var(--text-primary); }
+.copy-dropdown-item .copy-fmt-label { font-weight: 600; color: var(--text-primary); }
+.copy-dropdown-item .copy-fmt-desc { font-size: 10px; color: var(--text-tertiary); }
 
 .deep-terminal-wrap { flex: 1; position: relative; overflow: hidden; }
 
@@ -2830,6 +2895,23 @@ body {
     overflow-y: auto;
     padding: 16px;
 }
+.deep-wordcloud-panel {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-page);
+}
+.wc-word {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    cursor: default;
+    transition: transform 0.15s, opacity 0.15s;
+    font-family: var(--font-mono);
+    white-space: nowrap;
+}
+.wc-word:hover { transform: scale(1.15); opacity: 0.85; }
 .scratchpad-header {
     display: flex;
     justify-content: space-between;
@@ -4291,6 +4373,10 @@ body {
             <span class="metric-label">Cost</span>
             <span class="metric-value" id="metricCost">$0.00</span>
         </div>
+        <div class="metric" id="metricFleetHealth" title="Fleet health score — click for details" style="display:none">
+            <span class="metric-label">Health</span>
+            <span class="metric-value fleet-health-value" id="metricHealthScore">--</span>
+        </div>
         <div class="metric" id="metricFleetStatus" title="Fleet status summary" style="display:none">
             <span class="metric-label">Fleet</span>
             <span class="metric-value" id="metricFleetText" style="font-size:10px;letter-spacing:0;color:var(--text-secondary)"></span>
@@ -4572,15 +4658,33 @@ body {
         <div class="activity-heatmap" id="activityHeatmap" title="Activity density over time"></div>
         <div class="deep-actions">
             <button class="deep-action-btn" id="deepPauseBtn" onclick="deepPauseResume()" id="deepPauseBtnInner"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg></span> Pause</button>
-            <button class="deep-action-btn" onclick="deepCopyOutput()"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></span> Copy</button>
+            <div class="copy-dropdown-wrap">
+                <button class="deep-action-btn" onclick="toggleCopyDropdown(event)"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></span> Copy ▾</button>
+                <div class="copy-dropdown" id="copyFormatDropdown">
+                    <div class="copy-dropdown-item" onclick="deepCopyOutput();closeCopyDropdown()">
+                        <span>${icon('clipboard', 14)}</span>
+                        <div><div class="copy-fmt-label">Plain Text</div><div class="copy-fmt-desc">Raw terminal output</div></div>
+                    </div>
+                    <div class="copy-dropdown-item" onclick="deepCopyMarkdown();closeCopyDropdown()">
+                        <span>${icon('file-text', 14)}</span>
+                        <div><div class="copy-fmt-label">Markdown</div><div class="copy-fmt-desc">Formatted with metadata</div></div>
+                    </div>
+                    <div class="copy-dropdown-item" onclick="deepExportJSON();closeCopyDropdown()">
+                        <span>${icon('code', 14)}</span>
+                        <div><div class="copy-fmt-label">JSON</div><div class="copy-fmt-desc">Structured data export</div></div>
+                    </div>
+                    <div class="copy-dropdown-item" onclick="deepCopySelectedLines();closeCopyDropdown()">
+                        <span>${icon('text-select', 14)}</span>
+                        <div><div class="copy-fmt-label">Selection Only</div><div class="copy-fmt-desc">Copy text selection</div></div>
+                    </div>
+                </div>
+            </div>
             <button class="deep-action-btn" onclick="deepRegenSummary()" title="AI Summary"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M19.967 17.484A4 4 0 0 1 18 18"/></svg> AI</button>
             <button class="deep-action-btn" onclick="openDeepMessaging()" title="Send to another agent"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg></span> Msg</button>
             <button class="deep-action-btn" onclick="deepRestart()" title="Restart agent"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></span> Restart</button>
             <button class="deep-action-btn" onclick="deepRetry()" title="Retry with modified task"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></span> Retry</button>
             <button class="deep-action-btn" onclick="openHandoff()" title="Handoff to another agent"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></span> Handoff</button>
             <button class="deep-action-btn" onclick="deepExportOutput()" title="Download output log"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg></span> Export</button>
-            <button class="deep-action-btn" onclick="deepCopyMarkdown()" title="Copy output as markdown"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></span> Copy MD</button>
-            <button class="deep-action-btn" onclick="deepExportJSON()" title="Export as JSON with metadata"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m5 12-3 3 3 3"/><path d="m9 18 3-3-3-3"/></svg></span> JSON</button>
             <button class="deep-action-btn danger" onclick="deepKill()">Kill</button>
         </div>
     </div>
@@ -4602,6 +4706,7 @@ body {
         <button class="deep-tab" id="deepTabNotes" onclick="switchDeepTab('notes')">Notes</button>
         <button class="deep-tab" id="deepTabSnapshots" onclick="switchDeepTab('snapshots')">Snapshots</button>
         <button class="deep-tab" id="deepTabScratchpad" onclick="switchDeepTab('scratchpad')">Scratchpad</button>
+        <button class="deep-tab" id="deepTabWordCloud" onclick="switchDeepTab('wordcloud')">Words</button>
     </div>
     <div class="deep-error-summary" id="deepErrorSummary" style="display:none">
         <div class="error-summary-header" onclick="toggleErrorSummary()">
@@ -4658,6 +4763,13 @@ body {
                 <button class="btn btn-primary" style="font-size:12px;padding:4px 10px" onclick="addScratchpadEntry()">+ Add Entry</button>
             </div>
             <div id="scratchpadContent" class="scratchpad-list"></div>
+        </div>
+        <div class="deep-wordcloud-panel" id="deepWordCloudPanel" style="display:none">
+            <div style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);display:flex;justify-content:space-between;align-items:center">
+                <span style="font-size:12px;font-weight:700;color:var(--text-primary)">Word Frequency</span>
+                <button class="btn btn-secondary btn-sm" onclick="refreshWordCloud()" style="font-size:10px;padding:2px 8px">Refresh</button>
+            </div>
+            <div id="wordCloudContent" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px"></div>
         </div>
         <div class="deep-search-bar" id="deepSearchBar">
             <button class="deep-search-toggle" id="deepRegexToggle" onclick="toggleDeepRegex()" title="Toggle regex mode">.*</button>
@@ -4811,6 +4923,7 @@ body {
 
 <!-- ── Context Menu ── -->
 <div class="context-menu" id="contextMenu"></div>
+<div class="card-preview" id="cardPreview"></div>
 
 <!-- ── History Panel ── -->
 <div class="history-overlay" id="historyOverlay" onclick="if(event.target===this)closeHistory()">
@@ -5301,6 +5414,7 @@ const ICONS = {
     'shield-check':  '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
     'blocks':        '<rect width="7" height="7" x="14" y="3" rx="1"/><path d="M10 21V8a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1H3"/>',
     'file-text':     '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+    'text-select':   '<path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/>',
     'bot':           '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
     // Status
     'circle-check':  '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
@@ -6524,8 +6638,55 @@ function handleMetrics(data) {
     if (state.cpuHistory.length > 60) state.cpuHistory.shift();
     drawSparkline();
 
+    // Fleet health score
+    updateFleetHealthScore(agents);
+
     // Update metrics dropdown if open
     updateMetricsDropdown();
+}
+
+function updateFleetHealthScore(agents) {
+    const el = document.getElementById('metricHealthScore');
+    const wrap = document.getElementById('metricFleetHealth');
+    if (!el || !wrap) return;
+    if (agents.length === 0) { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+    // Score components (each 0-100, weighted)
+    let scores = [];
+    for (const a of agents) {
+        let s = 100;
+        // Penalize error status
+        if (a.status === 'error') s -= 50;
+        // Penalize high context usage
+        const ctx = a.context_pct || 0;
+        if (ctx > 0.9) s -= 30;
+        else if (ctx > 0.7) s -= 15;
+        else if (ctx > 0.5) s -= 5;
+        // Penalize waiting (needs attention)
+        if (a.status === 'waiting' || a.needs_input) s -= 15;
+        // Penalize paused
+        if (a.status === 'paused') s -= 10;
+        // Penalize low health score from server
+        const hs = a.health_score;
+        if (typeof hs === 'number' && hs < 50) s -= 20;
+        else if (typeof hs === 'number' && hs < 75) s -= 10;
+        // Clamp
+        scores.push(Math.max(0, Math.min(100, s)));
+    }
+    const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+    el.textContent = avg + '%';
+    // Color class
+    el.className = 'metric-value fleet-health-value ' +
+        (avg >= 90 ? 'excellent' : avg >= 70 ? 'good' : avg >= 50 ? 'fair' : 'poor');
+    // Tooltip with breakdown
+    const errCount = agents.filter(a => a.status === 'error').length;
+    const waitCount = agents.filter(a => a.status === 'waiting' || a.needs_input).length;
+    const highCtx = agents.filter(a => (a.context_pct || 0) > 0.7).length;
+    let tip = `Fleet Health: ${avg}%`;
+    if (errCount) tip += ` | ${errCount} error`;
+    if (waitCount) tip += ` | ${waitCount} waiting`;
+    if (highCtx) tip += ` | ${highCtx} high context`;
+    wrap.title = tip;
 }
 
 function handleEvent(data) {
@@ -6909,9 +7070,16 @@ function createAgentCard(agent) {
             applyCardReorder(fromId, agent.id);
         }
     });
-    // Hover — subtle elevation, no colored glow
-    card.addEventListener('mouseenter', () => { card.style.boxShadow = 'var(--shadow-md)'; });
-    card.addEventListener('mouseleave', () => { card.style.boxShadow = ''; });
+    // Hover — subtle elevation + mini terminal preview
+    card.addEventListener('mouseenter', () => {
+        card.style.boxShadow = 'var(--shadow-md)';
+        card._previewTimer = setTimeout(() => showCardPreview(agent.id, card), 500);
+    });
+    card.addEventListener('mouseleave', () => {
+        card.style.boxShadow = '';
+        if (card._previewTimer) { clearTimeout(card._previewTimer); card._previewTimer = null; }
+        hideCardPreview();
+    });
     card.onclick = () => {
         if (document.getElementById('agentGrid').classList.contains('bulk-mode')) {
             toggleAgentSelection(agent.id);
@@ -7400,6 +7568,38 @@ function showContextMenu(agentId, x, y) {
 function hideContextMenu() {
     const menu = document.getElementById('contextMenu');
     if (menu) menu.classList.remove('active');
+}
+
+function showCardPreview(agentId, cardEl) {
+    const agent = state.agents.get(agentId);
+    if (!agent) return;
+    // Skip preview for idle/paused agents with no output
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    if (lines.length === 0) return;
+    const preview = document.getElementById('cardPreview');
+    if (!preview) return;
+    // Take last 6 lines, render via ansiToHtml
+    const tail = lines.slice(-6);
+    preview.innerHTML = tail.map(l => ansiToHtml(l)).join('\n');
+    // Position below the card
+    const rect = cardEl.getBoundingClientRect();
+    let top = rect.bottom + 6;
+    let left = rect.left;
+    // Clamp to viewport
+    const pw = 320, ph = 120;
+    if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+    if (left < 8) left = 8;
+    if (top + ph > window.innerHeight - 8) {
+        top = rect.top - ph - 6; // flip above
+    }
+    preview.style.top = top + 'px';
+    preview.style.left = left + 'px';
+    preview.classList.add('active');
+}
+
+function hideCardPreview() {
+    const preview = document.getElementById('cardPreview');
+    if (preview) preview.classList.remove('active');
 }
 
 async function killAgent(id) {
@@ -8536,6 +8736,37 @@ function quickSend(msg) {
 function deepPauseResume() {
     if (!state.focusedAgentId) return;
     pauseResumeAgent(state.focusedAgentId);
+}
+
+function toggleCopyDropdown(e) {
+    e.stopPropagation();
+    const dd = document.getElementById('copyFormatDropdown');
+    if (!dd) return;
+    const isActive = dd.classList.toggle('active');
+    if (isActive) {
+        const handler = (ev) => {
+            if (!dd.contains(ev.target) && !ev.target.closest('.copy-dropdown-wrap')) {
+                closeCopyDropdown();
+            }
+            document.removeEventListener('mousedown', handler);
+        };
+        setTimeout(() => document.addEventListener('mousedown', handler), 0);
+    }
+}
+
+function closeCopyDropdown() {
+    const dd = document.getElementById('copyFormatDropdown');
+    if (dd) dd.classList.remove('active');
+}
+
+function deepCopySelectedLines() {
+    const sel = window.getSelection();
+    const text = sel ? sel.toString() : '';
+    if (!text.trim()) {
+        showToast('No text selected — select lines first', 'warning');
+        return;
+    }
+    navigator.clipboard.writeText(text).then(() => showToast('Selection copied to clipboard', 'success'));
 }
 
 function deepCopyOutput() {
@@ -14253,11 +14484,13 @@ function switchDeepTab(tab) {
     const activityPanel = document.getElementById('deepActivityPanel');
     const notesPanel = document.getElementById('deepNotesPanel');
     const snapshotsPanel = document.getElementById('deepSnapshotsPanel');
+    const wordcloudPanel = document.getElementById('deepWordCloudPanel');
     const tabTerminal = document.getElementById('deepTabTerminal');
     const tabScratchpad = document.getElementById('deepTabScratchpad');
     const tabActivity = document.getElementById('deepTabActivity');
     const tabNotes = document.getElementById('deepTabNotes');
     const tabSnapshots = document.getElementById('deepTabSnapshots');
+    const tabWordCloud = document.getElementById('deepTabWordCloud');
     const toolbar = document.getElementById('terminalToolbar');
     const searchBar = document.getElementById('deepSearchBar');
 
@@ -14267,6 +14500,7 @@ function switchDeepTab(tab) {
     activityPanel.style.display = 'none';
     notesPanel.style.display = 'none';
     snapshotsPanel.style.display = 'none';
+    if (wordcloudPanel) wordcloudPanel.style.display = 'none';
     toolbar.style.display = 'none';
     closeDeepSearch();
     searchBar.style.display = 'none';
@@ -14275,6 +14509,7 @@ function switchDeepTab(tab) {
     tabActivity.classList.remove('active');
     tabNotes.classList.remove('active');
     tabSnapshots.classList.remove('active');
+    if (tabWordCloud) tabWordCloud.classList.remove('active');
 
     if (tab === 'terminal') {
         terminal.style.display = '';
@@ -14293,11 +14528,50 @@ function switchDeepTab(tab) {
         snapshotsPanel.style.display = 'flex';
         tabSnapshots.classList.add('active');
         if (state.focusedAgentId) loadSnapshots(state.focusedAgentId);
+    } else if (tab === 'wordcloud') {
+        if (wordcloudPanel) wordcloudPanel.style.display = 'flex';
+        if (tabWordCloud) tabWordCloud.classList.add('active');
+        refreshWordCloud();
     } else {
         scratchpad.style.display = '';
         tabScratchpad.classList.add('active');
         if (_scratchpadProjectId) refreshScratchpad();
     }
+}
+
+function refreshWordCloud() {
+    const container = document.getElementById('wordCloudContent');
+    if (!container) return;
+    const agent = state.agents.get(state.focusedAgentId);
+    if (!agent) { container.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px">No agent selected</div>'; return; }
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    if (lines.length === 0) { container.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px">No output yet</div>'; return; }
+    // Strip ANSI codes and extract words
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const stopWords = new Set(['the','a','an','is','are','was','were','be','been','being','have','has','had','do','does','did','will','would','could','should','may','might','shall','can','need','dare','to','of','in','for','on','with','at','by','from','as','into','through','during','before','after','above','below','between','out','off','over','under','again','further','then','once','here','there','when','where','why','how','all','each','every','both','few','more','most','other','some','such','no','nor','not','only','own','same','so','than','too','very','just','because','but','and','or','if','while','that','this','it','its','they','them','their','his','her','he','she','we','you','i','me','my','your','our','us','what','which','who','whom','these','those','am','get','got','let','make','like','also','about','up','one','two','new','now','old','see','way','may','said','file','line','use','used','using']);
+    const wordCounts = {};
+    const text = lines.join(' ').replace(ansiRe, '');
+    // Extract meaningful words (3+ chars, alphanumeric + common code chars)
+    const words = text.match(/[a-zA-Z_][a-zA-Z0-9_.-]{2,}/g) || [];
+    for (const w of words) {
+        const lower = w.toLowerCase();
+        if (stopWords.has(lower)) continue;
+        if (/^[0-9.]+$/.test(w)) continue;
+        wordCounts[lower] = (wordCounts[lower] || 0) + 1;
+    }
+    // Sort by frequency and take top 60
+    const sorted = Object.entries(wordCounts).sort((a, b) => b[1] - a[1]).slice(0, 60);
+    if (sorted.length === 0) { container.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px">No significant words found</div>'; return; }
+    const maxCount = sorted[0][1];
+    const minCount = sorted[sorted.length - 1][1];
+    const colors = ['#6366F1', '#8B5CF6', '#EC4899', '#F97316', '#EAB308', '#22C55E', '#06B6D4', '#3B82F6'];
+    container.innerHTML = sorted.map(([word, count]) => {
+        const ratio = maxCount === minCount ? 0.5 : (count - minCount) / (maxCount - minCount);
+        const size = 10 + Math.round(ratio * 22);
+        const opacity = 0.5 + ratio * 0.5;
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        return `<span class="wc-word" style="font-size:${size}px;color:${color};opacity:${opacity}" title="${word}: ${count} occurrences">${word}</span>`;
+    }).join('');
 }
 
 async function loadSnapshots(agentId) {
