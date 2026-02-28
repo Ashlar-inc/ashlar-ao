@@ -609,14 +609,18 @@ body {
 @media (max-width: 768px) { .card-menu-btn { opacity: 1; min-width: 44px; min-height: 44px; } }
 
 .card-dir {
-    font-size: 11px;
+    font-size: 10px;
     color: var(--text-tertiary);
     margin-bottom: 10px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: var(--font-mono);
-    font-size: 10px;
+    cursor: pointer;
+    transition: color 0.15s;
+}
+.card-dir:hover {
+    color: var(--accent);
 }
 
 .card-summary {
@@ -1185,6 +1189,24 @@ body {
     padding: 0;
 }
 .deep-nav-btn:hover { background: var(--bg-elevated); border-color: var(--accent); color: var(--accent); }
+.deep-rate-sparkline {
+    width: 80px;
+    height: 20px;
+    vertical-align: middle;
+    opacity: 0.8;
+}
+.deep-work-dir {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    margin-left: 8px;
+    cursor: pointer;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.deep-work-dir:hover { color: var(--accent); }
 .deep-line-count {
     font-family: var(--font-mono);
     font-size: 10px;
@@ -4101,6 +4123,7 @@ body {
             <span id="deepIcon"></span>
             <span class="deep-agent-name" id="deepName"></span>
             <span class="deep-agent-role" id="deepRole"></span>
+            <span class="deep-work-dir" id="deepWorkDir" onclick="copyWorkingDir(state.focusedAgentId)" title="Click to copy path"></span>
             <span class="deep-line-count" id="deepLineCount" title="Output lines"></span>
         </div>
         <button class="deep-nav-btn" id="deepNextBtn" onclick="deepNavAgent(1)" title="Next agent (Shift+→)">›</button>
@@ -4115,6 +4138,7 @@ body {
             <div><span class="metric-label">Cost </span><span class="deep-stat-value" id="deepCost">-</span></div>
             <div><span class="metric-label">Tools </span><span class="deep-stat-value" id="deepToolCount">-</span></div>
             <div><span class="metric-label">Tests </span><span class="deep-stat-value" id="deepTestResult">-</span></div>
+            <div><span class="metric-label">Rate </span><canvas class="deep-rate-sparkline" id="deepRateSparkline" width="80" height="20"></canvas></div>
         </div>
         <div class="deep-actions">
             <button class="deep-action-btn" id="deepPauseBtn" onclick="deepPauseResume()" id="deepPauseBtnInner"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg></span> Pause</button>
@@ -4854,6 +4878,7 @@ const state = {
     taskQueue: [],
     cardSort: localStorage.getItem('ashlar_card_sort') || 'priority',
     notificationLog: [],
+    deepScrollPositions: new Map(), // agentId -> scrollTop
 };
 
 const ROLE_INFO = {
@@ -5825,7 +5850,7 @@ function createAgentCard(agent) {
             <span class="card-workflow-dot" style="display:none" title="Workflow group"></span>
             <span class="card-pipeline-badge"></span>
         </div>
-        <div class="card-dir"></div>
+        <div class="card-dir" onclick="event.stopPropagation();copyWorkingDir('${agent.id}')" title="Click to copy path"></div>
         <div class="card-summary"></div>
         <div class="card-input-section">
             <div class="card-input-row">
@@ -6210,6 +6235,14 @@ function shortenPath(p) {
     return p.replace(/^\/Users\/\w+\//, '~/').replace(/^\/home\/\w+\//, '~/');
 }
 
+function copyWorkingDir(agentId) {
+    const agent = state.agents.get(agentId);
+    if (!agent?.working_dir) return;
+    navigator.clipboard.writeText(agent.working_dir).then(() => {
+        showToast(`Copied: ${shortenPath(agent.working_dir)}`, 'success');
+    }).catch(() => showToast('Failed to copy path', 'error'));
+}
+
 function timeAgo(iso) {
     if (!iso) return '';
     const d = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -6566,7 +6599,8 @@ function openDeepView(agentId) {
 
     state.focusedAgentId = agentId;
     state.view = 'deep';
-    deepAutoScroll = true;
+    const savedScrollPos = state.deepScrollPositions.get(agentId);
+    deepAutoScroll = savedScrollPos == null; // Auto-scroll only if no saved position
     // Clear stale search/virtual terminal state from previous agent
     deepSearchMatches = [];
     deepSearchIdx = -1;
@@ -6576,9 +6610,9 @@ function openDeepView(agentId) {
     document.getElementById('deepView').classList.add('active');
     updateDeepViewHeader(agent);
 
-    // Reset toolbar state
-    document.getElementById('toolbarAutoScroll').classList.add('active');
-    document.getElementById('followIndicator').style.display = '';
+    // Reset toolbar state (scroll position restore may override these)
+    document.getElementById('toolbarAutoScroll').classList.toggle('active', savedScrollPos == null);
+    document.getElementById('followIndicator').style.display = savedScrollPos == null ? '' : 'none';
     document.getElementById('toolbarLineWrap').classList.remove('active');
 
     // Update mark button state for this agent
@@ -6629,7 +6663,17 @@ function openDeepView(agentId) {
             scrollDeepToBottom();
         }).catch(e => console.warn('Deep view refresh failed:', e.message));
     }
-    scrollDeepToBottom();
+    // Restore saved scroll position or scroll to bottom
+    if (savedScrollPos != null) {
+        requestAnimationFrame(() => {
+            terminal.scrollTop = savedScrollPos;
+            deepAutoScroll = false;
+            document.getElementById('toolbarAutoScroll').classList.remove('active');
+            document.getElementById('followIndicator').style.display = 'none';
+        });
+    } else {
+        scrollDeepToBottom();
+    }
 
     // Remove old scroll handler to prevent leak, then add fresh one
     if (terminal._ashlarScrollHandler) terminal.removeEventListener('scroll', terminal._ashlarScrollHandler);
@@ -6674,6 +6718,8 @@ function updateDeepViewHeader(agent) {
     document.getElementById('deepIcon').innerHTML = roleIcon(agent.role, 20);
     document.getElementById('deepName').textContent = agent.name;
     document.getElementById('deepRole').textContent = info.name;
+    document.getElementById('deepWorkDir').textContent = shortenPath(agent.working_dir);
+    document.getElementById('deepWorkDir').title = agent.working_dir || '';
 
     const statusEl = document.getElementById('deepStatus');
     statusEl.textContent = agent.status;
@@ -6768,6 +6814,31 @@ function updateDeepViewHeader(agent) {
         testEl.title = '';
     }
 
+    // Output rate sparkline
+    const rateCanvas = document.getElementById('deepRateSparkline');
+    if (rateCanvas && agent._outputHistory?.length > 1) {
+        const ctx = rateCanvas.getContext('2d');
+        const w = rateCanvas.width, h = rateCanvas.height;
+        ctx.clearRect(0, 0, w, h);
+        const data = agent._outputHistory;
+        const maxVal = Math.max(1, ...data);
+        const step = w / Math.max(1, data.length - 1);
+        ctx.beginPath();
+        ctx.moveTo(0, h - (data[0] / maxVal) * h);
+        for (let i = 1; i < data.length; i++) {
+            ctx.lineTo(i * step, h - (data[i] / maxVal) * h);
+        }
+        const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
+        ctx.strokeStyle = info.color;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.lineTo((data.length - 1) * step, h);
+        ctx.lineTo(0, h);
+        ctx.closePath();
+        ctx.fillStyle = info.color + '22';
+        ctx.fill();
+    }
+
     const pauseBtn = document.getElementById('deepPauseBtn');
     pauseBtn.innerHTML = agent.status === 'paused' ? `${icon('play', 14)} Resume` : `${icon('circle-pause', 14)} Pause`;
 
@@ -6817,6 +6888,10 @@ function scrollDeepToBottom() {
 
 function closeDeepView() {
     const terminal = document.getElementById('deepTerminal');
+    // Save scroll position for this agent
+    if (state.focusedAgentId && terminal) {
+        state.deepScrollPositions.set(state.focusedAgentId, terminal.scrollTop);
+    }
     if (terminal && terminal._ashlarScrollHandler) {
         terminal.removeEventListener('scroll', terminal._ashlarScrollHandler);
         terminal._ashlarScrollHandler = null;
@@ -6834,6 +6909,11 @@ function deepNavAgent(direction) {
     if (ids.length < 2) return;
     const currentIdx = ids.indexOf(state.focusedAgentId);
     if (currentIdx === -1) return;
+    // Save scroll position before navigating away
+    const terminal = document.getElementById('deepTerminal');
+    if (state.focusedAgentId && terminal) {
+        state.deepScrollPositions.set(state.focusedAgentId, terminal.scrollTop);
+    }
     const nextIdx = (currentIdx + direction + ids.length) % ids.length;
     openDeepView(ids[nextIdx]);
 }
