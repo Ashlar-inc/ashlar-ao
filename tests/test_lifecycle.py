@@ -1630,6 +1630,88 @@ class TestConfigExportImport:
 # T21: Cost budget config
 # ─────────────────────────────────────────────
 
+class TestGlobalSearch:
+    """Tests for global search matching logic (mirrors /api/search endpoint)."""
+
+    def _search(self, agents, query, case_sensitive=False, use_regex=False, agent_filter=""):
+        """Replicate the search logic from global_search endpoint."""
+        import re
+        results = []
+        pattern = None
+        if use_regex:
+            flags = 0 if case_sensitive else re.IGNORECASE
+            pattern = re.compile(query, flags)
+
+        for agent in agents:
+            if agent_filter and agent.id != agent_filter:
+                continue
+            lines = agent.output_lines or []
+            for i, line in enumerate(lines):
+                matched = False
+                if pattern:
+                    matched = bool(pattern.search(line))
+                elif case_sensitive:
+                    matched = query in line
+                else:
+                    matched = query.lower() in line.lower()
+                if matched:
+                    results.append({
+                        "agent_id": agent.id,
+                        "agent_name": agent.name,
+                        "line_index": i,
+                        "line": line[:500],
+                    })
+        return results
+
+    def test_basic_case_insensitive_search(self, make_agent):
+        """Basic search should be case-insensitive by default."""
+        agent = make_agent(agent_id="aa11", name="test-agent")
+        agent.output_lines = ["Hello World", "foo bar", "HELLO again"]
+        results = self._search([agent], "hello")
+        assert len(results) == 2
+        assert results[0]["line"] == "Hello World"
+        assert results[1]["line"] == "HELLO again"
+
+    def test_case_sensitive_search(self, make_agent):
+        """Case-sensitive search should only match exact case."""
+        agent = make_agent(agent_id="bb22", name="test-agent")
+        agent.output_lines = ["Hello World", "hello again", "HELLO"]
+        results = self._search([agent], "Hello", case_sensitive=True)
+        assert len(results) == 1
+        assert results[0]["line"] == "Hello World"
+
+    def test_regex_search(self, make_agent):
+        """Regex search should match patterns."""
+        agent = make_agent(agent_id="cc33", name="test-agent")
+        agent.output_lines = ["error: file not found", "warning: deprecated", "info: started"]
+        results = self._search([agent], r"^(error|warning):", use_regex=True)
+        assert len(results) == 2
+
+    def test_agent_filter(self, make_agent):
+        """Agent filter should restrict results to specific agent."""
+        a1 = make_agent(agent_id="dd44", name="agent-a")
+        a1.output_lines = ["test line 1"]
+        a2 = make_agent(agent_id="ee55", name="agent-b")
+        a2.output_lines = ["test line 2"]
+        results = self._search([a1, a2], "test", agent_filter="dd44")
+        assert len(results) == 1
+        assert results[0]["agent_id"] == "dd44"
+
+    def test_empty_output_lines(self, make_agent):
+        """Search on agent with no output should return empty results."""
+        agent = make_agent(agent_id="ff66", name="test-agent")
+        agent.output_lines = []
+        results = self._search([agent], "anything")
+        assert len(results) == 0
+
+    def test_no_match(self, make_agent):
+        """Search with no matching term should return empty."""
+        agent = make_agent(agent_id="gg77", name="test-agent")
+        agent.output_lines = ["foo", "bar", "baz"]
+        results = self._search([agent], "zzzzz")
+        assert len(results) == 0
+
+
 class TestCostBudget:
     def test_default_cost_budget_zero(self):
         """Default cost budget is 0 (no limit)."""

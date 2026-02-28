@@ -6595,6 +6595,72 @@ async def list_conflicts(request: web.Request) -> web.Response:
     })
 
 
+# ── Global Search endpoint ──
+
+async def global_search(request: web.Request) -> web.Response:
+    """GET /api/search?q=term&agent_id=optional — search across all agent outputs."""
+    manager: AgentManager = request.app["agent_manager"]
+    query = request.query.get("q", "").strip()
+    if not query:
+        return web.json_response({"error": "q parameter required"}, status=400)
+    if len(query) > 500:
+        return web.json_response({"error": "query too long (max 500)"}, status=400)
+
+    agent_filter = request.query.get("agent_id", "")
+    try:
+        max_results = min(int(request.query.get("limit", 100)), 500)
+    except ValueError:
+        max_results = 100
+    case_sensitive = request.query.get("case", "false").lower() == "true"
+    use_regex = request.query.get("regex", "false").lower() == "true"
+
+    results: list[dict] = []
+    pattern = None
+    if use_regex:
+        try:
+            flags = 0 if case_sensitive else re.IGNORECASE
+            pattern = re.compile(query, flags)
+        except re.error:
+            return web.json_response({"error": "invalid regex"}, status=400)
+
+    for agent in list(manager.agents.values()):
+        if agent_filter and agent.id != agent_filter:
+            continue
+        lines = agent.output_lines or []
+        for i, line in enumerate(lines):
+            if len(results) >= max_results:
+                break
+            matched = False
+            if pattern:
+                matched = bool(pattern.search(line))
+            elif case_sensitive:
+                matched = query in line
+            else:
+                matched = query.lower() in line.lower()
+            if matched:
+                # Include context: 1 line before and after
+                ctx_before = lines[i - 1] if i > 0 else ""
+                ctx_after = lines[i + 1] if i + 1 < len(lines) else ""
+                results.append({
+                    "agent_id": agent.id,
+                    "agent_name": agent.name,
+                    "agent_role": agent.role,
+                    "line_index": i,
+                    "line": line[:500],
+                    "context_before": ctx_before[:500],
+                    "context_after": ctx_after[:500],
+                })
+        if len(results) >= max_results:
+            break
+
+    return web.json_response({
+        "query": query,
+        "results": results,
+        "total": len(results),
+        "truncated": len(results) >= max_results,
+    })
+
+
 # ── Activity Events endpoint ──
 
 async def list_events(request: web.Request) -> web.Response:
@@ -7633,6 +7699,7 @@ def create_app(config: Config) -> web.Application:
     app.router.add_get("/api/history/{id}", get_history_item)
     app.router.add_get("/api/events", list_events)
     app.router.add_get("/api/conflicts", list_conflicts)
+    app.router.add_get("/api/search", global_search)
 
     # REST API — Presets
     app.router.add_get("/api/presets", list_presets)

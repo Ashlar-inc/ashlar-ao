@@ -3289,6 +3289,31 @@ body {
 .eventlog-page-btn:disabled { opacity: 0.3; cursor: default; }
 .eventlog-empty { text-align: center; padding: 40px 20px; color: var(--text-tertiary); font-size: 13px; }
 
+/* ── Global Search Panel ── */
+.gsearch-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 1100; display: none; align-items: flex-start; justify-content: center; padding-top: 10vh; }
+.gsearch-overlay.active { display: flex; }
+.gsearch-panel { background: var(--bg-surface); width: 90vw; max-width: 680px; max-height: 75vh; border-radius: 16px; display: flex; flex-direction: column; box-shadow: 0 32px 80px rgba(0,0,0,0.6); animation: modalScaleIn 0.2s cubic-bezier(0.22, 1, 0.36, 1); overflow: hidden; }
+.gsearch-input-row { display: flex; gap: 8px; padding: 16px 20px; border-bottom: 1px solid var(--border-subtle); align-items: center; }
+.gsearch-input { flex: 1; background: var(--bg-input); border: 1px solid var(--border-subtle); color: var(--text-primary); border-radius: 8px; padding: 10px 14px; font-size: 14px; outline: none; font-family: var(--font-sans); }
+.gsearch-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-muted); }
+.gsearch-input::placeholder { color: var(--text-tertiary); }
+.gsearch-opts { display: flex; gap: 6px; padding: 8px 20px; border-bottom: 1px solid var(--border-subtle); align-items: center; }
+.gsearch-opt-btn { background: var(--bg-elevated); border: 1px solid var(--border-subtle); color: var(--text-secondary); padding: 3px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; font-family: var(--font-mono); transition: var(--transition); }
+.gsearch-opt-btn.active { background: var(--accent-subtle); border-color: var(--accent); color: var(--accent); }
+.gsearch-opt-btn:hover { border-color: var(--text-tertiary); }
+.gsearch-agent-filter { background: var(--bg-input); border: 1px solid var(--border-subtle); color: var(--text-primary); border-radius: 6px; padding: 3px 8px; font-size: 11px; outline: none; }
+.gsearch-body { overflow-y: auto; padding: 0; flex: 1; }
+.gsearch-result { padding: 10px 20px; border-bottom: 1px solid var(--border-subtle); cursor: pointer; transition: background 0.15s; }
+.gsearch-result:hover { background: var(--bg-elevated); }
+.gsearch-result-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.gsearch-result-agent { font-size: 11px; font-weight: 700; color: var(--accent); font-family: var(--font-mono); }
+.gsearch-result-line-num { font-size: 10px; color: var(--text-tertiary); font-family: var(--font-mono); }
+.gsearch-result-context { font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+.gsearch-result-match { font-size: 12px; color: var(--text-primary); font-family: var(--font-mono); line-height: 1.5; white-space: pre-wrap; word-break: break-all; background: rgba(99,102,241,0.1); padding: 2px 0; border-radius: 2px; }
+.gsearch-result-match mark { background: rgba(234,179,8,0.3); color: var(--text-primary); border-radius: 2px; padding: 0 1px; }
+.gsearch-empty { text-align: center; padding: 40px 20px; color: var(--text-tertiary); font-size: 13px; }
+.gsearch-status { padding: 8px 20px; font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); border-top: 1px solid var(--border-subtle); text-align: center; }
+
 .pipeline-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-subtle); }
 .pipeline-status { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
 .pipeline-graph { overflow: auto; flex: 1; padding: 24px; }
@@ -3843,6 +3868,7 @@ body {
         <button class="btn btn-secondary btn-sm" onclick="openAnalytics()" title="Fleet Analytics"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg> Analytics</button>
         <button class="btn btn-secondary btn-sm" onclick="openConflicts()" title="File Conflicts"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg> Conflicts</button>
         <button class="btn btn-secondary btn-sm" onclick="openEventLog()" title="Event Log"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> Events</button>
+        <button class="btn btn-secondary btn-sm" onclick="openGlobalSearch()" title="Search All Outputs (Cmd+Shift+F)"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Search All</button>
     </div>
     <table class="agent-table" id="agentTable">
         <thead><tr>
@@ -4554,6 +4580,29 @@ body {
             <span style="font-size:11px;color:var(--text-tertiary)" id="eventlogPageInfo">Page 1</span>
             <button class="eventlog-page-btn" id="eventlogNext" onclick="eventlogPage(1)">Next</button>
         </div>
+    </div>
+</div>
+
+<!-- ── Global Search Panel ── -->
+<div class="gsearch-overlay" id="gsearchOverlay" onclick="if(event.target===this)closeGlobalSearch()">
+    <div class="gsearch-panel">
+        <div class="gsearch-input-row">
+            <input class="gsearch-input" id="gsearchInput" placeholder="Search across all agent outputs..." autocomplete="off" onkeydown="if(event.key==='Enter')runGlobalSearch()">
+            <button class="btn btn-primary btn-sm" onclick="runGlobalSearch()">Search</button>
+            <button class="btn btn-secondary btn-sm" onclick="closeGlobalSearch()">Close</button>
+        </div>
+        <div class="gsearch-opts">
+            <button class="gsearch-opt-btn" id="gsearchRegex" onclick="this.classList.toggle('active')" title="Use regex">.*</button>
+            <button class="gsearch-opt-btn" id="gsearchCase" onclick="this.classList.toggle('active')" title="Case sensitive">Aa</button>
+            <select class="gsearch-agent-filter" id="gsearchAgentFilter">
+                <option value="">All Agents</option>
+            </select>
+            <span style="font-size:11px;color:var(--text-tertiary)" id="gsearchCount"></span>
+        </div>
+        <div class="gsearch-body" id="gsearchBody">
+            <div class="gsearch-empty">Enter a search term and press Enter</div>
+        </div>
+        <div class="gsearch-status" id="gsearchStatus" style="display:none"></div>
     </div>
 </div>
 
@@ -6410,7 +6459,7 @@ function openDeepView(agentId) {
             }
             terminal.appendChild(frag);
             scrollDeepToBottom();
-        }).catch(() => {});
+        }).catch(e => console.warn('Deep view refresh failed:', e.message));
     }
     scrollDeepToBottom();
 
@@ -7692,6 +7741,7 @@ document.addEventListener('keydown', (e) => {
         if (document.getElementById('analyticsOverlay').classList.contains('active')) { closeAnalytics(); return; }
         if (document.getElementById('conflictsOverlay').classList.contains('active')) { closeConflicts(); return; }
         if (document.getElementById('eventlogOverlay').classList.contains('active')) { closeEventLog(); return; }
+        if (document.getElementById('gsearchOverlay').classList.contains('active')) { closeGlobalSearch(); return; }
         if (document.getElementById('pipelineOverlay').classList.contains('active')) { closePipeline(); return; }
         if (document.getElementById('handoffOverlay').classList.contains('active')) { closeHandoff(); return; }
         return;
@@ -7722,6 +7772,9 @@ document.addEventListener('keydown', (e) => {
 
     // Cmd+E — extensions
     if (e.metaKey && e.key === 'e' && !e.shiftKey) { e.preventDefault(); toggleExtensionsPanel(); return; }
+
+    // Cmd+Shift+F — global search across all agents
+    if (e.metaKey && e.shiftKey && e.key === 'F') { e.preventDefault(); openGlobalSearch(); return; }
 
     // Cmd+F — search in deep view
     if (e.metaKey && e.key === 'f' && state.view === 'deep') { e.preventDefault(); openDeepSearch(); return; }
@@ -10300,7 +10353,7 @@ function renderConflicts(data) {
             html += `</div>`;
             html += `<div class="conflict-actions">`;
             for (const agent of c.agents) {
-                html += `<button class="conflict-action-btn danger" onclick="pauseAgent('${agent.id}')">Pause ${escapeHtml(agent.name)}</button>`;
+                html += `<button class="conflict-action-btn danger" onclick="pauseResumeAgent('${agent.id}')">Pause ${escapeHtml(agent.name)}</button>`;
             }
             html += `</div>`;
             html += `</div>`;
@@ -10412,6 +10465,104 @@ function renderEventLog(data) {
         html += `</div>`;
     }
     body.innerHTML = html;
+}
+
+// ── Global Search ──
+
+function openGlobalSearch() {
+    const overlay = document.getElementById('gsearchOverlay');
+    overlay.classList.add('active');
+    // Populate agent filter dropdown
+    const select = document.getElementById('gsearchAgentFilter');
+    const current = select.value;
+    select.innerHTML = '<option value="">All Agents</option>';
+    for (const [id, agent] of state.agents) {
+        select.innerHTML += `<option value="${id}">${escapeHtml(agent.name)}</option>`;
+    }
+    select.value = current;
+    setTimeout(() => document.getElementById('gsearchInput').focus(), 100);
+}
+
+function closeGlobalSearch() {
+    document.getElementById('gsearchOverlay').classList.remove('active');
+}
+
+async function runGlobalSearch() {
+    const query = document.getElementById('gsearchInput').value.trim();
+    if (!query) return;
+    const body = document.getElementById('gsearchBody');
+    const statusEl = document.getElementById('gsearchStatus');
+    const countEl = document.getElementById('gsearchCount');
+    body.innerHTML = '<div class="gsearch-empty">Searching...</div>';
+
+    const useRegex = document.getElementById('gsearchRegex').classList.contains('active');
+    const caseSensitive = document.getElementById('gsearchCase').classList.contains('active');
+    const agentFilter = document.getElementById('gsearchAgentFilter').value;
+
+    const params = new URLSearchParams({ q: query, limit: '200' });
+    if (useRegex) params.set('regex', 'true');
+    if (caseSensitive) params.set('case', 'true');
+    if (agentFilter) params.set('agent_id', agentFilter);
+
+    try {
+        const resp = await apiFetch(`/api/search?${params}`);
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            body.innerHTML = `<div class="gsearch-empty">${escapeHtml(err.error || 'Search failed')}</div>`;
+            return;
+        }
+        const data = await resp.json();
+        const results = data.results || [];
+        countEl.textContent = `${results.length} result${results.length !== 1 ? 's' : ''}${data.truncated ? '+' : ''}`;
+
+        if (!results.length) {
+            body.innerHTML = '<div class="gsearch-empty">No results found</div>';
+            statusEl.style.display = 'none';
+            return;
+        }
+
+        let html = '';
+        for (const r of results) {
+            const highlightedLine = highlightMatch(escapeHtml(r.line), query, useRegex, caseSensitive);
+            html += `<div class="gsearch-result" onclick="closeGlobalSearch();openDeepView('${r.agent_id}')">`;
+            html += `<div class="gsearch-result-header">`;
+            html += `<span class="gsearch-result-agent">${escapeHtml(r.agent_name)}</span>`;
+            html += `<span class="gsearch-result-line-num">line ${r.line_index + 1}</span>`;
+            html += `</div>`;
+            if (r.context_before) {
+                html += `<div class="gsearch-result-context">${escapeHtml(r.context_before)}</div>`;
+            }
+            html += `<div class="gsearch-result-match">${highlightedLine}</div>`;
+            if (r.context_after) {
+                html += `<div class="gsearch-result-context">${escapeHtml(r.context_after)}</div>`;
+            }
+            html += `</div>`;
+        }
+        body.innerHTML = html;
+
+        if (data.truncated) {
+            statusEl.textContent = `Results truncated to ${results.length}. Refine your search for more specific results.`;
+            statusEl.style.display = '';
+        } else {
+            statusEl.style.display = 'none';
+        }
+    } catch (e) {
+        body.innerHTML = `<div class="gsearch-empty">Search error: ${escapeHtml(e.message)}</div>`;
+    }
+}
+
+function highlightMatch(escapedLine, query, isRegex, caseSensitive) {
+    try {
+        const flags = caseSensitive ? 'g' : 'gi';
+        const pattern = isRegex ? new RegExp(query, flags) : new RegExp(escapeRegex(query), flags);
+        return escapedLine.replace(pattern, m => `<mark>${m}</mark>`);
+    } catch {
+        return escapedLine;
+    }
+}
+
+function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 async function loadSessionHistory() {
@@ -11467,6 +11618,7 @@ PALETTE_ACTIONS.push(
     { icon: 'bar-chart-3', label: 'Fleet Analytics', shortcut: '', action: () => { closePalette(); openAnalytics(); }, section: 'view' },
     { icon: 'alert-triangle', label: 'File Conflicts', shortcut: '', action: () => { closePalette(); openConflicts(); }, section: 'view' },
     { icon: 'file-text', label: 'Event Log', shortcut: '', action: () => { closePalette(); openEventLog(); }, section: 'view' },
+    { icon: 'search', label: 'Search All Outputs', shortcut: '⌘⇧F', action: () => { closePalette(); openGlobalSearch(); }, section: 'view' },
     { icon: 'table', label: 'Toggle Table View', shortcut: '', action: () => { closePalette(); setViewMode(state.viewMode === 'table' ? 'grid' : 'table'); }, section: 'view' },
     { icon: 'save', label: 'Manage Presets', shortcut: '', action: () => { closePalette(); openSettings(); }, section: 'config' },
     { icon: 'file-text', label: 'View Scratchpad', shortcut: '', action: () => { closePalette(); if (state.focusedAgentId) { switchDeepTab('scratchpad'); } else { showToast('Open an agent first to view its scratchpad', 'info'); } }, section: 'view' },
