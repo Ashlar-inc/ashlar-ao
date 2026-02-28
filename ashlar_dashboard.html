@@ -2902,6 +2902,29 @@ body {
     opacity: 0.7;
 }
 .dedup-marker:hover { opacity: 1; background: rgba(255,255,255,0.06); }
+.tool-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 12px;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-subtle);
+}
+.tool-filter-label { font-size: 10px; color: var(--text-tertiary); margin-right: 4px; }
+.tool-filter-chip {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.tool-filter-chip:hover { background: var(--bg-elevated); border-color: var(--border-default); }
+.tool-filter-chip.active { background: var(--accent-subtle); color: var(--accent); border-color: var(--accent); }
+.terminal-line.tool-dimmed { opacity: 0.15; }
 .terminal-line.truncated { position: relative; }
 .terminal-line.truncated .trunc-fade { display: inline; }
 .terminal-line.truncated .trunc-full { display: none; }
@@ -4120,6 +4143,18 @@ body {
     opacity: 0.6;
 }
 
+/* ── Card Connection Dot ── */
+.card-conn-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    flex-shrink: 0;
+    margin-right: -2px;
+}
+.card-conn-dot.stale { background: var(--warning); }
+.card-conn-dot.dead { background: var(--danger); }
+
 /* ── Card Status Duration ── */
 .card-status-duration {
     font-size: 9px;
@@ -4621,6 +4656,7 @@ body {
             <option value="age">Age</option>
             <option value="output_rate">Output Rate</option>
             <option value="context">Context %</option>
+            <option value="errors">Errors</option>
             <option value="manual">Manual</option>
         </select>
         <div class="view-toggle">
@@ -4628,6 +4664,7 @@ body {
             <button class="view-toggle-btn" id="viewCompactBtn" onclick="setViewMode('compact')" title="Compact view"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
             <button class="view-toggle-btn" id="viewTableBtn" onclick="setViewMode('table')" title="Table view"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg></button>
         </div>
+        <button class="btn btn-secondary btn-sm" id="pauseAllBtn" onclick="togglePauseAll()" title="Pause/Resume all agents">⏸ Pause All</button>
         <button class="btn btn-secondary btn-sm" onclick="openTimeline()" title="Activity Timeline (Cmd+T)"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12H3"/><path d="M16 6H3"/><path d="M12 18H3"/><path d="m16 12 5 3-5 3v-6Z"/></svg> Timeline</button>
         <button class="btn btn-secondary btn-sm" onclick="openAnalytics()" title="Fleet Analytics"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg> Analytics</button>
         <button class="btn btn-secondary btn-sm" onclick="openFleetTimeline()" title="Fleet Timeline"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="10" x2="14" y2="10"/><line x1="4" y1="14" x2="18" y2="14"/><line x1="4" y1="18" x2="10" y2="18"/></svg> Timeline</button>
@@ -4873,6 +4910,7 @@ body {
         <button class="terminal-toolbar-btn" onclick="openGoToLine()" title="Go to line (Cmd+G)">⤓ Go to line</button>
         <button class="terminal-toolbar-btn" id="toolbarTimestamps" onclick="toggleTimestamps()" title="Show line timestamps">⏱ Timestamps</button>
         <button class="terminal-toolbar-btn" id="toolbarDedup" onclick="toggleDedup()" title="Collapse repeated and empty lines">⊞ Dedup</button>
+        <button class="terminal-toolbar-btn" id="toolbarToolFilter" onclick="toggleToolFilterBar()" title="Filter by tool type">⚙ Filter</button>
         <div class="goto-line-popover" id="gotoLinePopover">
             <label>Line:</label>
             <input type="number" id="gotoLineInput" min="1" placeholder="Line #" />
@@ -4880,6 +4918,17 @@ body {
         <div class="toolbar-spacer"></div>
         <div class="follow-indicator" id="followIndicator" style="display:none">FOLLOWING</div>
         <span class="scroll-speed-indicator" id="scrollSpeedIndicator" style="display:none"></span>
+    </div>
+    <div class="tool-filter-bar" id="toolFilterBar" style="display:none">
+        <span class="tool-filter-label">Filter:</span>
+        <button class="tool-filter-chip active" data-tool="all" onclick="setToolFilter('all')">All</button>
+        <button class="tool-filter-chip" data-tool="read" onclick="setToolFilter('read')">Read</button>
+        <button class="tool-filter-chip" data-tool="edit" onclick="setToolFilter('edit')">Edit</button>
+        <button class="tool-filter-chip" data-tool="write" onclick="setToolFilter('write')">Write</button>
+        <button class="tool-filter-chip" data-tool="bash" onclick="setToolFilter('bash')">Bash</button>
+        <button class="tool-filter-chip" data-tool="grep" onclick="setToolFilter('grep')">Grep</button>
+        <button class="tool-filter-chip" data-tool="error" onclick="setToolFilter('error')">Errors</button>
+        <button class="tool-filter-chip" data-tool="thinking" onclick="setToolFilter('thinking')">Thinking</button>
     </div>
     <div class="deep-tab-bar" id="deepTabBar">
         <button class="deep-tab active" id="deepTabTerminal" onclick="switchDeepTab('terminal')">Terminal</button>
@@ -7315,6 +7364,7 @@ function createAgentCard(agent) {
         <div class="card-select" data-agent-id="${agent.id}" onclick="toggleAgentSelection('${agent.id}', event)"></div>
         <div class="card-header">
             <span class="card-icon"></span>
+            <span class="card-conn-dot" title="Connected"></span>
             <span class="card-name"></span>
             <span class="plan-mode-indicator">PLAN</span>
             <span class="card-health" title="Health" role="img" aria-label="Agent health"></span>
@@ -7633,6 +7683,23 @@ function updateAgentCard(card, agent) {
         wfDot.style.display = 'none';
         card.style.borderRightWidth = '';
         card.style.borderRightColor = '';
+    }
+
+    // Connection status dot
+    const connDot = card.querySelector('.card-conn-dot');
+    if (connDot) {
+        const isActive = ['working', 'planning', 'reading', 'waiting', 'spawning'].includes(agent.status);
+        const updatedAgo = agent.updated_at ? (Date.now() - new Date(agent.updated_at).getTime()) / 1000 : 999;
+        if (agent.status === 'error' || updatedAgo > 120) {
+            connDot.className = 'card-conn-dot dead';
+            connDot.title = 'Disconnected / Error';
+        } else if (updatedAgo > 30 && !isActive) {
+            connDot.className = 'card-conn-dot stale';
+            connDot.title = 'Stale (no updates)';
+        } else {
+            connDot.className = 'card-conn-dot';
+            connDot.title = 'Connected';
+        }
     }
 
     // Health score indicator
@@ -11665,6 +11732,60 @@ function applyTailMode() {
         terminal.prepend(indicator);
     }
     indicator.textContent = `⊟ Tail mode — showing last ${TAIL_LINES} of ${allLines.length} lines`;
+}
+
+// ── Tool Type Filter ──
+
+let _toolFilter = 'all';
+function toggleToolFilterBar() {
+    const bar = document.getElementById('toolFilterBar');
+    const btn = document.getElementById('toolbarToolFilter');
+    const visible = bar.style.display !== 'none';
+    bar.style.display = visible ? 'none' : 'flex';
+    btn.classList.toggle('active', !visible);
+    if (visible) { setToolFilter('all'); }
+}
+
+const _toolFilterPatterns = {
+    read: /\bRead\s*\(/i,
+    edit: /\bEdit\s*\(/i,
+    write: /\bWrite\s*\(/i,
+    bash: /\bBash\s*\(/i,
+    grep: /\bGrep\s*\(/i,
+    error: /\b(error|exception|traceback|FAIL(ED)?|ERROR|panic|fatal)\b/i,
+    thinking: /\b(thinking|<thinking>|Thinking\.\.\.)\b/i,
+};
+
+function setToolFilter(tool) {
+    _toolFilter = tool;
+    document.querySelectorAll('.tool-filter-chip').forEach(c => {
+        c.classList.toggle('active', c.dataset.tool === tool);
+    });
+    applyToolFilter();
+}
+
+function applyToolFilter() {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const lines = terminal.querySelectorAll('.terminal-line');
+    if (_toolFilter === 'all') {
+        lines.forEach(l => l.classList.remove('tool-dimmed'));
+        return;
+    }
+    const pattern = _toolFilterPatterns[_toolFilter];
+    if (!pattern) return;
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    let matchCount = 0;
+    lines.forEach(l => {
+        const text = l.textContent.replace(ansiRe, '');
+        if (pattern.test(text)) {
+            l.classList.remove('tool-dimmed');
+            matchCount++;
+        } else {
+            l.classList.add('tool-dimmed');
+        }
+    });
+    showToast(`Filter: ${matchCount} matching lines`, 'info');
 }
 
 // ── Timestamps Toggle ──
@@ -16211,6 +16332,12 @@ renderAgentGrid = function() {
             }
             case 'context':
                 return (agB.context_pct || 0) - (agA.context_pct || 0);
+            case 'errors': {
+                const errA = _countAgentErrors(agA);
+                const errB = _countAgentErrors(agB);
+                if (errA !== errB) return errB - errA;
+                return (agB.updated_at || '').localeCompare(agA.updated_at || '');
+            }
             case 'manual': {
                 const order = state.cardOrder;
                 const ia = order.indexOf(a[0]);
@@ -16228,6 +16355,44 @@ renderAgentGrid = function() {
     state.agents = new Map(entries);
     _origRenderGrid();
 };
+
+let _allPaused = false;
+async function togglePauseAll() {
+    const agents = [...state.agents.values()];
+    const btn = document.getElementById('pauseAllBtn');
+    if (_allPaused) {
+        // Resume all paused agents
+        const paused = agents.filter(a => a.status === 'paused');
+        if (paused.length === 0) { showToast('No paused agents to resume', 'info'); return; }
+        for (const a of paused) {
+            try { await fetch(`/api/agents/${a.id}/resume`, { method: 'POST' }); } catch (e) {}
+        }
+        _allPaused = false;
+        btn.textContent = '⏸ Pause All';
+        showToast(`Resumed ${paused.length} agents`, 'success');
+    } else {
+        // Pause all active agents
+        const active = agents.filter(a => ['working', 'planning', 'reading', 'idle'].includes(a.status));
+        if (active.length === 0) { showToast('No active agents to pause', 'info'); return; }
+        for (const a of active) {
+            try { await fetch(`/api/agents/${a.id}/pause`, { method: 'POST' }); } catch (e) {}
+        }
+        _allPaused = true;
+        btn.textContent = '▶ Resume All';
+        showToast(`Paused ${active.length} agents`, 'warning');
+    }
+}
+
+function _countAgentErrors(agent) {
+    if (agent.error_count) return agent.error_count;
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    let count = 0;
+    for (const l of lines) {
+        if (/\b(error|exception|traceback|FAIL(ED)?|ERROR|panic|fatal)\b/i.test(l.replace(ansiRe, ''))) count++;
+    }
+    return count;
+}
 
 function setCardSort(mode) {
     state.cardSort = mode;
