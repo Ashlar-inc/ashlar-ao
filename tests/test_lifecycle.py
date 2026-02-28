@@ -2062,3 +2062,22 @@ class TestRestartWithTask:
             agent.task = new_task
         assert saved_task == "Original task"
         assert agent.task == "Original task"
+
+
+class TestHistoricalAnalytics:
+    """Tests for historical analytics database method."""
+
+    def test_historical_analytics_no_db(self):
+        """With no DB, should return empty structure."""
+        db = ashlar_server.Database.__new__(ashlar_server.Database)
+        db._db = None
+        result = asyncio.run(db.get_historical_analytics())
+        assert result["total_historical"] == 0
+
+    def test_historical_analytics_returns_dict(self):
+        """Return value should be a dict with expected keys."""
+        db = ashlar_server.Database.__new__(ashlar_server.Database)
+        db._db = None
+        result = asyncio.run(db.get_historical_analytics())
+        assert isinstance(result, dict)
+        assert "total_historical" in result

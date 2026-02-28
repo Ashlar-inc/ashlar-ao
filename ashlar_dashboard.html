@@ -1063,6 +1063,20 @@ body {
     font-family: var(--font-sans);
 }
 .recent-task-chip:hover { border-color: var(--accent); color: var(--accent); }
+#taskSuggestions { margin-top: 6px; }
+.task-suggestion {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+    background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+    border-radius: 6px; margin-bottom: 4px; cursor: pointer; transition: all 0.15s;
+    font-size: 11px; color: var(--text-secondary);
+}
+.task-suggestion:hover { border-color: var(--accent); background: var(--bg-overlay); }
+.task-suggestion-role { font-weight: 600; color: var(--text-primary); min-width: 60px; }
+.task-suggestion-task { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-suggestion-outcome { font-family: var(--font-mono); font-size: 9px; padding: 2px 6px; border-radius: 4px; }
+.task-suggestion-outcome.success { background: rgba(34,197,94,0.15); color: var(--success); }
+.task-suggestion-outcome.failure { background: rgba(239,68,68,0.15); color: var(--danger); }
+.task-suggestions-label { font-size: 9px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; margin-bottom: 4px; }
 .form-textarea { resize: vertical; min-height: 80px; }
 .form-input::placeholder, .form-textarea::placeholder { color: var(--text-tertiary); }
 
@@ -4077,8 +4091,9 @@ body {
         <div class="form-row">
             <div class="form-group">
                 <label class="form-label">Task</label>
-                <textarea class="form-textarea" id="spawnTask" placeholder="What should this agent work on?"></textarea>
+                <textarea class="form-textarea" id="spawnTask" placeholder="What should this agent work on?" oninput="debouncedTaskSuggestions()"></textarea>
                 <div class="recent-tasks" id="recentTasksList" style="display:none"></div>
+                <div id="taskSuggestions" style="display:none"></div>
             </div>
         </div>
 
@@ -6515,6 +6530,52 @@ function applyTemplate(templateKey) {
     document.getElementById('spawnTask').value = tmpl.task;
     document.getElementById('spawnTask').placeholder = TASK_PLACEHOLDERS[tmpl.role] || TASK_PLACEHOLDERS.general;
     showToast(`Template applied: ${templateKey}`, 'info');
+}
+
+let _taskSuggestTimer = null;
+function debouncedTaskSuggestions() {
+    clearTimeout(_taskSuggestTimer);
+    _taskSuggestTimer = setTimeout(loadTaskSuggestions, 500);
+}
+
+async function loadTaskSuggestions() {
+    const task = document.getElementById('spawnTask')?.value?.trim();
+    const container = document.getElementById('taskSuggestions');
+    if (!container) return;
+    if (!task || task.length < 8) { container.style.display = 'none'; return; }
+    try {
+        const resp = await apiFetch(`/api/agents/suggestions?task=${encodeURIComponent(task)}`);
+        if (!resp.ok) { container.style.display = 'none'; return; }
+        const data = await resp.json();
+        const suggestions = data.suggestions || [];
+        if (suggestions.length === 0) { container.style.display = 'none'; return; }
+        let html = '<div class="task-suggestions-label">Similar Past Tasks</div>';
+        for (const s of suggestions) {
+            const roleName = ROLE_INFO[s.role]?.name || s.role;
+            const shortTask = (s.task || '').slice(0, 80);
+            const outcome = s.success ? 'success' : 'failure';
+            const label = s.success ? 'OK' : 'ERR';
+            const dur = s.duration_sec ? (s.duration_sec >= 3600 ? `${(s.duration_sec / 3600).toFixed(1)}h` : `${Math.round(s.duration_sec / 60)}m`) : '';
+            const cost = s.cost_usd > 0 ? ` · $${s.cost_usd.toFixed(2)}` : '';
+            html += `<div class="task-suggestion" onclick="applySuggestion('${escapeHtml(s.role)}', '${escapeHtml(s.task?.replace(/'/g, "\\'") || '')}')">`;
+            html += `<span class="task-suggestion-role">${escapeHtml(roleName)}</span>`;
+            html += `<span class="task-suggestion-task" title="${escapeHtml(s.task || '')}">${escapeHtml(shortTask)}</span>`;
+            html += `<span class="task-suggestion-outcome ${outcome}">${label}${dur ? ' · ' + dur : ''}${cost}</span>`;
+            html += `</div>`;
+        }
+        container.innerHTML = html;
+        container.style.display = 'block';
+    } catch { container.style.display = 'none'; }
+}
+
+function applySuggestion(role, task) {
+    state.selectedRole = role;
+    document.querySelectorAll('#roleGrid .role-option').forEach(o => {
+        o.classList.toggle('selected', o.dataset.role === role);
+    });
+    document.getElementById('spawnTask').value = task;
+    document.getElementById('taskSuggestions').style.display = 'none';
+    showToast('Applied suggestion', 'info');
 }
 
 async function spawnFleet(presetKey) {
@@ -10844,6 +10905,58 @@ function renderAnalytics(data) {
             const shortPath = path.split('/').slice(-2).join('/');
             const pct = Math.max(2, (count / maxFile) * 100);
             html += `<div class="analytics-bar-row"><div class="analytics-bar-label" title="${escapeHtml(path)}">${escapeHtml(shortPath)}</div><div class="analytics-bar-track"><div class="analytics-bar-fill" style="width:${pct}%;background:var(--success)"></div></div><div class="analytics-bar-count">${count}</div></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Historical analytics — success rates by role
+    const hist = data.historical || {};
+    const srByRole = Object.entries(hist.success_rate_by_role || {});
+    if (srByRole.length > 0) {
+        html += `<div class="analytics-section"><div class="analytics-section-title">Historical Success Rate by Role</div><div class="analytics-bar-chart">`;
+        for (const [role, stats] of srByRole.sort((a, b) => b[1].total - a[1].total)) {
+            const pct = stats.success_rate;
+            const barColor = pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--orange)' : 'var(--danger)';
+            const roleName = ROLE_INFO[role]?.name || role;
+            const avgDur = stats.avg_duration_sec >= 3600 ? `${(stats.avg_duration_sec / 3600).toFixed(1)}h` : `${Math.round(stats.avg_duration_sec / 60)}m`;
+            html += `<div class="analytics-bar-row"><div class="analytics-bar-label" title="${roleName}: ${stats.successes}/${stats.total} succeeded, avg ${avgDur}, $${stats.total_cost_usd}">${roleName}</div><div class="analytics-bar-track"><div class="analytics-bar-fill" style="width:${pct}%;background:${barColor}"></div></div><div class="analytics-bar-count">${pct}%</div></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Success rates by backend
+    const srByBackend = Object.entries(hist.success_rate_by_backend || {});
+    if (srByBackend.length > 0) {
+        html += `<div class="analytics-section"><div class="analytics-section-title">Historical Success Rate by Backend</div><div class="analytics-bar-chart">`;
+        for (const [backend, stats] of srByBackend.sort((a, b) => b[1].total - a[1].total)) {
+            const pct = stats.success_rate;
+            const barColor = pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--orange)' : 'var(--danger)';
+            const avgDur = stats.avg_duration_sec >= 3600 ? `${(stats.avg_duration_sec / 3600).toFixed(1)}h` : `${Math.round(stats.avg_duration_sec / 60)}m`;
+            html += `<div class="analytics-bar-row"><div class="analytics-bar-label" title="${backend}: ${stats.successes}/${stats.total}, avg ${avgDur}, $${stats.total_cost_usd}">${backend}</div><div class="analytics-bar-track"><div class="analytics-bar-fill" style="width:${pct}%;background:${barColor}"></div></div><div class="analytics-bar-count">${pct}%</div></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Cost breakdown by role (recent 50 agents)
+    const costByRole = Object.entries(hist.recent_cost_by_role || {});
+    if (costByRole.length > 0) {
+        const maxCost = Math.max(...costByRole.map(e => e[1]));
+        html += `<div class="analytics-section"><div class="analytics-section-title">Recent Cost by Role (last 50 agents)</div><div class="analytics-bar-chart">`;
+        for (const [role, cost] of costByRole.sort((a, b) => b[1] - a[1])) {
+            const pct = maxCost > 0 ? Math.max(2, (cost / maxCost) * 100) : 2;
+            const roleName = ROLE_INFO[role]?.name || role;
+            html += `<div class="analytics-bar-row"><div class="analytics-bar-label">${roleName}</div><div class="analytics-bar-track"><div class="analytics-bar-fill" style="width:${pct}%;background:var(--orange)"></div></div><div class="analytics-bar-count">$${cost.toFixed(2)}</div></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Error patterns
+    const errPatterns = Object.entries(hist.error_patterns || {});
+    if (errPatterns.length > 0) {
+        html += `<div class="analytics-section"><div class="analytics-section-title">Error Patterns</div><div class="analytics-dist-row">`;
+        for (const [eventType, count] of errPatterns.slice(0, 8)) {
+            const label = eventType.replace(/_/g, ' ').replace('agent ', '');
+            html += `<div class="analytics-dist-chip"><div class="analytics-dist-dot" style="background:var(--danger)"></div><span class="analytics-dist-name">${escapeHtml(label)}</span><span class="analytics-dist-val">${count}</span></div>`;
         }
         html += `</div></div>`;
     }

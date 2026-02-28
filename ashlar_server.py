@@ -4080,6 +4080,125 @@ class Database:
             row = await cur.fetchone()
             return dict(row) if row else None
 
+    async def get_historical_analytics(self) -> dict:
+        """Compute historical success rates, cost breakdowns, and performance metrics."""
+        if not self._db:
+            return {"success_rate": {}, "cost_by_role": {}, "cost_by_backend": {}, "performance_by_role": {}, "error_patterns": {}, "total_historical": 0}
+
+        result: dict = {}
+
+        # Success rate by role
+        async with self._db.execute(
+            """SELECT role,
+                      COUNT(*) as total,
+                      SUM(CASE WHEN status NOT IN ('error') THEN 1 ELSE 0 END) as successes,
+                      AVG(duration_sec) as avg_duration,
+                      SUM(estimated_cost_usd) as total_cost
+               FROM agents_history GROUP BY role"""
+        ) as cur:
+            rows = await cur.fetchall()
+            by_role = {}
+            for r in rows:
+                role = r["role"] or "unknown"
+                total = r["total"] or 0
+                successes = r["successes"] or 0
+                by_role[role] = {
+                    "total": total,
+                    "successes": successes,
+                    "success_rate": round(successes / total * 100, 1) if total > 0 else 0,
+                    "avg_duration_sec": round(r["avg_duration"] or 0),
+                    "total_cost_usd": round(r["total_cost"] or 0, 4),
+                }
+            result["success_rate_by_role"] = by_role
+
+        # Success rate by backend
+        async with self._db.execute(
+            """SELECT backend,
+                      COUNT(*) as total,
+                      SUM(CASE WHEN status NOT IN ('error') THEN 1 ELSE 0 END) as successes,
+                      AVG(duration_sec) as avg_duration,
+                      SUM(estimated_cost_usd) as total_cost
+               FROM agents_history GROUP BY backend"""
+        ) as cur:
+            rows = await cur.fetchall()
+            by_backend = {}
+            for r in rows:
+                backend = r["backend"] or "unknown"
+                total = r["total"] or 0
+                successes = r["successes"] or 0
+                by_backend[backend] = {
+                    "total": total,
+                    "successes": successes,
+                    "success_rate": round(successes / total * 100, 1) if total > 0 else 0,
+                    "avg_duration_sec": round(r["avg_duration"] or 0),
+                    "total_cost_usd": round(r["total_cost"] or 0, 4),
+                }
+            result["success_rate_by_backend"] = by_backend
+
+        # Recent error patterns from activity_events
+        async with self._db.execute(
+            """SELECT event_type, COUNT(*) as cnt
+               FROM activity_events
+               WHERE event_type LIKE '%error%' OR event_type LIKE '%fail%'
+               GROUP BY event_type ORDER BY cnt DESC LIMIT 10"""
+        ) as cur:
+            rows = await cur.fetchall()
+            result["error_patterns"] = {r["event_type"]: r["cnt"] for r in rows}
+
+        # Total historical
+        async with self._db.execute("SELECT COUNT(*) FROM agents_history") as cur:
+            row = await cur.fetchone()
+            result["total_historical"] = row[0] if row else 0
+
+        # Cost over recent sessions (last 50 agents)
+        async with self._db.execute(
+            """SELECT role, backend, estimated_cost_usd, duration_sec, status
+               FROM agents_history ORDER BY completed_at DESC LIMIT 50"""
+        ) as cur:
+            rows = await cur.fetchall()
+            recent_cost_by_role: dict[str, float] = {}
+            recent_cost_by_backend: dict[str, float] = {}
+            for r in rows:
+                role = r["role"] or "unknown"
+                backend = r["backend"] or "unknown"
+                cost = r["estimated_cost_usd"] or 0
+                recent_cost_by_role[role] = recent_cost_by_role.get(role, 0) + cost
+                recent_cost_by_backend[backend] = recent_cost_by_backend.get(backend, 0) + cost
+            result["recent_cost_by_role"] = {k: round(v, 4) for k, v in recent_cost_by_role.items()}
+            result["recent_cost_by_backend"] = {k: round(v, 4) for k, v in recent_cost_by_backend.items()}
+
+        return result
+
+    async def find_similar_tasks(self, task_query: str, limit: int = 5) -> list[dict]:
+        """Find historical agents with similar tasks using keyword matching."""
+        if not self._db or not task_query:
+            return []
+        # Extract keywords (>3 chars, lowercase)
+        keywords = [w.lower() for w in task_query.split() if len(w) > 3]
+        if not keywords:
+            return []
+        # Build OR condition for keyword matching
+        conditions = " OR ".join(["LOWER(task) LIKE ?" for _ in keywords])
+        params = [f"%{kw}%" for kw in keywords]
+        params.append(limit * 3)  # fetch more than needed for scoring
+        async with self._db.execute(
+            f"""SELECT id, name, role, backend, task, status, duration_sec,
+                       estimated_cost_usd, context_pct, completed_at
+                FROM agents_history
+                WHERE {conditions}
+                ORDER BY completed_at DESC LIMIT ?""",
+            params,
+        ) as cur:
+            rows = await cur.fetchall()
+        # Score by keyword match count
+        scored = []
+        for r in rows:
+            row_task = (r["task"] or "").lower()
+            score = sum(1 for kw in keywords if kw in row_task)
+            scored.append((score, dict(r)))
+        scored.sort(key=lambda x: -x[0])
+        return [item for _, item in scored[:limit]]
+
     # ── Projects ──
 
     async def save_project(self, project: dict) -> None:
@@ -5226,6 +5345,9 @@ async def fleet_analytics(request: web.Request) -> web.Response:
     # Historical count
     history_count = await db.get_agent_history_count()
 
+    # Historical analytics (success rates, cost breakdowns)
+    historical = await db.get_historical_analytics()
+
     return web.json_response({
         "total_agents": len(agents),
         "total_cost_usd": round(total_cost, 4),
@@ -5239,6 +5361,7 @@ async def fleet_analytics(request: web.Request) -> web.Response:
         "avg_health_score": round(avg_health, 1),
         "avg_lifespan_minutes": round(avg_lifespan_min, 1),
         "historical_agents": history_count,
+        "historical": historical,
     })
 
 
@@ -7147,6 +7270,32 @@ async def batch_spawn(request: web.Request) -> web.Response:
     }, status=201 if spawned else 400)
 
 
+async def agent_suggestions(request: web.Request) -> web.Response:
+    """GET /api/agents/suggestions?task=... — find similar past tasks with their outcomes."""
+    db: Database = request.app["db"]
+    task_query = request.query.get("task", "").strip()
+    if not task_query or len(task_query) < 5:
+        return web.json_response({"suggestions": [], "message": "Provide at least 5 characters in task query"})
+    try:
+        results = await db.find_similar_tasks(task_query, limit=5)
+        suggestions = []
+        for r in results:
+            suggestions.append({
+                "role": r.get("role"),
+                "backend": r.get("backend"),
+                "task": r.get("task"),
+                "status": r.get("status"),
+                "duration_sec": r.get("duration_sec"),
+                "cost_usd": round(r.get("estimated_cost_usd") or 0, 4),
+                "completed_at": r.get("completed_at"),
+                "success": r.get("status") not in ("error",),
+            })
+        return web.json_response({"suggestions": suggestions, "query": task_query})
+    except Exception as e:
+        log.error(f"Agent suggestions error: {e}")
+        return web.json_response({"suggestions": [], "error": str(e)})
+
+
 async def bulk_respond(request: web.Request) -> web.Response:
     """Send responses to multiple waiting agents at once."""
     manager: AgentManager = request.app["agent_manager"]
@@ -7977,6 +8126,7 @@ def create_app(config: Config) -> web.Application:
     app.router.add_post("/api/agents/bulk", bulk_agent_action)
     app.router.add_post("/api/agents/bulk-respond", bulk_respond)
     app.router.add_post("/api/agents/batch-spawn", batch_spawn)
+    app.router.add_get("/api/agents/suggestions", agent_suggestions)
     app.router.add_patch("/api/agents/{id}", patch_agent)
     app.router.add_get("/api/agents/{id}", get_agent)
     app.router.add_delete("/api/agents/{id}", delete_agent)
