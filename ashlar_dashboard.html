@@ -1068,6 +1068,15 @@ body {
     background: var(--bg-overlay); margin: 4px 0 0 0; min-width: 200px;
 }
 .status-timeline-bar:empty { display: none; }
+.deep-keywords { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0; max-height: 22px; overflow: hidden; }
+.deep-keywords:empty { display: none; }
+.deep-keyword-chip {
+    font-size: 9px; font-family: var(--font-mono); color: var(--text-secondary);
+    background: var(--bg-overlay); padding: 2px 6px; border-radius: 4px;
+    white-space: nowrap; cursor: default; border: 1px solid var(--border-subtle);
+}
+.deep-keyword-chip.file { color: var(--accent); }
+.deep-keyword-chip.tool { color: var(--success); }
 .status-timeline-segment { height: 100%; min-width: 2px; transition: width 0.3s; }
 #taskSuggestions { margin-top: 6px; }
 .task-suggestion {
@@ -3466,6 +3475,20 @@ body {
 .deep-search-toggle.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .deep-log-filter { background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-primary); border-radius: 4px; padding: 2px 6px; font-size: 12px; margin-right: 4px; outline: none; }
 .deep-log-filter:focus { border-color: var(--accent); }
+.deep-filter-chips { display: flex; gap: 3px; margin-right: 6px; }
+.deep-filter-chip {
+    font-size: 10px; font-family: var(--font-mono); padding: 2px 7px; border-radius: 4px;
+    background: transparent; border: 1px solid var(--border-subtle); color: var(--text-tertiary);
+    cursor: pointer; transition: all 0.15s; white-space: nowrap; font-weight: 600;
+}
+.deep-filter-chip:hover { border-color: var(--text-secondary); color: var(--text-secondary); }
+.deep-filter-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.deep-filter-chip.active.err { background: var(--danger); border-color: var(--danger); }
+.deep-filter-chip.active.git { background: #F97316; border-color: #F97316; }
+.deep-filter-chip.active.file { background: #3B82F6; border-color: #3B82F6; }
+.deep-filter-chip.active.tool { background: var(--success); border-color: var(--success); }
+.deep-filter-chip.active.think { background: var(--warning); border-color: var(--warning); color: #000; }
+.deep-filter-chip .chip-count { font-weight: 400; opacity: 0.7; margin-left: 2px; }
 
 /* ── Conflict Badge on Cards ── */
 .card-conflict-badge { display: none; position: absolute; top: 8px; right: 40px; background: rgba(239,68,68,0.2); color: #ef4444; font-size: 11px; padding: 1px 6px; border-radius: 6px; font-weight: 600; animation: conflict-pulse 2s ease-in-out infinite; }
@@ -4174,6 +4197,7 @@ body {
             <div><span class="metric-label">Rate </span><canvas class="deep-rate-sparkline" id="deepRateSparkline" width="80" height="20"></canvas></div>
         </div>
         <div class="status-timeline-bar" id="statusTimelineBar"></div>
+        <div class="deep-keywords" id="deepKeywords"></div>
         <div class="deep-actions">
             <button class="deep-action-btn" id="deepPauseBtn" onclick="deepPauseResume()" id="deepPauseBtnInner"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg></span> Pause</button>
             <button class="deep-action-btn" onclick="deepCopyOutput()"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></span> Copy</button>
@@ -4184,6 +4208,7 @@ body {
             <button class="deep-action-btn" onclick="openHandoff()" title="Handoff to another agent"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></span> Handoff</button>
             <button class="deep-action-btn" onclick="deepExportOutput()" title="Download output log"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg></span> Export</button>
             <button class="deep-action-btn" onclick="deepCopyMarkdown()" title="Copy output as markdown"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></span> Copy MD</button>
+            <button class="deep-action-btn" onclick="deepExportJSON()" title="Export as JSON with metadata"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m5 12-3 3 3 3"/><path d="m9 18 3-3-3-3"/></svg></span> JSON</button>
             <button class="deep-action-btn danger" onclick="deepKill()">Kill</button>
         </div>
     </div>
@@ -4255,12 +4280,14 @@ body {
         <div class="deep-search-bar" id="deepSearchBar">
             <button class="deep-search-toggle" id="deepRegexToggle" onclick="toggleDeepRegex()" title="Toggle regex mode">.*</button>
             <button class="deep-search-toggle" id="deepCaseToggle" onclick="toggleDeepCase()" title="Toggle case sensitivity">Aa</button>
-            <select class="deep-log-filter" id="deepLogFilter" onchange="applyLogFilter()">
-                <option value="all">All</option>
-                <option value="errors">Errors</option>
-                <option value="warnings">Warnings</option>
-                <option value="info">Info</option>
-            </select>
+            <div class="deep-filter-chips" id="deepFilterChips">
+                <button class="deep-filter-chip active" data-filter="all" onclick="setOutputFilter('all')">All</button>
+                <button class="deep-filter-chip err" data-filter="errors" onclick="setOutputFilter('errors')">Errors</button>
+                <button class="deep-filter-chip file" data-filter="files" onclick="setOutputFilter('files')">Files</button>
+                <button class="deep-filter-chip tool" data-filter="tools" onclick="setOutputFilter('tools')">Tools</button>
+                <button class="deep-filter-chip git" data-filter="git" onclick="setOutputFilter('git')">Git</button>
+                <button class="deep-filter-chip think" data-filter="thinking" onclick="setOutputFilter('thinking')">Think</button>
+            </div>
             <input class="deep-search-input" id="deepSearchInput" placeholder="Search..." oninput="deepSearch()" onkeydown="handleDeepSearchKey(event)">
             <span class="deep-search-count" id="deepSearchCount"></span>
             <button class="deep-search-btn" onclick="deepSearchPrev()">↑</button>
@@ -7010,6 +7037,62 @@ function updateDeepViewHeader(agent) {
         ctx.fill();
     }
 
+    // Keywords from activity
+    const keywordsEl = document.getElementById('deepKeywords');
+    if (keywordsEl) {
+        const chips = [];
+        // Extract from server activity data
+        const act = agent._activity;
+        if (act) {
+            // Top files touched (deduped)
+            const fileCounts = {};
+            for (const f of (act.file_operations || [])) {
+                const short = (f.file_path || '').split('/').pop();
+                if (short) fileCounts[short] = (fileCounts[short] || 0) + 1;
+            }
+            Object.entries(fileCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 6)
+                .forEach(([name, count]) => {
+                    chips.push(`<span class="deep-keyword-chip file" title="${count} ops">${name}</span>`);
+                });
+            // Top tools used (deduped)
+            const toolCounts = {};
+            for (const t of (act.tool_invocations || [])) {
+                if (t.tool) toolCounts[t.tool] = (toolCounts[t.tool] || 0) + 1;
+            }
+            Object.entries(toolCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 4)
+                .forEach(([tool, count]) => {
+                    chips.push(`<span class="deep-keyword-chip tool" title="${count}x">${tool}</span>`);
+                });
+        } else {
+            // Fallback: extract from client-side activity cache
+            const cached = _activityCache.get(agent.id);
+            if (cached?.events?.length > 0) {
+                const catCounts = {};
+                const fileSet = new Set();
+                for (const ev of cached.events) {
+                    if (ev.cat) catCounts[ev.cat] = (catCounts[ev.cat] || 0) + 1;
+                    // Extract file names from desc
+                    const fm = ev.desc?.match(/[\w.-]+\.\w{1,6}/);
+                    if (fm) fileSet.add(fm[0]);
+                }
+                [...fileSet].slice(0, 6).forEach(f => {
+                    chips.push(`<span class="deep-keyword-chip file">${f}</span>`);
+                });
+                Object.entries(catCounts)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 4)
+                    .forEach(([cat, count]) => {
+                        chips.push(`<span class="deep-keyword-chip tool" title="${count}x">${cat}</span>`);
+                    });
+            }
+        }
+        keywordsEl.innerHTML = chips.join('');
+    }
+
     // Status timeline bar
     const timelineBar = document.getElementById('statusTimelineBar');
     if (timelineBar && agent.status_timeline?.length > 0) {
@@ -7308,6 +7391,72 @@ function deepCopyMarkdown() {
     });
 }
 
+async function deepExportJSON() {
+    if (!state.focusedAgentId) return;
+    const agent = state.agents.get(state.focusedAgentId);
+    if (!agent) return;
+    const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const lines = (agent._outputBuffer || agent.output_lines || []).map(l => l.replace(ansiRe, ''));
+    // Fetch structured activity data
+    let activity = agent._activity;
+    if (!activity) {
+        try {
+            const resp = await fetch(`/api/agents/${state.focusedAgentId}/activity`);
+            if (resp.ok) activity = await resp.json();
+        } catch (e) { /* ignore */ }
+    }
+    const exportData = {
+        meta: {
+            exported_at: new Date().toISOString(),
+            ashlar_version: 'Ashlar AO',
+        },
+        agent: {
+            id: agent.id,
+            name: agent.name,
+            role: agent.role,
+            role_name: info.name,
+            status: agent.status,
+            backend: agent.backend || 'claude-code',
+            task: agent.task || '',
+            summary: agent.summary || '',
+            working_dir: agent.working_dir || '',
+            project: agent.project_name || agent.project_id || '',
+            created_at: agent.created_at,
+            context_pct: agent.context_pct || 0,
+            memory_mb: agent.memory_mb || 0,
+            health_score: agent.health_score ?? 1.0,
+            tokens_input: agent.tokens_input || 0,
+            tokens_output: agent.tokens_output || 0,
+            estimated_cost_usd: agent.estimated_cost_usd || 0,
+            total_output_lines: agent.total_output_lines || lines.length,
+        },
+        activity: activity ? {
+            tool_invocations: (activity.tool_invocations || []).map(t => ({
+                tool: t.tool, args: t.args, result_status: t.result_status,
+            })),
+            file_operations: (activity.file_operations || []).map(f => ({
+                file_path: f.file_path, operation: f.operation,
+            })),
+            git_operations: activity.git_operations || [],
+            test_results: activity.test_results || [],
+        } : null,
+        status_timeline: agent.status_timeline || [],
+        output_lines: lines,
+    };
+    const json = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${agent.name}-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Exported as JSON', 'success');
+}
+
 // ── Bookmarks ──
 function toggleBookmarksPanel() {
     const panel = document.getElementById('bookmarksPanel');
@@ -7520,20 +7669,123 @@ function toggleDeepCase() {
     deepSearch();
 }
 
+let _activeOutputFilter = 'all';
+let _filteredVirtualData = null; // null = no filter, array = filtered lines
+
+const OUTPUT_FILTER_PATTERNS = {
+    errors: /\b(error|exception|traceback|fatal|fail(ed)?|panic|FAIL|ERROR)\b/i,
+    files: /\b(Read|Edit|Write|Glob|LS|NotebookEdit)\s*\(|File:|Created:|Modified:|Deleted:/i,
+    tools: /\b(Read|Edit|Write|Bash|Glob|Grep|Task|WebFetch|WebSearch|NotebookEdit|LS)\s*\(/i,
+    git: /\b(git\s+(commit|push|pull|checkout|merge|rebase|branch|diff|log|stash|add)|commit\s+[a-f0-9]{7})\b/i,
+    thinking: /\b(thinking|planning|analyzing|let me|I'll|I will|considering|approach)\b/i,
+};
+
+function setOutputFilter(filter) {
+    _activeOutputFilter = filter;
+    // Update chip active states
+    document.querySelectorAll('.deep-filter-chip').forEach(chip => {
+        chip.classList.toggle('active', chip.dataset.filter === filter);
+    });
+    applyLogFilter();
+}
+
 function applyLogFilter() {
-    const filter = document.getElementById('deepLogFilter').value;
+    const filter = _activeOutputFilter;
+    const isVirtual = virtualTermData.length > 0 && document.getElementById('vtContent') !== null;
+
+    if (isVirtual) {
+        // Virtual scroll mode: filter the data array and re-render
+        if (filter === 'all') {
+            _filteredVirtualData = null;
+        } else {
+            const re = OUTPUT_FILTER_PATTERNS[filter];
+            if (!re) { _filteredVirtualData = null; return; }
+            _filteredVirtualData = [];
+            for (let i = 0; i < virtualTermData.length; i++) {
+                const plain = virtualTermData[i].replace(/\x1b\[[0-9;]*m/g, '');
+                if (re.test(plain)) _filteredVirtualData.push(virtualTermData[i]);
+            }
+        }
+        renderFilteredVirtual();
+    } else {
+        // Normal DOM mode
+        const terminal = document.getElementById('deepTerminal');
+        if (!terminal) return;
+        const lines = terminal.querySelectorAll('.terminal-line');
+        const re = filter !== 'all' ? OUTPUT_FILTER_PATTERNS[filter] : null;
+        lines.forEach(line => {
+            if (!re) { line.style.display = ''; return; }
+            line.style.display = re.test(line.textContent) ? '' : 'none';
+        });
+    }
+
+    // Update filter counts
+    updateFilterCounts();
+}
+
+function renderFilteredVirtual() {
     const terminal = document.getElementById('deepTerminal');
     if (!terminal) return;
-    const lines = terminal.querySelectorAll('.terminal-line');
-    const errorRe = /\b(error|exception|traceback|fatal|fail(ed)?)\b/i;
-    const warnRe = /\b(warn(ing)?|deprecat(ed|ion))\b/i;
-    const infoRe = /\b(info|notice|debug|log)\b/i;
-    lines.forEach(line => {
-        const text = line.textContent;
-        if (filter === 'all') { line.style.display = ''; return; }
-        if (filter === 'errors') { line.style.display = errorRe.test(text) ? '' : 'none'; return; }
-        if (filter === 'warnings') { line.style.display = warnRe.test(text) ? '' : 'none'; return; }
-        if (filter === 'info') { line.style.display = infoRe.test(text) ? '' : 'none'; return; }
+    const data = _filteredVirtualData || virtualTermData;
+    if (!data.length) {
+        const content = document.getElementById('vtContent');
+        if (content) content.innerHTML = '<div style="color:var(--text-tertiary);padding:20px;text-align:center;font-size:12px">No matching lines</div>';
+        document.getElementById('vtSpacer').style.height = '0';
+        document.getElementById('vtSpacerBottom').style.height = '0';
+        return;
+    }
+    const scrollTop = terminal.scrollTop;
+    const viewH = terminal.clientHeight;
+    const lineH = virtualTermLineH || 18;
+    const firstVisible = Math.max(0, Math.floor(scrollTop / lineH) - VIRTUAL_BUFFER);
+    const lastVisible = Math.min(data.length - 1, Math.ceil((scrollTop + viewH) / lineH) + VIRTUAL_BUFFER);
+    document.getElementById('vtSpacer').style.height = (firstVisible * lineH) + 'px';
+    document.getElementById('vtSpacerBottom').style.height = ((data.length - 1 - lastVisible) * lineH) + 'px';
+    const content = document.getElementById('vtContent');
+    const frag = document.createDocumentFragment();
+    for (let i = firstVisible; i <= lastVisible; i++) {
+        const div = document.createElement('div');
+        div.className = 'terminal-line';
+        div.innerHTML = ansiToHtml(data[i]);
+        frag.appendChild(div);
+    }
+    content.innerHTML = '';
+    content.appendChild(frag);
+}
+
+function updateFilterCounts() {
+    if (!state.focusedAgentId) return;
+    const agent = state.agents.get(state.focusedAgentId);
+    if (!agent) return;
+    const lines = agent._outputBuffer || [];
+    if (lines.length < 10) return; // too few lines to bother counting
+    const counts = {};
+    for (const [key, re] of Object.entries(OUTPUT_FILTER_PATTERNS)) {
+        counts[key] = 0;
+    }
+    // Sample for performance (check every line up to 5000, then every 3rd)
+    const step = lines.length > 5000 ? 3 : 1;
+    for (let i = 0; i < lines.length; i += step) {
+        const plain = lines[i].replace(/\x1b\[[0-9;]*m/g, '');
+        for (const [key, re] of Object.entries(OUTPUT_FILTER_PATTERNS)) {
+            if (re.test(plain)) counts[key]++;
+        }
+    }
+    if (step > 1) {
+        for (const key of Object.keys(counts)) counts[key] = Math.round(counts[key] * step);
+    }
+    document.querySelectorAll('.deep-filter-chip').forEach(chip => {
+        const f = chip.dataset.filter;
+        if (f === 'all') return;
+        const count = counts[f] || 0;
+        const existing = chip.querySelector('.chip-count');
+        if (count > 0) {
+            const label = count > 999 ? `${(count / 1000).toFixed(1)}K` : `${count}`;
+            if (existing) { existing.textContent = label; }
+            else { chip.insertAdjacentHTML('beforeend', `<span class="chip-count">${label}</span>`); }
+        } else if (existing) {
+            existing.remove();
+        }
     });
 }
 
@@ -7548,9 +7800,8 @@ function closeDeepSearch() {
     clearSearchHighlights();
     deepSearchMatches = [];
     deepSearchIdx = -1;
-    // Reset log filter
-    document.getElementById('deepLogFilter').value = 'all';
-    applyLogFilter();
+    // Reset output filter
+    setOutputFilter('all');
 }
 
 // Virtual scroll search state
@@ -11581,6 +11832,8 @@ function openDeepViewVirtual(agentId) {
 function renderVirtualRange(terminal) {
     if (!terminal) terminal = document.getElementById('deepTerminal');
     if (!virtualTermData.length || !virtualTermLineH) return;
+    // If filter is active, use filtered rendering instead
+    if (_filteredVirtualData) { renderFilteredVirtual(); return; }
     const scrollTop = terminal.scrollTop;
     const viewH = terminal.clientHeight;
     const totalH = virtualTermData.length * virtualTermLineH;
@@ -11606,6 +11859,10 @@ function renderVirtualRange(terminal) {
 const _origOpenDeepView = openDeepView;
 openDeepView = function(agentId) {
     _origOpenDeepView(agentId);
+    _filteredVirtualData = null;
+    _activeOutputFilter = 'all';
+    document.querySelectorAll('.deep-filter-chip').forEach(c => c.classList.toggle('active', c.dataset.filter === 'all'));
+    setTimeout(() => updateFilterCounts(), 100);
     const agent = state.agents.get(agentId);
     if (agent && (agent._outputBuffer?.length || 0) > VIRTUAL_THRESHOLD) {
         if (openDeepViewVirtual(agentId)) {
@@ -11644,6 +11901,8 @@ const _origCloseDeep = closeDeepView;
 closeDeepView = function() {
     virtualTermData = [];
     _virtualSearchMatches = [];
+    _filteredVirtualData = null;
+    _activeOutputFilter = 'all';
     _origCloseDeep();
 };
 
