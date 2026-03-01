@@ -487,23 +487,22 @@ class TestApiPauseResumeRestart:
         client = await aiohttp_client(app)
 
         manager = app["agent_manager"]
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
-            mock_proc = MagicMock()
-            mock_proc.pid = 30002
-            mock_proc.returncode = None
-            mock_exec.return_value = mock_proc
-            agent = await manager.spawn(role="backend", name="restart-test", task="old task", working_dir="/tmp")
+        # Mock _run_tmux for both spawn and restart to avoid real tmux fork
+        success_result = MagicMock()
+        success_result.returncode = 0
+        success_result.stdout = ""
+        success_result.stderr = ""
+        manager._run_tmux = AsyncMock(return_value=success_result)
+        manager._tmux_send_keys = AsyncMock(return_value=True)
+        manager._wait_for_tui_ready = AsyncMock(return_value=True)
 
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec2:
-            mock_proc2 = MagicMock()
-            mock_proc2.pid = 30003
-            mock_proc2.returncode = None
-            mock_exec2.return_value = mock_proc2
-            resp = await client.post(
-                f"/api/agents/{agent.id}/restart",
-                json={"task": "new task"},
-            )
-            assert resp.status == 200
+        agent = await manager.spawn(role="backend", name="restart-test", task="old task", working_dir="/tmp")
+
+        resp = await client.post(
+            f"/api/agents/{agent.id}/restart",
+            json={"task": "new task"},
+        )
+        assert resp.status == 200
 
     @pytest.mark.asyncio
     async def test_restart_nonexistent_agent(self, aiohttp_client):
