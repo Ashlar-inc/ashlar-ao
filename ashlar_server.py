@@ -276,6 +276,9 @@ class Config:
     # Archive rotation
     archive_max_rows_per_agent: int = 50000  # Max archived lines per agent
     archive_retention_hours: int = 48  # Auto-delete archives older than this
+    # Output flood protection
+    flood_threshold_lines_per_min: int = 3000  # Lines/min to trigger flood detection
+    flood_sustained_ticks: int = 3  # Consecutive capture ticks above threshold before flagging
     # Server stats
     _stats_requests: int = 0  # Populated at runtime
     _stats_start_time: float = 0.0  # Populated at runtime
@@ -1067,6 +1070,8 @@ class Agent:
     _last_working_time: float = field(default=0.0, repr=False)  # monotonic time of last transition TO working
     _context_auto_paused: bool = field(default=False, repr=False)  # True if auto-paused due to context exhaustion
     _pressure_paused: bool = field(default=False, repr=False)  # True if auto-paused due to system pressure
+    _flood_detected: bool = field(default=False, repr=False)  # True if output rate exceeds flood threshold
+    _flood_ticks: int = field(default=0, repr=False)  # consecutive capture cycles above flood threshold
     _status_updated_at: float = field(default=0.0, repr=False)  # monotonic time of last status change
     # Intelligence fields — structured output parsing
     _tool_invocations: collections.deque = field(default_factory=lambda: collections.deque(maxlen=500), repr=False)
@@ -1190,6 +1195,7 @@ class Agent:
             "total_output_lines": self.total_output_lines,
             "total_output_chars": self._total_chars,
             "output_rate": round(self.output_rate, 1),
+            "flood_detected": self._flood_detected,
             "files_touched": self.files_touched,
             "model": self.model,
             "tools_allowed": self.tools_allowed,
@@ -5284,6 +5290,9 @@ class WebSocketHub:
                 agent_id = data.get("agent_id")
                 message = data.get("message", "")
                 if agent_id and isinstance(message, str) and message:
+                    if len(message) > 50_000:
+                        await ws.send_json({"type": "error", "message": "Message too long (max 50,000 chars)"})
+                        return
                     await self.agent_manager.send_message(agent_id, message)
                     agent = self.agent_manager.agents.get(agent_id)
                     if agent:
@@ -5332,6 +5341,10 @@ class WebSocketHub:
                 to_id = data.get("to_agent_id")
                 content = data.get("content", "")
                 if from_id and to_id and content and self.db:
+                    from_agent = self.agent_manager.agents.get(from_id)
+                    if not from_agent:
+                        await ws.send_json({"type": "error", "message": f"Source agent {from_id} not found"})
+                        return
                     to_agent = self.agent_manager.agents.get(to_id)
                     if not to_agent:
                         await ws.send_json({"type": "error", "message": f"Target agent {to_id} not found"})
@@ -5887,8 +5900,10 @@ async def restart_agent(request: web.Request) -> web.Response:
                 return web.json_response({"error": "task must be a string"}, status=400)
             if new_task and len(new_task) > 5000:
                 return web.json_response({"error": "task too long (max 5000 chars)"}, status=400)
+        except json.JSONDecodeError:
+            return web.json_response({"error": "Invalid JSON in request body"}, status=400)
         except Exception:
-            pass
+            pass  # Non-JSON content type — proceed without task override
 
     try:
         success = await manager.restart(agent_id, new_task=new_task)
@@ -8698,11 +8713,43 @@ async def output_capture_loop(app: web.Application) -> None:
                     window = min(60.0, now_mono - agent._spawn_time) if agent._spawn_time > 0 else 60.0
                     agent.output_rate = (recent_lines_count / max(window, 1.0)) * 60.0
 
-                    await hub.broadcast({
-                        "type": "agent_output",
-                        "agent_id": agent_id,
-                        "lines": new_lines,
-                    })
+                    # Flood detection: flag agents producing excessive output
+                    flood_threshold = config.flood_threshold_lines_per_min
+                    if agent.output_rate > flood_threshold:
+                        agent._flood_ticks += 1
+                        if agent._flood_ticks >= config.flood_sustained_ticks and not agent._flood_detected:
+                            agent._flood_detected = True
+                            log.warning(
+                                f"Agent {agent_id} ({agent.name}) flood detected: "
+                                f"{agent.output_rate:.0f} lines/min (threshold: {flood_threshold})"
+                            )
+                            await hub.broadcast_event(
+                                "agent_flood",
+                                f"Agent {agent.name} is producing excessive output ({agent.output_rate:.0f} lines/min). "
+                                "Output broadcast throttled.",
+                                agent_id, agent.name,
+                            )
+                    else:
+                        agent._flood_ticks = max(0, agent._flood_ticks - 1)
+                        if agent._flood_detected and agent._flood_ticks == 0:
+                            agent._flood_detected = False
+                            log.info(f"Agent {agent_id} ({agent.name}) flood cleared")
+
+                    # Broadcast output (skip broadcast for flooded agents to protect WS clients)
+                    if not agent._flood_detected:
+                        await hub.broadcast({
+                            "type": "agent_output",
+                            "agent_id": agent_id,
+                            "lines": new_lines,
+                        })
+                    elif len(new_lines) > 0:
+                        # Still broadcast a summary for flooded agents (every 10th capture)
+                        if agent._flood_ticks % 10 == 0:
+                            await hub.broadcast({
+                                "type": "agent_output",
+                                "agent_id": agent_id,
+                                "lines": [f"[{len(new_lines)} lines suppressed — output flood detected]"],
+                            })
 
                     # File conflict detection (deduplicate — only report each conflict pair+file once)
                     try:

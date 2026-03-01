@@ -4320,3 +4320,103 @@ class TestExtendedSecretRedaction:
         result = ashlar_server.redact_secrets(text)
         assert "abc123def456ghi789jkl012" not in result
         assert "REDACTED" in result
+
+
+# ─────────────────────────────────────────────
+# WebSocket Message Validation (#255)
+# ─────────────────────────────────────────────
+
+
+class TestWSMessageValidation:
+    def test_ws_send_has_length_check(self):
+        """WS 'send' case should enforce message length limit."""
+        src = inspect.getsource(ashlar_server.WebSocketHub.handle_message)
+        # Find the send case section
+        assert "50_000" in src or "50000" in src
+
+    def test_ws_send_returns_error_on_overlength(self):
+        """WS 'send' case should return error for oversized messages."""
+        src = inspect.getsource(ashlar_server.WebSocketHub.handle_message)
+        assert "Message too long" in src
+
+    def test_ws_agent_message_validates_from_id(self):
+        """WS 'agent_message' case should validate from_agent_id exists."""
+        src = inspect.getsource(ashlar_server.WebSocketHub.handle_message)
+        assert "Source agent" in src
+
+    def test_restart_handles_json_decode_error(self):
+        """Restart endpoint should return 400 on malformed JSON."""
+        src = inspect.getsource(ashlar_server.restart_agent)
+        assert "JSONDecodeError" in src or "json.JSONDecodeError" in src
+
+
+# ─────────────────────────────────────────────
+# Output Flood Protection (#256)
+# ─────────────────────────────────────────────
+
+
+class TestOutputFloodProtection:
+    def test_agent_has_flood_fields(self):
+        """Agent should have flood detection fields."""
+        agent = ashlar_server.Agent(
+            id="f1", name="test", role="general", status="working",
+            working_dir="/tmp", backend="claude-code", task="test",
+        )
+        assert hasattr(agent, '_flood_detected')
+        assert hasattr(agent, '_flood_ticks')
+        assert agent._flood_detected is False
+        assert agent._flood_ticks == 0
+
+    def test_config_flood_threshold(self):
+        """Config should have flood threshold settings."""
+        config = ashlar_server.Config()
+        assert hasattr(config, 'flood_threshold_lines_per_min')
+        assert config.flood_threshold_lines_per_min == 3000
+        assert hasattr(config, 'flood_sustained_ticks')
+        assert config.flood_sustained_ticks == 3
+
+    def test_flood_detected_in_to_dict(self):
+        """Agent.to_dict() should include flood_detected."""
+        agent = ashlar_server.Agent(
+            id="f2", name="test", role="general", status="working",
+            working_dir="/tmp", backend="claude-code", task="test",
+        )
+        d = agent.to_dict()
+        assert "flood_detected" in d
+        assert d["flood_detected"] is False
+
+    def test_flood_flag_changes_to_dict(self):
+        """flood_detected should reflect in to_dict when set."""
+        agent = ashlar_server.Agent(
+            id="f3", name="test", role="general", status="working",
+            working_dir="/tmp", backend="claude-code", task="test",
+        )
+        agent._flood_detected = True
+        d = agent.to_dict()
+        assert d["flood_detected"] is True
+
+    def test_capture_loop_has_flood_detection(self):
+        """Output capture loop should contain flood detection logic."""
+        src = inspect.getsource(ashlar_server.output_capture_loop)
+        assert "flood_threshold" in src
+        assert "_flood_detected" in src
+        assert "agent_flood" in src
+
+    def test_flood_broadcasts_event(self):
+        """Flood detection should broadcast an agent_flood event."""
+        src = inspect.getsource(ashlar_server.output_capture_loop)
+        assert "agent_flood" in src
+        assert "excessive output" in src.lower()
+
+    def test_flood_throttles_broadcast(self):
+        """When flood is detected, output broadcast should be throttled."""
+        src = inspect.getsource(ashlar_server.output_capture_loop)
+        assert "flood_detected" in src
+        # Should have conditional broadcast
+        assert "lines suppressed" in src.lower() or "suppressed" in src.lower()
+
+    def test_flood_ticks_decrement(self):
+        """Flood ticks should decrement when rate drops below threshold."""
+        src = inspect.getsource(ashlar_server.output_capture_loop)
+        # Should have decrement logic
+        assert "_flood_ticks - 1" in src or "flood_ticks -= 1" in src or "flood_ticks - 1" in src
