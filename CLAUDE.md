@@ -4,31 +4,40 @@
 
 Ashlar is a **local-first agent orchestration platform**. One developer, many AI coding agents (Claude Code, Codex, etc.), multiple repos, single command center.
 
-**Current state**: Fully functional. Server (~10K lines) + dashboard (~9500 lines) + 987 tests. All 5 development phases + multi-user auth + deployment infra complete. Ready for multi-user deployment.
+**Current state**: Fully functional. Server (~10K lines) + dashboard (~9500 lines) + 987 tests. All 5 development phases + multi-user auth + deployment infra complete. Installable via `pip install ashlar-ao`. Ready for multi-user deployment.
 
 ## Architecture
 
-**Two files. That's the entire application.**
+**Two files. That's the entire application.** Packaged as `ashlar_ao` (pip-installable).
 
-- `ashlar_server.py` — Python aiohttp server. Manages agents via tmux, serves dashboard, REST + WebSocket APIs, SQLite persistence, system metrics, LLM intelligence.
-- `ashlar_dashboard.html` — Single HTML file served at `/`. All CSS + JS inline. No build step.
+- `ashlar_ao/server.py` — Python aiohttp server. Manages agents via tmux, serves dashboard, REST + WebSocket APIs, SQLite persistence, system metrics, LLM intelligence.
+- `ashlar_ao/dashboard.html` — Single HTML file served at `/`. All CSS + JS inline. No build step.
+- `ashlar_ao/logo.png` — Logo served at `/logo.png`.
+- `ashlar_ao/__init__.py` — Package init with `__version__` (single source of truth).
+- `ashlar_ao/__main__.py` — Enables `python -m ashlar_ao`.
 
 ### Supporting files
 
-- `requirements.txt` — 6 packages: aiohttp, aiohttp-cors, psutil, pyyaml, aiosqlite, bcrypt
-- `start.sh` — Launch script (creates venv, installs deps, checks tmux/backends, starts server)
+- `pyproject.toml` — Package metadata, dependencies, `ashlar` CLI entry point
+- `ashlar_server.py` — Backward-compat shim (re-exports from `ashlar_ao.server` so tests and old imports still work)
+- `requirements.txt` — Reference copy of dependencies (canonical source is pyproject.toml)
+- `start.sh` — Launch script (creates venv, `pip install -e .`, checks tmux/backends, starts server)
 - `~/.ashlar/ashlar.yaml` — User config (auto-created on first run)
 - `~/.ashlar/ashlar.db` — SQLite database (agent history, projects, workflows)
 
 ## Quick Start
 
 ```bash
-# Prerequisites: Python 3.11+, tmux, claude CLI
+# Install from pip
+pip install ashlar-ao
+ashlar
+
+# Or run from source
 ./start.sh
 
 # Optional: enable LLM-powered summaries + NLU command parsing
 export XAI_API_KEY="your-key"
-./start.sh
+ashlar
 ```
 
 Dashboard opens at `http://127.0.0.1:5111`. Override port with `ASHLAR_PORT=8080`.
@@ -309,7 +318,10 @@ Session-based authentication with bcrypt password hashing:
 ## Deployment
 
 ```bash
-# Local (default)
+# Local — pip install
+pip install ashlar-ao && ashlar
+
+# Local — from source
 ./start.sh
 
 # Docker + HTTPS
