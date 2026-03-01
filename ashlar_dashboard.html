@@ -7207,6 +7207,27 @@ class AshlarSocket {
                     }
                     break;
                 }
+                case 'agent_context_warning': {
+                    const ctxAgent = state.agents.get(data.agent_id);
+                    const ctxName = ctxAgent ? ctxAgent.name : data.agent_id;
+                    const ctxPct = data.context_pct ? Math.round(data.context_pct * 100) : '?';
+                    showToast(`${ctxName}: Context window at ${ctxPct}%`, 'warning');
+                    break;
+                }
+                case 'agent_context_auto_paused': {
+                    const apAgent = state.agents.get(data.agent_id);
+                    const apName = apAgent ? apAgent.name : data.agent_id;
+                    showToast(`${apName}: Auto-paused (context limit reached)`, 'warning');
+                    break;
+                }
+                case 'workflow_stage_stalled': {
+                    showToast(`Workflow stage stalled: ${data.stage_name || data.stage_id || 'unknown'}`, 'warning');
+                    break;
+                }
+                case 'workflow_stage_hung': {
+                    showToast(`Workflow stage hung: ${data.stage_name || data.stage_id || 'unknown'}`, 'error');
+                    break;
+                }
             }
         } catch (e) {
             console.error('WebSocket message handler error:', e, data);
@@ -7515,7 +7536,7 @@ function handleAgentRemoved(agentId) {
     // Close card menu if open for this agent
     if (activeMenu) {
         const menuEl = document.getElementById(`menu-${agentId}`);
-        if (menuEl && activeMenu === menuEl) { activeMenu.classList.remove('open'); activeMenu = null; }
+        if (menuEl && activeMenu === menuEl) { activeMenu.classList.remove('active'); activeMenu = null; }
     }
     // Auto-close project panel if this was the last agent in the project
     if (state._projectDetailId) {
@@ -11006,7 +11027,7 @@ function openInteraction(agentId) {
         actionsEl.innerHTML =
             '<button class="btn btn-primary" onclick="sendInteraction(\'yes\')" style="flex:1">\u2713 Approve Plan</button>' +
             '<button class="btn btn-secondary" onclick="sendInteraction(\'no, please revise\')" style="flex:1">\u270E Revise</button>' +
-            '<button class="btn btn-secondary" onclick="closeInteraction();openDeepView(state.interactionAgentId)" style="flex:1">\uD83D\uDC41 View Plan</button>';
+            '<button class="btn btn-secondary" onclick="(function(){const id=state.interactionAgentId;closeInteraction();openDeepView(id);})()" style="flex:1">\uD83D\uDC41 View Plan</button>';
     } else {
         document.getElementById('interactionQuestion').textContent = agent.input_prompt || 'Agent is waiting for your response.';
         // Smart buttons: detect yes/no pattern
@@ -11313,8 +11334,14 @@ function updatePaletteSelection(items) {
 
 function promptKillPalette() {
     if (state.agents.size === 0) { showToast('No agents to kill', 'info'); return; }
-    const [id] = state.agents.keys();
-    killAgent(id);
+    // Kill focused agent if one exists, otherwise prompt user
+    if (state.focusedAgentId && state.agents.has(state.focusedAgentId)) {
+        killAgent(state.focusedAgentId);
+        return;
+    }
+    // Show selection: open command palette filtered to agents
+    const agentList = [...state.agents.values()].map(a => `${a.name} (${a.id})`).join(', ');
+    showToast('Focus an agent first (1-9 keys), then kill from palette', 'warning');
 }
 
 function pauseAll() { for (const [id, a] of state.agents) { if (a.status !== 'paused') socket.send({ type: 'pause', agent_id: id }); } }

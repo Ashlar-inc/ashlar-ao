@@ -1056,6 +1056,7 @@ class Agent:
     tokens_output: int = 0
     estimated_cost_usd: float = 0.0
     files_touched: int = 0
+    _files_touched_set: set = field(default_factory=set, repr=False)
     unread_messages: int = field(default=0, repr=False)
     _first_output_received: bool = field(default=False, repr=False)
     _output_line_timestamps: collections.deque = field(
@@ -2372,6 +2373,8 @@ class AgentManager:
             agent.tokens_input = 0
             agent.tokens_output = 0
             agent.estimated_cost_usd = 0.0
+            agent.files_touched = 0
+            agent._files_touched_set.clear()
             agent.script_path = None
 
             # Get pane PID
@@ -3016,11 +3019,9 @@ class AgentManager:
                 if file_path not in self.file_activity:
                     self.file_activity[file_path] = {}
                 self.file_activity[file_path][agent_id] = "write"
-                # Track files touched count
-                agent.files_touched = len([
-                    fp for fp, agents in self.file_activity.items()
-                    if agent_id in agents
-                ])
+                # Track files touched count (O(1) via per-agent set)
+                agent._files_touched_set.add(file_path)
+                agent.files_touched = len(agent._files_touched_set)
 
                 # Check for write-write conflicts with other active agents
                 for other_id, op in self.file_activity[file_path].items():
@@ -3047,11 +3048,9 @@ class AgentManager:
                     self.file_activity[file_path] = {}
                 if agent_id not in self.file_activity[file_path]:
                     self.file_activity[file_path][agent_id] = "read"
-                # Track files touched count
-                agent.files_touched = len([
-                    fp for fp, agents in self.file_activity.items()
-                    if agent_id in agents
-                ])
+                # Track files touched count (O(1) via per-agent set)
+                agent._files_touched_set.add(file_path)
+                agent.files_touched = len(agent._files_touched_set)
 
         return conflicts
 
@@ -3964,8 +3963,8 @@ class AnthropicIntelligenceClient:
 
         agent_summaries = []
         for a in agents:
-            files = list(set(f.file_path for f in a._file_operations[-20:]))
-            tools = list(set(t.tool for t in a._tool_invocations[-20:]))
+            files = list(set(f.file_path for f in list(a._file_operations)[-20:]))
+            tools = list(set(t.tool for t in list(a._tool_invocations)[-20:]))
             agent_summaries.append(
                 f"- {a.name} ({a.role}, {a.status}): {a.summary or a.task}\n"
                 f"  Files: {', '.join(files[:10]) or 'none'}\n"
@@ -5999,7 +5998,7 @@ async def fleet_analytics(request: web.Request) -> web.Response:
     # File activity across all agents
     all_files: dict[str, int] = {}
     for a in agents:
-        for fop in a._file_operations[-100:]:
+        for fop in list(a._file_operations)[-100:]:
             path = fop.file_path
             all_files[path] = all_files.get(path, 0) + 1
     top_files = sorted(all_files.items(), key=lambda x: -x[1])[:20]
@@ -6007,7 +6006,7 @@ async def fleet_analytics(request: web.Request) -> web.Response:
     # Tool usage across all agents
     tool_counts: dict[str, int] = {}
     for a in agents:
-        for inv in a._tool_invocations[-200:]:
+        for inv in list(a._tool_invocations)[-200:]:
             tool_counts[inv.tool] = tool_counts.get(inv.tool, 0) + 1
 
     # Average health score
@@ -6091,7 +6090,7 @@ async def collaboration_graph(request: web.Request) -> web.Response:
     # 2. Shared file edges (agents writing/reading the same files)
     file_agents: dict[str, set[str]] = {}
     for a in agents:
-        for fop in a._file_operations[-200:]:
+        for fop in list(a._file_operations)[-200:]:
             path = fop.file_path
             if path not in file_agents:
                 file_agents[path] = set()
@@ -7262,7 +7261,7 @@ async def get_agent_tool_invocations(request: web.Request) -> web.Response:
         limit = 100
     return web.json_response({
         "agent_id": agent_id,
-        "invocations": [t.to_dict() for t in agent._tool_invocations[-limit:]],
+        "invocations": [t.to_dict() for t in list(agent._tool_invocations)[-limit:]],
         "total": len(agent._tool_invocations),
     })
 
@@ -7280,7 +7279,7 @@ async def get_agent_file_operations(request: web.Request) -> web.Response:
         limit = 100
     return web.json_response({
         "agent_id": agent_id,
-        "operations": [f.to_dict() for f in agent._file_operations[-limit:]],
+        "operations": [f.to_dict() for f in list(agent._file_operations)[-limit:]],
         "total": len(agent._file_operations),
     })
 
