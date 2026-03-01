@@ -95,7 +95,7 @@ fi
 source "$VENV_DIR/bin/activate"
 
 echo "→ Installing dependencies..."
-pip install -q -r "$SCRIPT_DIR/requirements.txt"
+pip install -q -e "$SCRIPT_DIR"
 
 # 8. Create config directory
 mkdir -p "$HOME/.ashlar"
@@ -115,4 +115,4 @@ echo "  Health API: http://127.0.0.1:$PORT/api/health"
 echo "  Press Ctrl+C to stop"
 echo ""
 
-python3 "$SCRIPT_DIR/ashlar_server.py" "$@"
+python3 -m ashlar_ao "$@"

@@ -20,14 +20,10 @@ RUN npm install -g @anthropic-ai/claude-code
 # App directory
 WORKDIR /app
 
-# Python dependencies (cached layer)
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# App files
-COPY ashlar_server.py .
-COPY ashlar_dashboard.html .
-COPY "White Ashlar logo copy.png" .
+# Python dependencies (cached layer — install from pyproject.toml)
+COPY pyproject.toml README.md ./
+COPY ashlar_ao/ ashlar_ao/
+RUN pip install --no-cache-dir .
 
 # Data directory
 RUN mkdir -p /root/.ashlar
@@ -41,4 +37,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 # Run server
 ENV ASHLAR_HOST=0.0.0.0
-CMD ["python", "ashlar_server.py"]
+CMD ["ashlar"]

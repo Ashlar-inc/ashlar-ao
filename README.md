@@ -4,7 +4,19 @@ A local-first agent orchestration platform. Manage multiple AI coding agents (Cl
 
 Spawn agents, monitor their status in real time, approve plans, respond to questions, and coordinate work — all without switching terminals.
 
-## Prerequisites
+## Installation
+
+```bash
+pip install ashlar-ao
+```
+
+Then run:
+
+```bash
+ashlar
+```
+
+### Prerequisites
 
 - **Python 3.11+**
 - **tmux** — used for agent process isolation and output capture
@@ -14,7 +26,7 @@ Spawn agents, monitor their status in real time, approve plans, respond to quest
 
 If no backend is installed, agents run in demo mode.
 
-### Install tmux
+#### Install tmux
 
 ```bash
 # macOS
@@ -24,22 +36,22 @@ brew install tmux
 sudo apt install tmux
 ```
 
-## Quick Start
+## Quick Start (from source)
 
 ```bash
 ./start.sh
 ```
 
-The launch script handles everything: checks dependencies, creates a Python virtual environment, installs packages, and starts the server.
+The launch script handles everything: checks dependencies, creates a Python virtual environment, installs the package in editable mode, and starts the server.
 
-Open **http://127.0.0.1:5000** in your browser.
+Open **http://127.0.0.1:5111** in your browser.
 
 ### Port Conflicts
 
-Port 5000 conflicts with macOS AirPlay Receiver. Either disable AirPlay Receiver in System Settings, or set a different port:
+Port 5000 conflicts with macOS AirPlay Receiver. Ashlar defaults to port 5111 to avoid this. To use a different port:
 
 ```bash
-ASHLAR_PORT=8080 ./start.sh
+ASHLAR_PORT=8080 ashlar
 ```
 
 ## Configuration
@@ -50,15 +62,15 @@ Config lives at `~/.ashlar/ashlar.yaml` (auto-created on first run). Defaults wo
 
 | Variable | Purpose |
 |----------|---------|
-| `ASHLAR_PORT` | Override server port (default: 5000) |
+| `ASHLAR_PORT` | Override server port (default: 5111) |
 | `XAI_API_KEY` | Enable LLM-powered agent summaries via xAI Grok |
 
 ## Architecture
 
-Two files make up the entire application:
+Two files make up the core application, packaged as `ashlar_ao`:
 
-- **`ashlar_server.py`** — Python aiohttp server. Manages agents via tmux, serves the dashboard, provides REST + WebSocket APIs, collects system metrics.
-- **`ashlar_dashboard.html`** — Single HTML file with all CSS and JS inline. No build step, no bundler, no node_modules.
+- **`ashlar_ao/server.py`** — Python aiohttp server. Manages agents via tmux, serves the dashboard, provides REST + WebSocket APIs, collects system metrics.
+- **`ashlar_ao/dashboard.html`** — Single HTML file with all CSS and JS inline. No build step, no bundler, no node_modules.
 
 Data is persisted in SQLite at `~/.ashlar/ashlar.db`.
 
@@ -71,5 +83,12 @@ Data is persisted in SQLite at `~/.ashlar/ashlar.db`.
 - **Keyboard shortcuts**: `Cmd+N` new agent, `1-9` focus agent, `Cmd+Shift+A` approve
 
 ## Development
+
+```bash
+git clone https://github.com/masonwyatt/ashlar-ao.git
+cd ashlar-ao
+pip install -e ".[dev]"
+pytest
+```
 
 See `CLAUDE.md` for full architecture, data models, API reference, and implementation details.
