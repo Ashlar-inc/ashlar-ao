@@ -7554,13 +7554,17 @@ function handleMetrics(data) {
 
     // CPU
     const cpuEl = document.getElementById('metricCpu');
-    cpuEl.textContent = `${cpu}%`;
-    cpuEl.className = 'metric-value ' + (cpu > 80 ? 'red' : cpu > 50 ? 'yellow' : 'green');
+    if (cpuEl) {
+        cpuEl.textContent = `${cpu}%`;
+        cpuEl.className = 'metric-value ' + (cpu > 80 ? 'red' : cpu > 50 ? 'yellow' : 'green');
+    }
 
     // RAM
     const ramEl = document.getElementById('metricRam');
-    ramEl.textContent = `${ramPct}%`;
-    ramEl.className = 'metric-value ' + (ramPct > 85 ? 'red' : ramPct > 60 ? 'yellow' : 'green');
+    if (ramEl) {
+        ramEl.textContent = `${ramPct}%`;
+        ramEl.className = 'metric-value ' + (ramPct > 85 ? 'red' : ramPct > 60 ? 'yellow' : 'green');
+    }
 
     // Agents
     document.getElementById('metricAgents').textContent = `${data.agents_active || 0}/${data.agents_total || 0}`;
@@ -8771,7 +8775,7 @@ function showContextMenu(agentId, x, y) {
         <div class="context-menu-sep"></div>
         <div class="context-menu-item" onclick="hideContextMenu();togglePin('${agentId}')">${icon('pin', 14)} ${agent.pinned ? 'Unpin' : 'Pin'}</div>
         <div class="context-menu-item" onclick="hideContextMenu();navigator.clipboard.writeText('${agentId}');showToast('Agent ID copied','success')">${icon('clipboard', 14)} Copy Agent ID</div>
-        <div class="context-menu-item" onclick="hideContextMenu();navigator.clipboard.writeText(JSON.stringify(agent,null,2));showToast('Agent JSON copied','success')">${icon('code', 14)} Copy as JSON</div>
+        <div class="context-menu-item" onclick="hideContextMenu();(function(){const a=state.agents.get('${agentId}');if(a)navigator.clipboard.writeText(JSON.stringify(a,null,2));showToast('Agent JSON copied','success')})()">${icon('code', 14)} Copy as JSON</div>
         <div class="context-menu-sep"></div>
         <div class="context-menu-item danger" onclick="hideContextMenu();killAgent('${agentId}')">${icon('x', 14)} Kill Agent</div>
     `;
@@ -9819,12 +9823,15 @@ function appendDeepOutput(lines) {
 
 function scrollDeepToBottom() {
     const t = document.getElementById('deepTerminal');
+    if (!t) return;
     t.scrollTop = t.scrollHeight;
     deepAutoScroll = true;
     _newLinesSinceScroll = 0;
     const jumpBtn = document.getElementById('jumpToBottom');
-    jumpBtn.textContent = '↓ Jump to bottom';
-    jumpBtn.classList.remove('visible');
+    if (jumpBtn) {
+        jumpBtn.textContent = '↓ Jump to bottom';
+        jumpBtn.classList.remove('visible');
+    }
 }
 
 let _deepTimeTimer = null;
@@ -10399,13 +10406,17 @@ async function addBookmarkFromSelection() {
     if (label === null) return; // cancelled
     const res = await apiFetch(`/api/agents/${state.focusedAgentId}/bookmarks`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ line: lineNum, text: cleanText, label: label || '' })
     });
-    if (res && res.bookmark) {
-        const agent = state.agents.get(state.focusedAgentId);
-        if (agent) {
-            if (!agent.bookmarks) agent.bookmarks = [];
-            agent.bookmarks.push(res.bookmark);
+    if (res && res.ok) {
+        const data = await res.json();
+        if (data && data.bookmark) {
+            const agent = state.agents.get(state.focusedAgentId);
+            if (agent) {
+                if (!agent.bookmarks) agent.bookmarks = [];
+                agent.bookmarks.push(data.bookmark);
+            }
         }
         renderBookmarksList();
         showToast('Bookmark added', 'success');
@@ -11731,12 +11742,7 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
-    // Cmd+Shift+F — cross-agent search
-    if (e.metaKey && e.shiftKey && e.key === 'F') {
-        e.preventDefault();
-        openCrossAgentSearch();
-        return;
-    }
+    // Cmd+Shift+F handled above (openGlobalSearch)
 
     // Cmd+Enter — send command bar
     if (e.metaKey && e.key === 'Enter' && state.view === 'grid') { e.preventDefault(); sendCommand(); return; }
@@ -11825,16 +11831,26 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ── Cheatsheet ──
+let _cheatsheetMousedownHandler = null;
 function openCheatsheet() {
     const el = document.getElementById('cheatsheetOverlay');
     el.classList.add('active');
-    // Close on click outside
-    const outsideHandler = (e) => {
-        if (!el.contains(e.target)) { closeCheatsheet(); document.removeEventListener('mousedown', outsideHandler); }
+    // Remove previous handler to prevent accumulation
+    if (_cheatsheetMousedownHandler) {
+        document.removeEventListener('mousedown', _cheatsheetMousedownHandler);
+    }
+    _cheatsheetMousedownHandler = (e) => {
+        if (!el.contains(e.target)) closeCheatsheet();
     };
-    setTimeout(() => document.addEventListener('mousedown', outsideHandler), 0);
+    setTimeout(() => document.addEventListener('mousedown', _cheatsheetMousedownHandler), 0);
 }
-function closeCheatsheet() { document.getElementById('cheatsheetOverlay').classList.remove('active'); }
+function closeCheatsheet() {
+    document.getElementById('cheatsheetOverlay').classList.remove('active');
+    if (_cheatsheetMousedownHandler) {
+        document.removeEventListener('mousedown', _cheatsheetMousedownHandler);
+        _cheatsheetMousedownHandler = null;
+    }
+}
 
 // ── Project Selector ──
 
@@ -11916,7 +11932,8 @@ function openProjectDetail(projectId) {
     updateProjectDetailContent(projectId);
     document.getElementById('projectDetailPanel').classList.add('active');
 
-    // Close with Escape
+    // Close with Escape — remove first to prevent accumulation
+    document.removeEventListener('keydown', _projectDetailEscHandler);
     document.addEventListener('keydown', _projectDetailEscHandler);
 }
 

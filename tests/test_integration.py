@@ -17,6 +17,9 @@ from aiohttp.test_utils import AioHTTPTestCase, TestClient, TestServer
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Use home directory for working_dir in tests (server validates against home)
+TEST_WORKING_DIR = str(Path.home())
+
 with patch("psutil.cpu_percent", return_value=0.0):
     import ashlar_server
 
@@ -139,7 +142,7 @@ class TestWebSocketConnectAndSync:
                 "role": "general",
                 "name": "test-ws-agent",
                 "task": "integration test",
-                "working_dir": "/tmp",
+                "working_dir": TEST_WORKING_DIR,
             })
 
             # Should receive agent_update (or event)
@@ -247,7 +250,7 @@ class TestApiSendMessageLimit:
             mock_exec.return_value = mock_proc
 
             agent = await manager.spawn(
-                role="general", name="msg-limit-test", task="test", working_dir="/tmp"
+                role="general", name="msg-limit-test", task="test", working_dir=TEST_WORKING_DIR
             )
 
         # Send a message > 50,000 chars
@@ -273,7 +276,7 @@ class TestApiSendMessageLimit:
             mock_exec.return_value = mock_proc
 
             agent = await manager.spawn(
-                role="general", name="msg-test", task="test", working_dir="/tmp"
+                role="general", name="msg-test", task="test", working_dir=TEST_WORKING_DIR
             )
 
         with patch.object(manager, "send_message", new_callable=AsyncMock, return_value=True):
@@ -302,7 +305,7 @@ class TestApiSpawnAndKillLifecycle:
                 "role": "general",
                 "name": "lifecycle-test",
                 "task": "lifecycle test",
-                "working_dir": "/tmp",
+                "working_dir": TEST_WORKING_DIR,
             })
             assert resp.status == 201
             agent_data = await resp.json()
@@ -377,7 +380,7 @@ class TestConcurrentSpawns:
                     "role": "general",
                     "name": f"seq-spawn-{i}",
                     "task": f"task {i}",
-                    "working_dir": "/tmp",
+                    "working_dir": TEST_WORKING_DIR,
                 })
                 assert resp.status == 201
                 data = await resp.json()
@@ -443,7 +446,7 @@ class TestApiPauseResumeRestart:
             mock_proc.pid = 30001
             mock_proc.returncode = None
             mock_exec.return_value = mock_proc
-            agent = await manager.spawn(role="general", name="pause-test", task="test", working_dir="/tmp")
+            agent = await manager.spawn(role="general", name="pause-test", task="test", working_dir=TEST_WORKING_DIR)
 
         # Pause
         resp = await client.post(f"/api/agents/{agent.id}/pause")
@@ -496,7 +499,7 @@ class TestApiPauseResumeRestart:
         manager._tmux_send_keys = AsyncMock(return_value=True)
         manager._wait_for_tui_ready = AsyncMock(return_value=True)
 
-        agent = await manager.spawn(role="backend", name="restart-test", task="old task", working_dir="/tmp")
+        agent = await manager.spawn(role="backend", name="restart-test", task="old task", working_dir=TEST_WORKING_DIR)
 
         resp = await client.post(
             f"/api/agents/{agent.id}/restart",
@@ -620,7 +623,7 @@ class TestApiSpawnValidation:
         resp = await client.post("/api/agents", json={
             "role": "general",
             "name": "no-task",
-            "working_dir": "/tmp",
+            "working_dir": TEST_WORKING_DIR,
         })
         assert resp.status == 400
         body = await resp.json()
@@ -635,7 +638,7 @@ class TestApiSpawnValidation:
         resp = await client.post("/api/agents", json={
             "role": "nonexistent-role",
             "task": "something",
-            "working_dir": "/tmp",
+            "working_dir": TEST_WORKING_DIR,
         })
         assert resp.status == 400
         body = await resp.json()
@@ -659,7 +662,7 @@ class TestApiSpawnValidation:
         resp = await client.post("/api/agents", json={
             "role": "general",
             "task": "x" * 10001,
-            "working_dir": "/tmp",
+            "working_dir": TEST_WORKING_DIR,
         })
         assert resp.status == 400
         body = await resp.json()
@@ -675,7 +678,7 @@ class TestApiSpawnValidation:
             "role": "general",
             "task": "test",
             "backend": "unknown-backend",
-            "working_dir": "/tmp",
+            "working_dir": TEST_WORKING_DIR,
         })
         assert resp.status == 400
         body = await resp.json()
@@ -690,7 +693,7 @@ class TestApiSpawnValidation:
         resp = await client.post("/api/agents/validate", json={
             "role": "general",
             "task": "test validation",
-            "working_dir": "/tmp",
+            "working_dir": TEST_WORKING_DIR,
         })
         assert resp.status == 200
         data = await resp.json()
@@ -705,7 +708,7 @@ class TestApiSpawnValidation:
         resp = await client.post("/api/agents/validate", json={
             "role": "bad-role",
             "task": "test",
-            "working_dir": "/tmp",
+            "working_dir": TEST_WORKING_DIR,
         })
         # Should indicate invalid
         data = await resp.json()
@@ -724,7 +727,7 @@ class TestApiAgentOutputAndActivity:
             mock_proc.pid = 40001
             mock_proc.returncode = None
             mock_exec.return_value = mock_proc
-            return await manager.spawn(role="general", name="output-test", task="test", working_dir="/tmp")
+            return await manager.spawn(role="general", name="output-test", task="test", working_dir=TEST_WORKING_DIR)
 
     @pytest.mark.asyncio
     async def test_get_agent_output(self, aiohttp_client):
@@ -803,8 +806,8 @@ class TestApiBatchOperations:
 
             resp = await client.post("/api/agents/batch-spawn", json={
                 "agents": [
-                    {"role": "backend", "task": "build API", "working_dir": "/tmp"},
-                    {"role": "frontend", "task": "build UI", "working_dir": "/tmp"},
+                    {"role": "backend", "task": "build API", "working_dir": TEST_WORKING_DIR},
+                    {"role": "frontend", "task": "build UI", "working_dir": TEST_WORKING_DIR},
                 ],
             })
             assert resp.status == 201
@@ -826,7 +829,7 @@ class TestApiBatchOperations:
 
             resp = await client.post("/api/agents/batch-spawn", json={
                 "agents": [
-                    {"role": "general", "task": "valid task", "working_dir": "/tmp"},
+                    {"role": "general", "task": "valid task", "working_dir": TEST_WORKING_DIR},
                     {"role": "general", "task": ""},  # missing task
                 ],
             })
@@ -858,7 +861,7 @@ class TestApiBatchOperations:
             mock_exec.return_value = mock_proc
 
             for i in range(2):
-                agent = await manager.spawn(role="general", name=f"bulk-{i}", task=f"task {i}", working_dir="/tmp")
+                agent = await manager.spawn(role="general", name=f"bulk-{i}", task=f"task {i}", working_dir=TEST_WORKING_DIR)
                 agent_ids.append(agent.id)
 
         resp = await client.post("/api/agents/bulk", json={
@@ -882,7 +885,7 @@ class TestApiNotesAndTags:
             mock_proc.pid = 60001
             mock_proc.returncode = None
             mock_exec.return_value = mock_proc
-            return await manager.spawn(role="general", name="notes-test", task="test", working_dir="/tmp")
+            return await manager.spawn(role="general", name="notes-test", task="test", working_dir=TEST_WORKING_DIR)
 
     @pytest.mark.asyncio
     async def test_update_notes(self, aiohttp_client):
@@ -938,7 +941,7 @@ class TestApiClone:
             mock_proc.pid = 70001
             mock_proc.returncode = None
             mock_exec.return_value = mock_proc
-            original = await manager.spawn(role="backend", name="original", task="build API", working_dir="/tmp")
+            original = await manager.spawn(role="backend", name="original", task="build API", working_dir=TEST_WORKING_DIR)
 
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec2:
             mock_proc2 = MagicMock()
@@ -991,7 +994,7 @@ class TestApiFleetAndSearch:
             mock_proc.pid = 80001
             mock_proc.returncode = None
             mock_exec.return_value = mock_proc
-            await manager.spawn(role="general", name="searchable", task="find this task", working_dir="/tmp")
+            await manager.spawn(role="general", name="searchable", task="find this task", working_dir=TEST_WORKING_DIR)
 
         resp = await client.get("/api/search?q=searchable")
         assert resp.status == 200
@@ -1011,7 +1014,7 @@ class TestApiBookmarks:
             mock_proc.pid = 90001
             mock_proc.returncode = None
             mock_exec.return_value = mock_proc
-            return await manager.spawn(role="general", name="bm-test", task="test", working_dir="/tmp")
+            return await manager.spawn(role="general", name="bm-test", task="test", working_dir=TEST_WORKING_DIR)
 
     @pytest.mark.asyncio
     async def test_add_and_list_bookmarks(self, aiohttp_client):
@@ -1048,7 +1051,7 @@ class TestApiPatchAgent:
             mock_proc.pid = 95001
             mock_proc.returncode = None
             mock_exec.return_value = mock_proc
-            return await manager.spawn(role="general", name="patch-test", task="test", working_dir="/tmp")
+            return await manager.spawn(role="general", name="patch-test", task="test", working_dir=TEST_WORKING_DIR)
 
     @pytest.mark.asyncio
     async def test_patch_agent_name(self, aiohttp_client):
@@ -1157,7 +1160,7 @@ class TestApiQueue:
         resp = await client.post("/api/queue", json={
             "role": "general",
             "task": "queued task",
-            "working_dir": "/tmp",
+            "working_dir": TEST_WORKING_DIR,
         })
         assert resp.status in (200, 201)
 
@@ -1239,7 +1242,7 @@ class TestApiToolAndFileOps:
             mock_proc.pid = 96001
             mock_proc.returncode = None
             mock_exec.return_value = mock_proc
-            return await manager.spawn(role="general", name="tool-test", task="test", working_dir="/tmp")
+            return await manager.spawn(role="general", name="tool-test", task="test", working_dir=TEST_WORKING_DIR)
 
     @pytest.mark.asyncio
     async def test_get_tool_invocations(self, aiohttp_client):
@@ -1448,7 +1451,7 @@ class TestApiAgentNotesTags:
             mock_proc.returncode = None
             mock_exec.return_value = mock_proc
             with patch.object(manager, "_tmux_capture", new_callable=AsyncMock, return_value=[]):
-                agent = await manager.spawn(role="general", name="notes-test", working_dir="/tmp", task="test task")
+                agent = await manager.spawn(role="general", name="notes-test", working_dir=TEST_WORKING_DIR, task="test task")
                 return agent
 
     @pytest.mark.asyncio
@@ -1530,7 +1533,7 @@ class TestApiAgentBookmarks:
             mock_proc.returncode = None
             mock_exec.return_value = mock_proc
             with patch.object(manager, "_tmux_capture", new_callable=AsyncMock, return_value=[]):
-                agent = await manager.spawn(role="general", name="bookmark-test", working_dir="/tmp", task="test task")
+                agent = await manager.spawn(role="general", name="bookmark-test", working_dir=TEST_WORKING_DIR, task="test task")
                 return agent
 
     @pytest.mark.asyncio
@@ -1593,7 +1596,7 @@ class TestApiAgentSnapshots:
             mock_proc.returncode = None
             mock_exec.return_value = mock_proc
             with patch.object(manager, "_tmux_capture", new_callable=AsyncMock, return_value=[]):
-                agent = await manager.spawn(role="general", name="snap-test", working_dir="/tmp", task="test task")
+                agent = await manager.spawn(role="general", name="snap-test", working_dir=TEST_WORKING_DIR, task="test task")
                 return agent
 
     @pytest.mark.asyncio
@@ -1708,7 +1711,7 @@ class TestApiBulkRespond:
             mock_proc.returncode = None
             mock_exec.return_value = mock_proc
             with patch.object(manager, "_tmux_capture", new_callable=AsyncMock, return_value=[]):
-                agent = await manager.spawn(role="general", name=name, working_dir="/tmp", task="test task")
+                agent = await manager.spawn(role="general", name=name, working_dir=TEST_WORKING_DIR, task="test task")
                 return agent
 
     @pytest.mark.asyncio
@@ -1822,7 +1825,7 @@ class TestApiAgentMessages:
             mock_proc.returncode = None
             mock_exec.return_value = mock_proc
             with patch.object(manager, "_tmux_capture", new_callable=AsyncMock, return_value=[]):
-                agent = await manager.spawn(role="general", name=name, working_dir="/tmp", task="test task")
+                agent = await manager.spawn(role="general", name=name, working_dir=TEST_WORKING_DIR, task="test task")
                 return agent
 
     @pytest.mark.asyncio

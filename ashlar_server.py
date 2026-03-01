@@ -1330,7 +1330,7 @@ class GitOperation:
 
 
 @dataclass
-class TestResult:
+class AgentTestResult:
     """Parsed test run results from agent output."""
     agent_id: str
     passed: int = 0
@@ -1735,8 +1735,10 @@ class AgentManager:
             config_dirs = [str(ASHLAR_DIR)]
             allowed_prefixes = [home_dir] + config_dirs
             if not any(working_dir.startswith(prefix) for prefix in allowed_prefixes):
-                if not os.path.isdir(working_dir):
-                    raise ValueError(f"Working directory does not exist and is outside home: {working_dir}")
+                raise ValueError(
+                    f"Working directory '{working_dir}' is outside allowed paths. "
+                    f"Must be under home directory or Ashlar config dir."
+                )
 
         # Generate ID
         agent_id = uuid.uuid4().hex[:4]
@@ -3589,7 +3591,7 @@ class OutputIntelligenceParser:
                     passed = int(groups[0] or 0)
                     failed = int(groups[1] or 0) if len(groups) > 1 else 0
                     skipped = int(groups[2] or 0) if len(groups) > 2 else 0
-                    tr = TestResult(
+                    tr = AgentTestResult(
                         agent_id=agent.id,
                         passed=passed,
                         failed=failed,
@@ -4735,6 +4737,8 @@ class Database:
             return result
 
     async def get_workflow(self, workflow_id: str) -> dict | None:
+        if not self._db:
+            return None
         async with self._db.execute(
             "SELECT * FROM workflows WHERE id = ?", (workflow_id,)
         ) as cur:
@@ -4749,6 +4753,8 @@ class Database:
             return d
 
     async def delete_workflow(self, workflow_id: str) -> bool:
+        if not self._db:
+            return False
         async with self._db.execute(
             "DELETE FROM workflows WHERE id = ?", (workflow_id,)
         ) as cur:
@@ -4829,6 +4835,8 @@ class Database:
         agent_name: str | None = None,
         metadata: dict | None = None,
     ) -> None:
+        if not self._db:
+            return
         now = datetime.now(timezone.utc).isoformat()
         metadata_json = json.dumps(metadata) if metadata else None
         try:
@@ -4849,6 +4857,8 @@ class Database:
         event_type: str | None = None,
         since: str | None = None,
     ) -> list[dict]:
+        if not self._db:
+            return []
         conditions = []
         params: list = []
         if agent_id:
@@ -4909,6 +4919,8 @@ class Database:
     # ── File Locks ──
 
     async def set_file_lock(self, file_path: str, agent_id: str, agent_name: str) -> None:
+        if not self._db:
+            return
         now = datetime.now(timezone.utc).isoformat()
         await self._db.execute(
             "INSERT OR REPLACE INTO file_locks (file_path, agent_id, agent_name, locked_at) VALUES (?, ?, ?, ?)",
@@ -4917,6 +4929,8 @@ class Database:
         await self._safe_commit()
 
     async def get_file_locks(self, file_path: str | None = None) -> list[dict]:
+        if not self._db:
+            return []
         if file_path:
             async with self._db.execute(
                 "SELECT * FROM file_locks WHERE file_path = ?", (file_path,)
@@ -4927,16 +4941,22 @@ class Database:
                 return [dict(r) for r in await cur.fetchall()]
 
     async def release_file_locks(self, agent_id: str) -> None:
+        if not self._db:
+            return
         await self._db.execute("DELETE FROM file_locks WHERE agent_id = ?", (agent_id,))
         await self._safe_commit()
 
     # ── Agent Presets ──
 
     async def get_presets(self) -> list[dict]:
+        if not self._db:
+            return []
         async with self._db.execute("SELECT * FROM agent_presets ORDER BY name") as cur:
             return [dict(r) for r in await cur.fetchall()]
 
     async def get_preset(self, preset_id: str) -> dict | None:
+        if not self._db:
+            return None
         async with self._db.execute(
             "SELECT * FROM agent_presets WHERE id = ?", (preset_id,)
         ) as cur:
@@ -4944,6 +4964,8 @@ class Database:
             return dict(row) if row else None
 
     async def save_preset(self, preset: dict) -> None:
+        if not self._db:
+            return
         now = datetime.now(timezone.utc).isoformat()
         await self._db.execute(
             """INSERT OR REPLACE INTO agent_presets
@@ -4958,6 +4980,8 @@ class Database:
         await self._safe_commit()
 
     async def delete_preset(self, preset_id: str) -> bool:
+        if not self._db:
+            return False
         async with self._db.execute(
             "DELETE FROM agent_presets WHERE id = ?", (preset_id,)
         ) as cur:
@@ -4967,12 +4991,16 @@ class Database:
     # ── Scratchpad ──
 
     async def get_scratchpad(self, project_id: str) -> list[dict]:
+        if not self._db:
+            return []
         async with self._db.execute(
             "SELECT * FROM scratchpad WHERE project_id = ? ORDER BY key", (project_id,)
         ) as cur:
             return [dict(r) for r in await cur.fetchall()]
 
     async def upsert_scratchpad(self, project_id: str, key: str, value: str, set_by: str = "") -> None:
+        if not self._db:
+            return
         now = datetime.now(timezone.utc).isoformat()
         await self._db.execute(
             """INSERT INTO scratchpad (project_id, key, value, set_by, created_at, updated_at)
@@ -4983,6 +5011,8 @@ class Database:
         await self._safe_commit()
 
     async def delete_scratchpad(self, project_id: str, key: str) -> bool:
+        if not self._db:
+            return False
         async with self._db.execute(
             "DELETE FROM scratchpad WHERE project_id = ? AND key = ?", (project_id, key)
         ) as cur:
@@ -5065,10 +5095,9 @@ class RateLimiter:
 
 
 def _get_client_ip(request: web.Request) -> str:
-    """Extract client IP from request."""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """Extract client IP from request. Ignores X-Forwarded-For since this is
+    a local-first server with no reverse proxy — trusting that header would
+    allow trivial rate limit bypass."""
     peername = request.transport.get_extra_info("peername") if request.transport else None
     return peername[0] if peername else "unknown"
 
@@ -7983,7 +8012,10 @@ async def delete_bookmark(request: web.Request) -> web.Response:
     if r := _check_rate(request, cost=1):
         return r
     db: Database = request.app["db"]
-    bm_id = int(request.match_info["id"])
+    try:
+        bm_id = int(request.match_info["id"])
+    except (ValueError, KeyError):
+        return web.json_response({"error": "Invalid bookmark ID"}, status=400)
     success = await db.delete_bookmark(bm_id)
     if success:
         return web.json_response({"status": "deleted"})

@@ -26,7 +26,7 @@ with patch("psutil.cpu_percent", return_value=0.0):
         ToolInvocation,
         FileOperation,
         GitOperation,
-        TestResult,
+        AgentTestResult,
     )
 
 
@@ -1834,12 +1834,12 @@ class TestIntelligenceDataInToDict:
     def test_last_test_result(self, make_agent):
         """last_test_result returns the most recent test result."""
         agent = make_agent()
-        tr1 = TestResult(
+        tr1 = AgentTestResult(
             agent_id=agent.id, passed=10, failed=0, skipped=0,
             total=10, coverage_pct=None, framework="pytest",
             timestamp=time.time(),
         )
-        tr2 = TestResult(
+        tr2 = AgentTestResult(
             agent_id=agent.id, passed=15, failed=2, skipped=1,
             total=18, coverage_pct=85.0, framework="pytest",
             timestamp=time.time(),
@@ -1853,8 +1853,8 @@ class TestIntelligenceDataInToDict:
         assert d["last_test_result"]["framework"] == "pytest"
 
     def test_test_result_to_dict(self):
-        """TestResult.to_dict() includes all fields."""
-        tr = TestResult(
+        """AgentTestResult.to_dict() includes all fields."""
+        tr = AgentTestResult(
             agent_id="a1b2", passed=20, failed=1, skipped=3,
             total=24, coverage_pct=92.5, framework="jest",
             timestamp=1000.0,
