@@ -1854,7 +1854,10 @@ class AgentManager:
 
             # System prompt injection (role context + predecessor output)
             # Skip role prompt for backends that manage their own context (e.g. claude-code has CLAUDE.md)
-            role_obj = BUILTIN_ROLES.get(role, BUILTIN_ROLES["general"])
+            role_obj = BUILTIN_ROLES.get(role)
+            if not role_obj:
+                log.warning(f"Role '{role}' not in BUILTIN_ROLES, falling back to 'general'")
+                role_obj = BUILTIN_ROLES["general"]
             parts = []
             if bc.inject_role_prompt and role != "general":
                 parts.append(f"You are a {role_obj.name}. {role_obj.system_prompt}")
@@ -4122,6 +4125,15 @@ class Database:
         self.db_path = db_path or (ASHLAR_DIR / "ashlar.db")
         self._db: aiosqlite.Connection | None = None
 
+    async def _safe_commit(self, timeout: float = 3.0) -> None:
+        """Commit with timeout to prevent hangs if DB is locked or unresponsive."""
+        if not self._db:
+            return
+        try:
+            await asyncio.wait_for(self._db.commit(), timeout=timeout)
+        except asyncio.TimeoutError:
+            log.warning(f"Database commit timed out after {timeout}s")
+
     async def init(self) -> None:
         self._db = await aiosqlite.connect(str(self.db_path))
         self._db.row_factory = aiosqlite.Row
@@ -4243,12 +4255,12 @@ class Database:
             );
             CREATE INDEX IF NOT EXISTS idx_bookmarks_agent ON output_bookmarks(agent_id);
         """)
-        await self._db.commit()
+        await self._safe_commit()
 
         # Safe migrations: add columns if missing
         try:
             await self._db.execute("ALTER TABLE agent_messages ADD COLUMN message_type TEXT DEFAULT 'text'")
-            await self._db.commit()
+            await self._safe_commit()
         except Exception:
             pass  # Column already exists
 
@@ -4256,7 +4268,7 @@ class Database:
             await self._db.execute("ALTER TABLE agents_history ADD COLUMN tokens_input INTEGER DEFAULT 0")
             await self._db.execute("ALTER TABLE agents_history ADD COLUMN tokens_output INTEGER DEFAULT 0")
             await self._db.execute("ALTER TABLE agents_history ADD COLUMN estimated_cost_usd REAL DEFAULT 0.0")
-            await self._db.commit()
+            await self._safe_commit()
         except Exception:
             pass  # Columns already exist
 
@@ -4264,7 +4276,7 @@ class Database:
             await self._db.execute("ALTER TABLE agents_history ADD COLUMN resumable INTEGER DEFAULT 0")
             await self._db.execute("ALTER TABLE agents_history ADD COLUMN system_prompt TEXT DEFAULT ''")
             await self._db.execute("ALTER TABLE agents_history ADD COLUMN plan_mode INTEGER DEFAULT 0")
-            await self._db.commit()
+            await self._safe_commit()
         except Exception:
             pass  # Columns already exist
 
@@ -4305,7 +4317,7 @@ class Database:
                 (wf["id"], wf["name"], wf["description"], wf["agents_json"],
                  datetime.now(timezone.utc).isoformat()),
             )
-        await self._db.commit()
+        await self._safe_commit()
 
     async def close(self) -> None:
         if self._db:
@@ -4323,7 +4335,7 @@ class Database:
                 "INSERT INTO agent_output_archive (agent_id, line_offset, content, created_at) VALUES (?, ?, ?, ?)",
                 [(agent_id, start_offset + i, line, now) for i, line in enumerate(lines)],
             )
-            await self._db.commit()
+            await self._safe_commit()
         except Exception as e:
             log.debug(f"Failed to archive output for {agent_id}: {e}")
 
@@ -4379,7 +4391,7 @@ class Database:
              agent.tokens_input, agent.tokens_output, agent.estimated_cost_usd,
              resumable, getattr(agent, 'system_prompt', ''), int(agent.plan_mode)),
         )
-        await self._db.commit()
+        await self._safe_commit()
 
     async def get_agent_history(self, limit: int = 50, offset: int = 0) -> list[dict]:
         if not self._db:
@@ -4557,7 +4569,7 @@ class Database:
             (project["id"], project["name"], project["path"],
              project.get("description", ""), project.get("created_at", now), now),
         )
-        await self._db.commit()
+        await self._safe_commit()
 
     async def get_projects(self) -> list[dict]:
         if not self._db:
@@ -4570,7 +4582,7 @@ class Database:
         if not self._db:
             return False
         async with self._db.execute("DELETE FROM projects WHERE id = ?", (project_id,)) as cur:
-            await self._db.commit()
+            await self._safe_commit()
             return cur.rowcount > 0
 
     # ── Workflows ──
@@ -4588,7 +4600,7 @@ class Database:
             (workflow["id"], workflow["name"], workflow.get("description", ""),
              agents_json, workflow.get("created_at", now)),
         )
-        await self._db.commit()
+        await self._safe_commit()
 
     async def get_workflows(self) -> list[dict]:
         if not self._db:
@@ -4623,7 +4635,7 @@ class Database:
         async with self._db.execute(
             "DELETE FROM workflows WHERE id = ?", (workflow_id,)
         ) as cur:
-            await self._db.commit()
+            await self._safe_commit()
             return cur.rowcount > 0
 
     # ── Agent Messages ──
@@ -4637,7 +4649,7 @@ class Database:
             (msg["id"], msg["from_agent_id"], msg.get("to_agent_id"),
              msg["content"], msg["created_at"]),
         )
-        await self._db.commit()
+        await self._safe_commit()
 
     async def get_messages_for_agent(self, agent_id: str, limit: int = 50) -> list[dict]:
         if not self._db:
@@ -4677,7 +4689,7 @@ class Database:
             "UPDATE agent_messages SET read_at = ? WHERE to_agent_id = ? AND read_at IS NULL",
             (now, agent_id),
         ) as cur:
-            await self._db.commit()
+            await self._safe_commit()
             return cur.rowcount
 
     async def get_unread_count(self, agent_id: str) -> int:
@@ -4708,7 +4720,7 @@ class Database:
                    VALUES (?, ?, ?, ?, ?, ?)""",
                 (event_type, agent_id, agent_name, message, metadata_json, now),
             )
-            await self._db.commit()
+            await self._safe_commit()
         except Exception as e:
             log.debug(f"Failed to log event: {e}")
 
@@ -4785,7 +4797,7 @@ class Database:
             "INSERT OR REPLACE INTO file_locks (file_path, agent_id, agent_name, locked_at) VALUES (?, ?, ?, ?)",
             (file_path, agent_id, agent_name, now),
         )
-        await self._db.commit()
+        await self._safe_commit()
 
     async def get_file_locks(self, file_path: str | None = None) -> list[dict]:
         if file_path:
@@ -4799,7 +4811,7 @@ class Database:
 
     async def release_file_locks(self, agent_id: str) -> None:
         await self._db.execute("DELETE FROM file_locks WHERE agent_id = ?", (agent_id,))
-        await self._db.commit()
+        await self._safe_commit()
 
     # ── Agent Presets ──
 
@@ -4826,13 +4838,13 @@ class Database:
              preset.get("tools_allowed", ""), preset.get("working_dir", ""),
              preset.get("created_at", now), now),
         )
-        await self._db.commit()
+        await self._safe_commit()
 
     async def delete_preset(self, preset_id: str) -> bool:
         async with self._db.execute(
             "DELETE FROM agent_presets WHERE id = ?", (preset_id,)
         ) as cur:
-            await self._db.commit()
+            await self._safe_commit()
             return cur.rowcount > 0
 
     # ── Scratchpad ──
@@ -4851,13 +4863,13 @@ class Database:
                ON CONFLICT(project_id, key) DO UPDATE SET value=excluded.value, set_by=excluded.set_by, updated_at=excluded.updated_at""",
             (project_id, key, value, set_by, now, now),
         )
-        await self._db.commit()
+        await self._safe_commit()
 
     async def delete_scratchpad(self, project_id: str, key: str) -> bool:
         async with self._db.execute(
             "DELETE FROM scratchpad WHERE project_id = ? AND key = ?", (project_id, key)
         ) as cur:
-            await self._db.commit()
+            await self._safe_commit()
             return cur.rowcount > 0
 
 
@@ -4883,7 +4895,7 @@ class Database:
             "INSERT INTO output_bookmarks (agent_id, line_index, line_text, annotation, color, created_at) VALUES (?, ?, ?, ?, ?, ?)",
             (agent_id, line_index, line_text[:500], annotation[:200], color, now),
         ) as cur:
-            await self._db.commit()
+            await self._safe_commit()
             return cur.lastrowid or -1
 
     async def delete_bookmark(self, bookmark_id: int) -> bool:
@@ -4892,7 +4904,7 @@ class Database:
         async with self._db.execute(
             "DELETE FROM output_bookmarks WHERE id = ?", (bookmark_id,)
         ) as cur:
-            await self._db.commit()
+            await self._safe_commit()
             return cur.rowcount > 0
 
 

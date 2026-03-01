@@ -4005,3 +4005,67 @@ class TestTmuxSessionCollisionCheck:
         src = inspect.getsource(ashlar_server.AgentManager.spawn)
         assert "Orphaned tmux session" in src
         assert "kill-session" in src
+
+
+# ─────────────────────────────────────────────
+# Database Commit Timeouts (#251)
+# ─────────────────────────────────────────────
+
+
+class TestDatabaseCommitTimeouts:
+    def test_safe_commit_method_exists(self):
+        """Database should have _safe_commit method."""
+        assert hasattr(ashlar_server.Database, '_safe_commit')
+        assert callable(ashlar_server.Database._safe_commit)
+
+    def test_safe_commit_uses_wait_for(self):
+        """_safe_commit should use asyncio.wait_for with timeout."""
+        src = inspect.getsource(ashlar_server.Database._safe_commit)
+        assert "wait_for" in src
+        assert "timeout" in src
+
+    def test_safe_commit_handles_timeout(self):
+        """_safe_commit should catch TimeoutError gracefully."""
+        src = inspect.getsource(ashlar_server.Database._safe_commit)
+        assert "TimeoutError" in src
+
+    def test_safe_commit_null_guard(self):
+        """_safe_commit should check for None db."""
+        src = inspect.getsource(ashlar_server.Database._safe_commit)
+        assert "not self._db" in src
+
+    def test_safe_commit_default_timeout(self):
+        """_safe_commit should have a reasonable default timeout."""
+        src = inspect.getsource(ashlar_server.Database._safe_commit)
+        assert "3.0" in src
+
+    def test_all_commits_use_safe_commit(self):
+        """All database commits should use _safe_commit, not raw _db.commit()."""
+        src = inspect.getsource(ashlar_server.Database)
+        # There should be no direct _db.commit() calls except inside _safe_commit itself
+        lines = src.split('\n')
+        direct_commits = [
+            line.strip() for line in lines
+            if '_db.commit()' in line
+            and 'wait_for' not in line  # The call inside _safe_commit uses wait_for
+            and 'def _safe_commit' not in line
+        ]
+        assert len(direct_commits) == 0, f"Found direct commit calls: {direct_commits}"
+
+
+# ─────────────────────────────────────────────
+# Role Validation Guard (#251)
+# ─────────────────────────────────────────────
+
+
+class TestRoleValidationGuard:
+    def test_role_injection_logs_fallback(self):
+        """Role injection should log when falling back to general."""
+        src = inspect.getsource(ashlar_server.AgentManager.spawn)
+        assert "not in BUILTIN_ROLES" in src or "falling back" in src.lower()
+
+    def test_role_injection_explicit_check(self):
+        """Role injection should explicitly check role existence before using it."""
+        src = inspect.getsource(ashlar_server.AgentManager.spawn)
+        # Should use .get(role) without fallback, then check
+        assert "BUILTIN_ROLES.get(role)" in src
