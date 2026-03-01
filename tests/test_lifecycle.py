@@ -1041,6 +1041,7 @@ class TestOutputIntelligenceParser:
         agent.id = "test1"
         agent.output_lines = lines
         agent._last_parse_index = 0
+        agent._total_lines_added = len(lines)
         agent._tool_invocations = collections.deque(maxlen=500)
         agent._file_operations = collections.deque(maxlen=500)
         agent._git_operations = collections.deque(maxlen=200)
@@ -2503,6 +2504,7 @@ class TestServerAuditFixes:
         agent.id = "test1"
         agent.output_lines = ['mcp__claude-in-chrome__computer("click")']
         agent._last_parse_index = 0
+        agent._total_lines_added = 1
         agent._tool_invocations = collections.deque(maxlen=500)
         agent._file_operations = collections.deque(maxlen=500)
         agent._git_operations = collections.deque(maxlen=200)
@@ -2521,6 +2523,7 @@ class TestServerAuditFixes:
         agent.id = "test1"
         agent.output_lines = ['Skill("commit")']
         agent._last_parse_index = 0
+        agent._total_lines_added = 1
         agent._tool_invocations = collections.deque(maxlen=500)
         agent._file_operations = collections.deque(maxlen=500)
         agent._git_operations = collections.deque(maxlen=200)
@@ -2538,6 +2541,7 @@ class TestServerAuditFixes:
         agent.id = "test1"
         agent.output_lines = ['Agent("search for patterns")']
         agent._last_parse_index = 0
+        agent._total_lines_added = 1
         agent._tool_invocations = collections.deque(maxlen=500)
         agent._file_operations = collections.deque(maxlen=500)
         agent._git_operations = collections.deque(maxlen=200)
@@ -4672,6 +4676,7 @@ class TestOutputIntelligenceParserExtended:
             working_dir="/tmp", backend="claude-code", task="test",
         )
         agent.output_lines = lines
+        agent._total_lines_added = len(lines)
         return agent
 
     def test_parse_mcp_tool(self):

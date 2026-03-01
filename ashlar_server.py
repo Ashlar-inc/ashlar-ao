@@ -1085,7 +1085,8 @@ class Agent:
     _test_results: collections.deque = field(default_factory=lambda: collections.deque(maxlen=50), repr=False)
     _snapshots: list = field(default_factory=list, repr=False)  # list[OutputSnapshot], capped at 20
     _status_history: list = field(default_factory=list, repr=False)  # list of {"status": str, "at": float (monotonic)}
-    _last_parse_index: int = field(default=0, repr=False)  # Incremental parsing watermark
+    _last_parse_index: int = field(default=0, repr=False)  # Incremental parsing watermark (absolute line count)
+    _total_lines_added: int = field(default=0, repr=False)  # Total lines ever appended (monotonically increasing)
     _overflow_to_archive: tuple | None = field(default=None, repr=False)
     # Notes and tags
     notes: str = ""
@@ -2371,6 +2372,8 @@ class AgentManager:
             agent._total_chars = 0
             agent._archived_lines = 0
             agent._overflow_to_archive = None
+            agent._last_parse_index = 0
+            agent._total_lines_added = 0
             agent.context_pct = 0.0
             agent.tokens_input = 0
             agent.tokens_output = 0
@@ -2571,6 +2574,7 @@ class AgentManager:
         # Update ring buffer (only new lines, not the full capture)
         for line in new_lines:
             agent.output_lines.append(line)
+        agent._total_lines_added += len(new_lines)
 
         # Track total chars for context estimation and cost tracking
         chars_added = sum(len(l) for l in new_lines)
@@ -2907,7 +2911,7 @@ class AgentManager:
                         agent.id, agent.name,
                         {"workflow_run_id": wf_run.id, "spec_index": idx},
                     )
-            except ValueError as e:
+            except Exception as e:
                 log.warning(f"Workflow dep spawn failed for spec {idx}: {e}")
                 wf_run.failed_ids.add(f"spec_{idx}")
 
@@ -3508,18 +3512,23 @@ class OutputIntelligenceParser:
     def parse_incremental(self, agent: "Agent") -> dict:
         """Parse new output lines since last call. Returns counts of new items parsed."""
         lines = list(agent.output_lines)
-        start_idx = agent._last_parse_index
-        if start_idx >= len(lines):
+        deque_len = len(lines)
+        total_added = agent._total_lines_added
+        # How many lines have been evicted from the front of the deque?
+        evicted = max(0, total_added - deque_len)
+        # Convert absolute watermark to deque-relative index
+        deque_start = max(0, agent._last_parse_index - evicted)
+        if deque_start >= deque_len:
             return {"tools": 0, "files": 0, "git": 0, "tests": 0}
 
-        new_lines = lines[start_idx:]
-        agent._last_parse_index = len(lines)
+        new_lines = lines[deque_start:]
+        agent._last_parse_index = total_added  # absolute position
         now = time.monotonic()
 
         counts = {"tools": 0, "files": 0, "git": 0, "tests": 0}
 
         for i, line in enumerate(new_lines):
-            line_idx = start_idx + i
+            line_idx = deque_start + i
             stripped = _strip_ansi(line) if callable(_strip_ansi) else line
 
             # Tool invocations
@@ -3848,8 +3857,9 @@ class AnthropicIntelligenceClient:
             log.error(f"Anthropic API disabled: auth failed (HTTP {status})")
             self.available = False
         elif status == 429:
+            self._failures += 1
             cooldown = float(retry_after) if retry_after and retry_after.replace('.', '').isdigit() else 60.0
-            log.warning(f"Anthropic rate limited, cooling down for {cooldown}s")
+            log.warning(f"Anthropic rate limited, cooling down for {cooldown}s (failures: {self._failures}/{self._max_failures})")
             self._circuit_reset_time = time.monotonic() + cooldown
         else:
             self._failures += 1
@@ -5311,6 +5321,12 @@ class WebSocketHub:
                         await self.handle_message(data, ws)
                     except json.JSONDecodeError:
                         await ws.send_json({"type": "error", "message": "Invalid JSON"})
+                    except Exception as e:
+                        log.warning(f"WebSocket message handling error: {e}")
+                        try:
+                            await ws.send_json({"type": "error", "message": f"Internal error: {e}"})
+                        except Exception:
+                            pass
                 elif msg.type == aiohttp.WSMsgType.ERROR:
                     log.error(f"WebSocket error: {ws.exception()}")
                     break

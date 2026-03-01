@@ -609,7 +609,7 @@ body {
 .agent-card[data-status="paused"]:hover { opacity: 0.75; filter: grayscale(0.1); cursor: pointer; }
 .agent-card[data-status="idle"] { border-left-color: var(--text-tertiary) !important; opacity: 0.6; }
 .agent-card[data-status="idle"]:hover { opacity: 0.85; }
-.agent-card[data-status="reading"] { border-left-color: #3B82F6 !important; }
+.agent-card[data-status="reading"] { border-left-color: var(--status-reading) !important; }
 .agent-card[data-status="spawning"] { animation: fadeUp 0.4s ease-out backwards, skeleton-pulse 1.5s ease-in-out infinite; will-change: opacity; }
 
 .agent-card.exiting {
