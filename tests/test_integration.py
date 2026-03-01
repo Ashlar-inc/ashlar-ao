@@ -46,6 +46,9 @@ def _make_mock_db():
     db.get_archived_output = AsyncMock(return_value=([], 0))
     db.get_bookmarks = AsyncMock(return_value=[])
     db.add_bookmark = AsyncMock(return_value=1)
+    db.save_project = AsyncMock()
+    db.delete_project = AsyncMock(return_value=False)  # default: not found
+    db.save_workflow = AsyncMock()
     return db
 
 
@@ -1327,3 +1330,97 @@ class TestApiScratchpad:
 
         resp = await client.get("/api/scratchpad?project_id=test-project-1")
         assert resp.status == 200
+
+    @pytest.mark.asyncio
+    async def test_get_scratchpad_missing_project_id(self, aiohttp_client):
+        """GET /api/scratchpad without project_id should return 400."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+
+        resp = await client.get("/api/scratchpad")
+        assert resp.status == 400
+
+
+# ── Input Validation Tests ──
+
+
+class TestApiInputValidation:
+    @pytest.mark.asyncio
+    async def test_create_project_requires_string_name(self, aiohttp_client):
+        """POST /api/projects with non-string name should return 400."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+
+        resp = await client.post("/api/projects", json={"name": 123, "path": "/tmp"})
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_create_project_requires_name_and_path(self, aiohttp_client):
+        """POST /api/projects without name/path should return 400."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+
+        resp = await client.post("/api/projects", json={"name": "test"})
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_create_project_valid(self, aiohttp_client):
+        """POST /api/projects with valid data should succeed."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+
+        resp = await client.post("/api/projects", json={"name": "test-proj", "path": "/tmp/test"})
+        assert resp.status == 201
+        data = await resp.json()
+        assert data["name"] == "test-proj"
+        assert "id" in data
+
+    @pytest.mark.asyncio
+    async def test_create_workflow_requires_string_name(self, aiohttp_client):
+        """POST /api/workflows with non-string name should return 400."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+
+        resp = await client.post("/api/workflows", json={"name": 123, "agents": [{"role": "general"}]})
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_create_workflow_requires_agents(self, aiohttp_client):
+        """POST /api/workflows without agents should return 400."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+
+        resp = await client.post("/api/workflows", json={"name": "test"})
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_create_workflow_valid(self, aiohttp_client):
+        """POST /api/workflows with valid data should succeed."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+
+        resp = await client.post("/api/workflows", json={
+            "name": "test-workflow",
+            "agents": [{"role": "general", "task": "test task"}],
+        })
+        assert resp.status == 201
+        data = await resp.json()
+        assert data["name"] == "test-workflow"
+
+    @pytest.mark.asyncio
+    async def test_send_message_agent_not_found(self, aiohttp_client):
+        """POST /api/agents/{id}/send for missing agent returns 404."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+
+        resp = await client.post("/api/agents/nonexistent/send", json={"message": "hello"})
+        assert resp.status == 404
+
+    @pytest.mark.asyncio
+    async def test_delete_project_not_found(self, aiohttp_client):
+        """DELETE /api/projects/{id} for missing project returns 404."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+
+        resp = await client.delete("/api/projects/nonexistent")
+        assert resp.status == 404

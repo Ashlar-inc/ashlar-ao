@@ -7095,8 +7095,7 @@ class AshlarSocket {
             this.reconnectDelay = 1000;
             this.reconnectAttempts = 0;
             const banner = document.getElementById('connectionBanner');
-            banner.classList.remove('active');
-            banner.textContent = '';
+            if (banner) { banner.classList.remove('active'); banner.textContent = ''; }
             // Toast shown after sync provides fleet summary
             state._showSyncSummary = true;
         };
@@ -7115,11 +7114,13 @@ class AshlarSocket {
             state.connected = false;
             this.reconnectAttempts++;
             const banner = document.getElementById('connectionBanner');
-            banner.classList.add('active');
-            if (this.reconnectAttempts >= 10) {
-                banner.textContent = 'Server unreachable — restart with ./start.sh and refresh';
-            } else {
-                banner.textContent = `Disconnected — reconnecting (attempt ${this.reconnectAttempts})...`;
+            if (banner) {
+                banner.classList.add('active');
+                if (this.reconnectAttempts >= 10) {
+                    banner.textContent = 'Server unreachable — restart with ./start.sh and refresh';
+                } else {
+                    banner.textContent = `Disconnected — reconnecting (attempt ${this.reconnectAttempts})...`;
+                }
             }
             const jitter = this.reconnectDelay * (0.5 + Math.random());
             setTimeout(() => this.connect(), jitter);
@@ -9313,10 +9314,14 @@ function openDeepView(agentId) {
         // Progressive load from full-output API (includes archive)
         loadOutputChunk(agentId, 'initial').then(() => {
             if (state.focusedAgentId !== agentId) return;
-            const buf = agent._outputBuffer || [];
+            const freshAgent = state.agents.get(agentId);
+            if (!freshAgent) return;
+            const buf = freshAgent._outputBuffer || [];
             if (!buf.length) return;
-            terminal.innerHTML = '';
-            _addLoadMoreIndicator(terminal);
+            const termEl = document.getElementById('deepTerminal');
+            if (!termEl) return;
+            termEl.innerHTML = '';
+            _addLoadMoreIndicator(termEl);
             resetCodeBlockState(agentId);
             const frag = document.createDocumentFragment();
             for (let li = 0; li < buf.length; li++) {
@@ -9327,9 +9332,9 @@ function openDeepView(agentId) {
                 addLineNumber(div, li, agentId);
                 frag.appendChild(div);
             }
-            terminal.appendChild(frag);
+            termEl.appendChild(frag);
             _updateLoadMoreIndicator(agentId);
-            applyOutputFolding(terminal);
+            applyOutputFolding(termEl);
             scrollDeepToBottom();
         }).catch(e => console.warn('Deep view progressive load failed:', e.message));
     }
@@ -9396,8 +9401,11 @@ function openDeepView(agentId) {
 
 function updateDeepViewHeader(agent) {
     if (!agent) return;
+    if (state.view !== 'deep') return;
     const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
-    document.getElementById('deepIcon').innerHTML = roleIcon(agent.role, 20);
+    const iconEl = document.getElementById('deepIcon');
+    if (!iconEl) return;  // deep view not in DOM yet
+    iconEl.innerHTML = roleIcon(agent.role, 20);
     document.getElementById('deepName').textContent = agent.name;
     document.getElementById('deepRole').textContent = info.name;
     document.getElementById('deepWorkDir').textContent = shortenPath(agent.working_dir);
@@ -10575,6 +10583,7 @@ async function serverArchiveSearch(query) {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const terminal = document.getElementById('deepTerminal');
+        if (!terminal) return;
         if (data.matches && data.matches.length > 0) {
             // Render server results as highlighted output in a results overlay
             let html = `<div class="server-search-results" style="padding:8px;font-family:var(--font-mono);font-size:12px">`;

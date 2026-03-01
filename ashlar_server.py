@@ -5317,7 +5317,7 @@ class WebSocketHub:
                         plan_mode=data.get("plan_mode", False),
                         backend=data.get("backend", "claude-code"),
                     )
-                    if data.get("project_id"):
+                    if data.get("project_id") and isinstance(data["project_id"], str):
                         agent.project_id = data["project_id"]
                     await self.broadcast({
                         "type": "agent_update",
@@ -5745,7 +5745,8 @@ async def send_to_agent(request: web.Request) -> web.Response:
         if agent:
             await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
         return web.json_response({"status": "sent"})
-    return web.json_response({"error": f"Failed to send message to '{agent.name}' — agent may have terminated"}, status=500)
+    agent_name = agent.name if agent else agent_id
+    return web.json_response({"error": f"Failed to send message to '{agent_name}' — agent may have terminated"}, status=500)
 
 
 async def update_agent_notes(request: web.Request) -> web.Response:
@@ -6770,16 +6771,22 @@ async def create_project(request: web.Request) -> web.Response:
     except json.JSONDecodeError:
         return web.json_response({"error": "Invalid JSON"}, status=400)
 
-    if not data.get("name") or not data.get("path"):
-        return web.json_response({"error": "name and path are required"}, status=400)
+    name = data.get("name")
+    path = data.get("path")
+    if not name or not isinstance(name, str) or not path or not isinstance(path, str):
+        return web.json_response({"error": "name and path are required strings"}, status=400)
 
     project = {
         "id": uuid.uuid4().hex[:8],
-        "name": data["name"],
-        "path": os.path.expanduser(data["path"]),
-        "description": data.get("description", ""),
+        "name": name,
+        "path": os.path.expanduser(path),
+        "description": str(data.get("description", "")),
     }
-    await db.save_project(project)
+    try:
+        await db.save_project(project)
+    except Exception as e:
+        logger.error("Failed to save project: %s", e)
+        return web.json_response({"error": "Failed to save project"}, status=500)
     return web.json_response(project, status=201)
 
 
@@ -6807,8 +6814,9 @@ async def create_workflow(request: web.Request) -> web.Response:
     except json.JSONDecodeError:
         return web.json_response({"error": "Invalid JSON"}, status=400)
 
-    if not data.get("name") or not data.get("agents"):
-        return web.json_response({"error": "name and agents are required"}, status=400)
+    wf_name = data.get("name")
+    if not wf_name or not isinstance(wf_name, str) or not data.get("agents"):
+        return web.json_response({"error": "name (string) and agents are required"}, status=400)
 
     agent_specs = data["agents"]
     if not isinstance(agent_specs, list) or len(agent_specs) == 0:
@@ -6835,11 +6843,15 @@ async def create_workflow(request: web.Request) -> web.Response:
 
     workflow = {
         "id": uuid.uuid4().hex[:8],
-        "name": data["name"],
-        "description": data.get("description", ""),
+        "name": wf_name,
+        "description": str(data.get("description", "")),
         "agents_json": agent_specs,
     }
-    await db.save_workflow(workflow)
+    try:
+        await db.save_workflow(workflow)
+    except Exception as e:
+        logger.error("Failed to save workflow: %s", e)
+        return web.json_response({"error": "Failed to save workflow"}, status=500)
     workflow["agents"] = data["agents"]
     return web.json_response(workflow, status=201)
 
