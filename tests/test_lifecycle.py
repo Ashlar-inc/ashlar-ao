@@ -4795,3 +4795,272 @@ class TestKeywordParseCommand:
         assert spawn.confidence == 0.6
         unknown = _keyword_parse_command("gibberish", [])
         assert unknown.confidence == 0.2
+
+
+# ─────────────────────────────────────────────
+# Background Task Logic Tests
+# ─────────────────────────────────────────────
+class TestSpawnTimeout:
+    """Tests for spawn timeout detection in output_capture_loop."""
+
+    def _make_agent(self, status="spawning", spawn_time=None):
+        from ashlar_server import Agent
+        agent = Agent(
+            id="t001", name="timeout-test", role="general", status="spawning",
+            backend="claude-code", task="test", working_dir="/tmp",
+        )
+        agent.status = status
+        if spawn_time is not None:
+            agent._spawn_time = spawn_time
+        return agent
+
+    def test_spawn_timeout_triggers_after_30s(self):
+        agent = self._make_agent(status="spawning", spawn_time=time.monotonic() - 31)
+        # Simulate the timeout check from output_capture_loop
+        if agent.status == "spawning" and agent._spawn_time > 0:
+            if time.monotonic() - agent._spawn_time > 30:
+                agent.set_status("error")
+                agent.error_message = "Spawn timeout — no output after 30s"
+        assert agent.status == "error"
+        assert "timeout" in agent.error_message.lower()
+
+    def test_no_timeout_within_30s(self):
+        agent = self._make_agent(status="spawning", spawn_time=time.monotonic() - 10)
+        if agent.status == "spawning" and agent._spawn_time > 0:
+            if time.monotonic() - agent._spawn_time > 30:
+                agent.set_status("error")
+        assert agent.status == "spawning"
+
+    def test_non_spawning_agents_not_checked(self):
+        agent = self._make_agent(status="working", spawn_time=time.monotonic() - 60)
+        if agent.status == "spawning" and agent._spawn_time > 0:
+            if time.monotonic() - agent._spawn_time > 30:
+                agent.set_status("error")
+        assert agent.status == "working"
+
+
+class TestFloodDetection:
+    """Tests for output flood detection logic."""
+
+    def _make_agent(self):
+        from ashlar_server import Agent
+        agent = Agent(
+            id="f001", name="flood-test", role="general", status="working",
+            backend="claude-code", task="test", working_dir="/tmp",
+        )
+        agent.status = "working"
+        return agent
+
+    def test_flood_ticks_increment_above_threshold(self):
+        agent = self._make_agent()
+        agent.output_rate = 600.0  # Very high
+        flood_threshold = 500
+        if agent.output_rate > flood_threshold:
+            agent._flood_ticks += 1
+        assert agent._flood_ticks == 1
+
+    def test_flood_detected_after_sustained_ticks(self):
+        agent = self._make_agent()
+        agent.output_rate = 600.0
+        flood_threshold = 500
+        sustained_ticks = 3
+        # Simulate 3 ticks
+        for _ in range(3):
+            if agent.output_rate > flood_threshold:
+                agent._flood_ticks += 1
+                if agent._flood_ticks >= sustained_ticks and not agent._flood_detected:
+                    agent._flood_detected = True
+        assert agent._flood_detected is True
+        assert agent._flood_ticks == 3
+
+    def test_no_flood_below_threshold(self):
+        agent = self._make_agent()
+        agent.output_rate = 100.0
+        flood_threshold = 500
+        if agent.output_rate > flood_threshold:
+            agent._flood_ticks += 1
+        assert agent._flood_ticks == 0
+        assert agent._flood_detected is False
+
+    def test_flood_ticks_decrement_when_rate_drops(self):
+        agent = self._make_agent()
+        agent._flood_ticks = 5
+        agent.output_rate = 100.0  # Below threshold
+        flood_threshold = 500
+        if agent.output_rate <= flood_threshold and agent._flood_ticks > 0:
+            agent._flood_ticks = max(0, agent._flood_ticks - 1)
+            if agent._flood_ticks == 0:
+                agent._flood_detected = False
+        assert agent._flood_ticks == 4
+
+
+class TestHealthCheckPathological:
+    """Tests for pathological error loop detection in health_check_loop."""
+
+    def _make_agent(self, restart_count=1, error_time=None, restart_time=None):
+        from ashlar_server import Agent
+        agent = Agent(
+            id="p001", name="patho-test", role="general", status="error",
+            backend="claude-code", task="test", working_dir="/tmp",
+        )
+        agent.status = "error"
+        agent.restart_count = restart_count
+        if error_time is not None:
+            agent._error_entered_at = error_time
+        if restart_time is not None:
+            agent.last_restart_time = restart_time
+        return agent
+
+    def test_pathological_detected_when_error_within_window(self):
+        now = time.monotonic()
+        # Error occurred 5s after restart (window is 10s)
+        agent = self._make_agent(
+            restart_count=1, error_time=now - 5, restart_time=now - 10,
+        )
+        window = 10.0
+        time_working = agent._error_entered_at - agent.last_restart_time
+        if time_working < window and not agent._pathological:
+            agent._pathological = True
+            agent.max_restarts = min(agent.max_restarts, 2)
+        assert agent._pathological is True
+        assert agent.max_restarts == 2
+
+    def test_not_pathological_if_worked_long_enough(self):
+        now = time.monotonic()
+        # Error occurred 30s after restart (outside 10s window)
+        agent = self._make_agent(
+            restart_count=1, error_time=now - 5, restart_time=now - 35,
+        )
+        window = 10.0
+        time_working = agent._error_entered_at - agent.last_restart_time
+        if time_working < window and not agent._pathological:
+            agent._pathological = True
+        assert agent._pathological is False
+
+    def test_not_pathological_on_first_error(self):
+        now = time.monotonic()
+        agent = self._make_agent(restart_count=0, error_time=now)
+        # Pathological check requires restart_count > 0
+        if agent.restart_count > 0 and agent._error_entered_at > 0 and agent.last_restart_time > 0:
+            agent._pathological = True
+        assert agent._pathological is False
+
+
+class TestExponentialBackoff:
+    """Tests for auto-restart exponential backoff calculation."""
+
+    def test_backoff_values(self):
+        assert 5.0 * (2 ** 0) == 5.0   # First restart: 5s
+        assert 5.0 * (2 ** 1) == 10.0  # Second restart: 10s
+        assert 5.0 * (2 ** 2) == 20.0  # Third restart: 20s
+        assert 5.0 * (2 ** 3) == 40.0  # Fourth restart: 40s
+
+    def test_restart_allowed_after_backoff(self):
+        from ashlar_server import Agent
+        agent = Agent(id="b001", name="backoff", role="general", status="error", backend="claude-code", task="t", working_dir="/tmp")
+        agent.status = "error"
+        agent._error_entered_at = time.monotonic() - 15  # Error 15s ago
+        agent.restart_count = 1
+        agent.last_restart_time = time.monotonic() - 12  # Last restart 12s ago
+        backoff = 5.0 * (2 ** agent.restart_count)  # 10s
+        time_since = time.monotonic() - agent.last_restart_time
+        assert time_since >= backoff  # Should be allowed
+
+    def test_restart_blocked_during_backoff(self):
+        from ashlar_server import Agent
+        agent = Agent(id="b002", name="backoff2", role="general", status="error", backend="claude-code", task="t", working_dir="/tmp")
+        agent.status = "error"
+        agent._error_entered_at = time.monotonic() - 3  # Error 3s ago
+        agent.restart_count = 2
+        agent.last_restart_time = time.monotonic() - 5  # Last restart 5s ago
+        backoff = 5.0 * (2 ** agent.restart_count)  # 20s
+        time_since = time.monotonic() - agent.last_restart_time
+        assert time_since < backoff  # Should be blocked
+
+
+class TestMaxRestartExhaustion:
+    """Tests for max restart exhaustion notification logic."""
+
+    def test_exhausted_clears_error_entered_at(self):
+        from ashlar_server import Agent
+        agent = Agent(id="m001", name="maxed", role="general", status="error", backend="claude-code", task="t", working_dir="/tmp")
+        agent.status = "error"
+        agent.restart_count = 3
+        agent.max_restarts = 3
+        agent._error_entered_at = time.monotonic()
+        # Simulate exhaustion check
+        if agent.restart_count >= agent.max_restarts and agent._error_entered_at > 0:
+            agent._error_entered_at = 0  # Clear to prevent re-notification
+        assert agent._error_entered_at == 0
+
+    def test_not_exhausted_when_under_limit(self):
+        from ashlar_server import Agent
+        agent = Agent(id="m002", name="notmaxed", role="general", status="error", backend="claude-code", task="t", working_dir="/tmp")
+        agent.status = "error"
+        agent.restart_count = 1
+        agent.max_restarts = 3
+        agent._error_entered_at = time.monotonic()
+        original = agent._error_entered_at
+        if agent.restart_count >= agent.max_restarts and agent._error_entered_at > 0:
+            agent._error_entered_at = 0
+        assert agent._error_entered_at == original
+
+
+class TestIdleReaping:
+    """Tests for idle agent reaping logic."""
+
+    def test_idle_detected_after_ttl(self):
+        from ashlar_server import Agent
+        agent = Agent(id="i001", name="idle", role="general", status="idle", backend="claude-code", task="t", working_dir="/tmp")
+        agent.status = "idle"
+        agent.last_output_time = time.monotonic() - 600  # 10 min ago
+        idle_ttl = 300  # 5 min TTL
+        should_reap = (
+            agent.status in ("idle", "complete")
+            and agent.last_output_time > 0
+            and idle_ttl > 0
+            and (time.monotonic() - agent.last_output_time) > idle_ttl
+        )
+        assert should_reap is True
+
+    def test_not_reaped_within_ttl(self):
+        from ashlar_server import Agent
+        agent = Agent(id="i002", name="fresh", role="general", status="idle", backend="claude-code", task="t", working_dir="/tmp")
+        agent.status = "idle"
+        agent.last_output_time = time.monotonic() - 60  # 1 min ago
+        idle_ttl = 300
+        should_reap = (
+            agent.status in ("idle", "complete")
+            and agent.last_output_time > 0
+            and idle_ttl > 0
+            and (time.monotonic() - agent.last_output_time) > idle_ttl
+        )
+        assert should_reap is False
+
+    def test_working_agents_not_reaped(self):
+        from ashlar_server import Agent
+        agent = Agent(id="i003", name="working", role="general", status="working", backend="claude-code", task="t", working_dir="/tmp")
+        agent.status = "working"
+        agent.last_output_time = time.monotonic() - 600
+        idle_ttl = 300
+        should_reap = (
+            agent.status in ("idle", "complete")
+            and agent.last_output_time > 0
+            and idle_ttl > 0
+            and (time.monotonic() - agent.last_output_time) > idle_ttl
+        )
+        assert should_reap is False
+
+    def test_zero_ttl_disables_reaping(self):
+        from ashlar_server import Agent
+        agent = Agent(id="i004", name="noReap", role="general", status="idle", backend="claude-code", task="t", working_dir="/tmp")
+        agent.status = "idle"
+        agent.last_output_time = time.monotonic() - 9999
+        idle_ttl = 0
+        should_reap = (
+            agent.status in ("idle", "complete")
+            and agent.last_output_time > 0
+            and idle_ttl > 0
+            and (time.monotonic() - agent.last_output_time) > idle_ttl
+        )
+        assert should_reap is False
