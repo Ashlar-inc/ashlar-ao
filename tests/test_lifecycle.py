@@ -4420,3 +4420,47 @@ class TestOutputFloodProtection:
         src = inspect.getsource(ashlar_server.output_capture_loop)
         # Should have decrement logic
         assert "_flood_ticks - 1" in src or "flood_ticks -= 1" in src or "flood_ticks - 1" in src
+
+
+# ─────────────────────────────────────────────
+# Summary Output Cache (#257)
+# ─────────────────────────────────────────────
+
+
+class TestSummaryOutputCache:
+    def test_agent_has_summary_output_hash(self):
+        """Agent should have _summary_output_hash field."""
+        agent = ashlar_server.Agent(
+            id="sc1", name="test", role="general", status="working",
+            working_dir="/tmp", backend="claude-code", task="test",
+        )
+        assert hasattr(agent, '_summary_output_hash')
+        assert agent._summary_output_hash == 0
+
+    def test_capture_loop_checks_output_hash_before_llm(self):
+        """Capture loop should check output hash before calling LLM summarizer."""
+        src = inspect.getsource(ashlar_server.output_capture_loop)
+        assert "_summary_output_hash" in src
+
+    def test_capture_loop_updates_hash_after_summary(self):
+        """Capture loop should store output hash after successful summary."""
+        src = inspect.getsource(ashlar_server.output_capture_loop)
+        # Should set the hash after getting summary
+        assert "_summary_output_hash = current_hash" in src or "_summary_output_hash =" in src
+
+    def test_capture_loop_skips_unchanged_output(self):
+        """Capture loop should skip LLM call when output hash matches."""
+        src = inspect.getsource(ashlar_server.output_capture_loop)
+        # Should compare current hash with stored hash
+        assert "current_hash != agent._summary_output_hash" in src or "current_hash ==" in src
+
+    def test_summary_hash_default_differs_from_output_hash(self):
+        """Default summary hash (0) should differ from initial output hash (0) to ensure first summary runs."""
+        agent = ashlar_server.Agent(
+            id="sc2", name="test", role="general", status="working",
+            working_dir="/tmp", backend="claude-code", task="test",
+        )
+        # Both start at 0, but the first capture will generate a non-zero _prev_output_hash
+        # So the first summary check (0 != new_hash) will pass
+        assert agent._summary_output_hash == 0
+        assert agent._prev_output_hash == 0

@@ -1044,6 +1044,7 @@ class Agent:
     _last_needs_input_event: float = field(default=0.0, repr=False)
     _last_llm_summary_time: float = field(default=0.0, repr=False)
     _llm_summary: str = field(default="", repr=False)
+    _summary_output_hash: int = field(default=0, repr=False)  # Hash of output when last summary was generated
     # Orchestration fields
     model: str | None = None
     tools_allowed: list[str] | None = None
@@ -8812,21 +8813,28 @@ async def output_capture_loop(app: web.Application) -> None:
                     except Exception as e:
                         log.debug(f"Pattern alerting error for {agent_id}: {e}")
 
-                    # LLM summary with throttling
+                    # LLM summary with throttling + output-change cache
                     summarizer: LLMSummarizer | None = app.get("llm_summarizer")
                     if summarizer and app["config"].llm_enabled:
                         if now_mono - agent._last_llm_summary_time >= app["config"].llm_summary_interval:
-                            agent._last_llm_summary_time = now_mono
-                            try:
-                                llm_summary = await summarizer.summarize(
-                                    list(agent.output_lines), agent.task,
-                                    agent.role, agent.status
-                                )
-                                if llm_summary:
-                                    agent.summary = llm_summary
-                                    agent._llm_summary = llm_summary
-                            except Exception as e:
-                                log.debug(f"LLM summary failed for {agent_id}: {e}")
+                            # Skip LLM call if output hasn't changed since last summary
+                            current_hash = agent._prev_output_hash
+                            if current_hash != agent._summary_output_hash:
+                                agent._last_llm_summary_time = now_mono
+                                try:
+                                    llm_summary = await summarizer.summarize(
+                                        list(agent.output_lines), agent.task,
+                                        agent.role, agent.status
+                                    )
+                                    if llm_summary:
+                                        agent.summary = llm_summary
+                                        agent._llm_summary = llm_summary
+                                        agent._summary_output_hash = current_hash
+                                except Exception as e:
+                                    log.debug(f"LLM summary failed for {agent_id}: {e}")
+                            else:
+                                # Output unchanged — skip LLM call, reset timer
+                                agent._last_llm_summary_time = now_mono
 
                 # Output staleness detection (runs whether or not there were new lines)
                 if agent.status in ("working", "planning") and agent.last_output_time > 0:
