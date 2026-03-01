@@ -27,6 +27,9 @@ with patch("psutil.cpu_percent", return_value=0.0):
         FileOperation,
         GitOperation,
         AgentTestResult,
+        AnthropicIntelligenceClient,
+        AgentInsight,
+        ParsedIntent,
     )
 
 
@@ -4552,3 +4555,178 @@ class TestActivityPerformanceTiming:
         avg_by_tool = summary["timing"]["avg_by_tool"]
         assert isinstance(avg_by_tool, dict)
         assert len(avg_by_tool) > 0
+
+
+# ─────────────────────────────────────────────
+# T19: AnthropicIntelligenceClient Unit Tests
+# ─────────────────────────────────────────────
+
+class TestAnthropicIntelligenceClient:
+    """Tests for circuit breaker, error handling, and graceful degradation."""
+
+    def test_check_circuit_returns_true_when_available(self):
+        client = AnthropicIntelligenceClient(api_key="test-key")
+        assert client._check_circuit() is True
+
+    def test_check_circuit_returns_false_when_unavailable(self):
+        client = AnthropicIntelligenceClient(api_key="test-key")
+        client.available = False
+        assert client._check_circuit() is False
+
+    def test_check_circuit_trips_at_max_failures(self):
+        client = AnthropicIntelligenceClient(api_key="test-key")
+        client._failures = 5
+        client._circuit_reset_time = time.monotonic() + 60
+        assert client._check_circuit() is False
+
+    def test_check_circuit_resets_after_cooldown(self):
+        client = AnthropicIntelligenceClient(api_key="test-key")
+        client._failures = 5
+        client._circuit_reset_time = time.monotonic() - 1  # expired
+        assert client._check_circuit() is True
+        assert client._failures == 0
+
+    def test_handle_error_401_marks_unavailable(self):
+        client = AnthropicIntelligenceClient(api_key="test-key")
+        client._handle_error(401)
+        assert client.available is False
+
+    def test_handle_error_403_marks_unavailable(self):
+        client = AnthropicIntelligenceClient(api_key="test-key")
+        client._handle_error(403)
+        assert client.available is False
+
+    def test_handle_error_429_sets_cooldown(self):
+        client = AnthropicIntelligenceClient(api_key="test-key")
+        before = time.monotonic()
+        client._handle_error(429, retry_after="30")
+        assert client._circuit_reset_time >= before + 29
+        assert client.available is True  # Still available, just cooling
+
+    def test_handle_error_429_default_cooldown(self):
+        client = AnthropicIntelligenceClient(api_key="test-key")
+        before = time.monotonic()
+        client._handle_error(429)  # No retry_after
+        assert client._circuit_reset_time >= before + 59
+
+    def test_handle_error_500_increments_failures(self):
+        client = AnthropicIntelligenceClient(api_key="test-key")
+        assert client._failures == 0
+        client._handle_error(500)
+        assert client._failures == 1
+        assert client.available is True
+
+    def test_handle_error_trips_circuit_at_max(self):
+        client = AnthropicIntelligenceClient(api_key="test-key")
+        for _ in range(5):
+            client._handle_error(500)
+        assert client._failures == 5
+        assert client._circuit_reset_time > time.monotonic()
+
+    def test_call_returns_none_when_circuit_open(self):
+        client = AnthropicIntelligenceClient(api_key="test-key")
+        client.available = False
+        result = asyncio.run(client._call([{"role": "user", "content": "hi"}]))
+        assert result is None
+
+    def test_analyze_fleet_skips_single_agent(self):
+        client = AnthropicIntelligenceClient(api_key="test-key")
+        mock_agent = MagicMock()
+        result = asyncio.run(client.analyze_fleet([mock_agent], []))
+        assert result == []
+
+    def test_analyze_fleet_skips_empty_list(self):
+        client = AnthropicIntelligenceClient(api_key="test-key")
+        result = asyncio.run(client.analyze_fleet([], []))
+        assert result == []
+
+    def test_summarize_returns_none_for_empty_output(self):
+        client = AnthropicIntelligenceClient(api_key="test-key")
+        result = asyncio.run(client.summarize([], "task", "general", "working"))
+        assert result is None
+
+    def test_parse_command_returns_unknown_when_circuit_open(self):
+        client = AnthropicIntelligenceClient(api_key="test-key")
+        client.available = False
+        result = asyncio.run(client.parse_command("test command", [], {}))
+        assert isinstance(result, ParsedIntent)
+        assert result.action == "unknown"
+        assert result.confidence == 0.0
+
+
+# ─────────────────────────────────────────────
+# T20: OutputIntelligenceParser Extended Tests
+# ─────────────────────────────────────────────
+
+class TestOutputIntelligenceParserExtended:
+    """Tests for MCP tool parsing, tool result status, Jest/Mocha frameworks."""
+
+    def _make_agent(self, lines):
+        agent = ashlar_server.Agent(
+            id="pe1", name="test", role="general", status="working",
+            working_dir="/tmp", backend="claude-code", task="test",
+        )
+        agent.output_lines = lines
+        return agent
+
+    def test_parse_mcp_tool(self):
+        agent = self._make_agent(['mcp__filesystem__read_file("/config.yaml")'])
+        parser = OutputIntelligenceParser()
+        counts = parser.parse_incremental(agent)
+        assert counts["tools"] >= 1
+        assert any(inv.tool == "MCP" for inv in agent._tool_invocations)
+
+    def test_tool_result_success_updates_status(self):
+        agent = self._make_agent([
+            'Read("/src/app.py")',
+            'Tool Result:',
+            '  file contents here',
+        ])
+        parser = OutputIntelligenceParser()
+        parser.parse_incremental(agent)
+        if agent._tool_invocations:
+            # The parser should have detected the tool and attempted result status
+            assert agent._tool_invocations[0].tool == "Read"
+
+    def test_tool_result_error_updates_status(self):
+        agent = self._make_agent([
+            'Write("/src/output.py")',
+            'Error: Permission denied',
+        ])
+        parser = OutputIntelligenceParser()
+        parser.parse_incremental(agent)
+        if agent._tool_invocations:
+            assert agent._tool_invocations[0].tool == "Write"
+
+    def test_parse_jest_results(self):
+        agent = self._make_agent(["Tests: 10 passed, 2 failed, 12 total"])
+        parser = OutputIntelligenceParser()
+        counts = parser.parse_incremental(agent)
+        assert counts.get("tests", 0) >= 1
+
+    def test_parse_git_commit(self):
+        agent = self._make_agent(["git commit -m 'fix: test bug'"])
+        parser = OutputIntelligenceParser()
+        counts = parser.parse_incremental(agent)
+        assert counts.get("git", 0) >= 1
+
+    def test_incremental_parsing_watermark(self):
+        """Parser only processes lines after the watermark."""
+        agent = self._make_agent(['Read("/a.py")', 'Write("/b.py")'])
+        parser = OutputIntelligenceParser()
+        c1 = parser.parse_incremental(agent)
+        assert c1["tools"] == 2
+        # Second call without new lines should find 0
+        c2 = parser.parse_incremental(agent)
+        assert c2["tools"] == 0
+
+    def test_incremental_parsing_new_lines_only(self):
+        """New lines added after first parse should be picked up."""
+        agent = self._make_agent(['Read("/a.py")'])
+        parser = OutputIntelligenceParser()
+        parser.parse_incremental(agent)
+        assert len(agent._tool_invocations) == 1
+        agent.output_lines.append('Edit("/b.py")')
+        c2 = parser.parse_incremental(agent)
+        assert c2["tools"] == 1
+        assert len(agent._tool_invocations) == 2

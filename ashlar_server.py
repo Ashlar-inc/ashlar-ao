@@ -4898,6 +4898,8 @@ class Database:
         event_type: str | None = None,
         since: str | None = None,
     ) -> int:
+        if self._db is None:
+            return 0
         conditions = []
         params: list = []
         if agent_id:
@@ -6814,7 +6816,7 @@ async def create_project(request: web.Request) -> web.Response:
     try:
         await db.save_project(project)
     except Exception as e:
-        logger.error("Failed to save project: %s", e)
+        log.error("Failed to save project: %s", e)
         return web.json_response({"error": "Failed to save project"}, status=500)
     return web.json_response(project, status=201)
 
@@ -6879,7 +6881,7 @@ async def create_workflow(request: web.Request) -> web.Response:
     try:
         await db.save_workflow(workflow)
     except Exception as e:
-        logger.error("Failed to save workflow: %s", e)
+        log.error("Failed to save workflow: %s", e)
         return web.json_response({"error": "Failed to save workflow"}, status=500)
     workflow["agents"] = data["agents"]
     return web.json_response(workflow, status=201)
@@ -8649,10 +8651,7 @@ async def bulk_respond(request: web.Request) -> web.Response:
         message = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', message)
 
         try:
-            await manager._tmux_send_keys(agent.tmux_session, message)
-            agent.needs_input = False
-            agent.input_prompt = None
-            agent.updated_at = datetime.now(timezone.utc).isoformat()
+            await manager.send_message(aid, message)
             success_ids.append(aid)
             await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
         except Exception as e:
@@ -8779,10 +8778,10 @@ async def output_capture_loop(app: web.Application) -> None:
                     agent.output_rate = (recent_lines_count / max(window, 1.0)) * 60.0
 
                     # Flood detection: flag agents producing excessive output
-                    flood_threshold = config.flood_threshold_lines_per_min
+                    flood_threshold = app["config"].flood_threshold_lines_per_min
                     if agent.output_rate > flood_threshold:
                         agent._flood_ticks += 1
-                        if agent._flood_ticks >= config.flood_sustained_ticks and not agent._flood_detected:
+                        if agent._flood_ticks >= app["config"].flood_sustained_ticks and not agent._flood_detected:
                             agent._flood_detected = True
                             log.warning(
                                 f"Agent {agent_id} ({agent.name}) flood detected: "

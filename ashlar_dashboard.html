@@ -7528,6 +7528,10 @@ function handleAgentRemoved(agentId) {
     selectedAgents.delete(agentId);
     _activityCache.delete(agentId);
     state.commandHistory.delete(agentId);
+    state.deepScrollPositions.delete(agentId);
+    _codeBlockState.delete(agentId);
+    _outputMarks.delete(agentId);
+    _lastOutputLineCount.delete(agentId);
     if (state.pinnedAgents.delete(agentId)) {
         localStorage.setItem('ashlar_pinned', JSON.stringify([...state.pinnedAgents]));
     }
@@ -14425,16 +14429,14 @@ async function executeBatchSend() {
     closeBatchSend();
 
     if (hasVars) {
-        // Send personalized messages via WebSocket
+        // Send personalized messages via WebSocket (use socket.send with object, not pre-stringified)
         let sent = 0;
         for (const id of ids) {
             const agent = state.agents.get(id);
             if (!agent) continue;
             const resolved = resolveBatchTemplate(msg, agent);
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({ type: 'send', agent_id: id, message: resolved }));
-                sent++;
-            }
+            socket.send({ type: 'send', agent_id: id, message: resolved });
+            sent++;
         }
         showToast(`Sent personalized message to ${sent} agent${sent !== 1 ? 's' : ''}`, 'success');
         clearBulkSelection();
@@ -16188,6 +16190,7 @@ closeDeepView = function() {
     _filteredVirtualData = null;
     _activeOutputFilter = 'all';
     _progressiveLoading = false;
+    _srOriginalContent = null;
     _origCloseDeep();
 };
 
@@ -18513,7 +18516,8 @@ function handleHashLink() {
     const agentId = params.get('agent');
     const line = parseInt(params.get('line'));
     if (!agentId) return;
-    // Wait for sync to have agents, then open deep view
+    // Wait for sync to have agents, then open deep view (max 20 attempts = ~10s)
+    let attempts = 0;
     const tryOpen = () => {
         if (state.agents.has(agentId)) {
             openDeepView(agentId);
@@ -18521,8 +18525,11 @@ function handleHashLink() {
                 setTimeout(() => goToLine(line + 1), 500);
             }
             window.location.hash = '';
-        } else {
+        } else if (++attempts < 20) {
             setTimeout(tryOpen, 500);
+        } else {
+            showToast(`Agent ${agentId} not found`, 'warning');
+            window.location.hash = '';
         }
     };
     setTimeout(tryOpen, 1000);

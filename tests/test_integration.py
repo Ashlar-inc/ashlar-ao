@@ -62,6 +62,7 @@ def _make_mock_db():
     db.delete_scratchpad = AsyncMock(return_value=False)
     db.save_bookmark = AsyncMock(return_value=1)
     db.get_history_item = AsyncMock(return_value=None)
+    db.get_workflow = AsyncMock(return_value=None)
     db._db = None  # no real DB connection
     return db
 
@@ -1859,3 +1860,147 @@ class TestApiAgentMessages:
             "content": "hello",
         })
         assert resp.status == 404
+
+
+# ── Config Validation Tests ──
+
+class TestConfigValidation:
+    """Tests for PUT /api/config validation across multiple fields."""
+
+    @pytest.mark.asyncio
+    async def test_put_config_invalid_max_agents_zero(self, aiohttp_client):
+        """max_agents=0 is below minimum — should return 400."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.put("/api/config", json={"max_agents": 0})
+        assert resp.status == 400
+        body = await resp.json()
+        assert "max_agents" in body["error"]
+
+    @pytest.mark.asyncio
+    async def test_put_config_invalid_max_agents_over(self, aiohttp_client):
+        """max_agents=200 is above max 100 — should return 400."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.put("/api/config", json={"max_agents": 200})
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_put_config_invalid_capture_interval(self, aiohttp_client):
+        """output_capture_interval below 0.5 should return 400."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.put("/api/config", json={"output_capture_interval": 0.1})
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_put_config_invalid_memory_limit(self, aiohttp_client):
+        """memory_limit_mb below 256 should return 400."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.put("/api/config", json={"memory_limit_mb": 64})
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_put_config_invalid_idle_ttl(self, aiohttp_client):
+        """idle_agent_ttl below 300 should return 400."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.put("/api/config", json={"idle_agent_ttl": 100})
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_put_config_invalid_health_threshold(self, aiohttp_client):
+        """health_low_threshold of 0 should return 400 (must be > 0)."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.put("/api/config", json={"health_low_threshold": 0})
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_put_config_unknown_key_ignored(self, aiohttp_client):
+        """Unknown config keys should be silently ignored, not cause 400."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.put("/api/config", json={"nonexistent_key": "value"})
+        assert resp.status == 200
+
+    @pytest.mark.asyncio
+    async def test_put_config_valid_bool(self, aiohttp_client):
+        """Boolean fields like llm_enabled should accept true/false."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.put("/api/config", json={"llm_enabled": False})
+        assert resp.status == 200
+
+    @pytest.mark.asyncio
+    async def test_put_config_persists_in_memory(self, aiohttp_client):
+        """After PUT /api/config, GET /api/config should reflect the change."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.put("/api/config", json={"max_agents": 12})
+        assert resp.status == 200
+        resp2 = await client.get("/api/config")
+        data = await resp2.json()
+        assert data["max_agents"] == 12
+
+
+# ── Workflow Run Tests ──
+
+class TestWorkflowRun:
+    """Tests for workflow run/cancel/list endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_run_workflow_nonexistent(self, aiohttp_client):
+        """POST /api/workflows/nonexistent/run should return 404."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/workflows/nonexistent/run")
+        assert resp.status == 404
+
+    @pytest.mark.asyncio
+    async def test_list_workflow_runs_empty(self, aiohttp_client):
+        """GET /api/workflow-runs should return empty list initially."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.get("/api/workflow-runs")
+        assert resp.status == 200
+        data = await resp.json()
+        assert isinstance(data, list)
+        assert len(data) == 0
+
+    @pytest.mark.asyncio
+    async def test_cancel_workflow_run_not_found(self, aiohttp_client):
+        """POST /api/workflow-runs/nonexistent/cancel should return 404."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/workflow-runs/nonexistent/cancel")
+        assert resp.status == 404
+
+    @pytest.mark.asyncio
+    async def test_handoff_agent_source_not_found(self, aiohttp_client):
+        """POST /api/agents/{id}/handoff with nonexistent source returns 404."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/agents/nonexistent/handoff", json={
+            "target_id": "also-nonexistent",
+            "context": "test context",
+        })
+        assert resp.status == 404
+
+    @pytest.mark.asyncio
+    async def test_search_output_invalid_regex_returns_400(self, aiohttp_client):
+        """?regex=true with invalid pattern should return 400."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        manager = app["agent_manager"]
+        manager._run_tmux = AsyncMock(return_value=MagicMock(returncode=0, stdout="", stderr=""))
+        manager._tmux_send_keys = AsyncMock(return_value=True)
+        manager._wait_for_tui_ready = AsyncMock(return_value=True)
+        agent = await manager.spawn(
+            role="general", name="regex-test", task="test", working_dir=TEST_WORKING_DIR,
+        )
+        resp = await client.get(f"/api/agents/{agent.id}/output/search?q=[invalid&regex=true")
+        assert resp.status == 400
+        data = await resp.json()
+        assert "regex" in data.get("error", "").lower()
