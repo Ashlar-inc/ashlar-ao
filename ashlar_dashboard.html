@@ -11846,7 +11846,7 @@ function openCheatsheet() {
     _cheatsheetMousedownHandler = (e) => {
         if (!el.contains(e.target)) closeCheatsheet();
     };
-    setTimeout(() => document.addEventListener('mousedown', _cheatsheetMousedownHandler), 0);
+    document.addEventListener('mousedown', _cheatsheetMousedownHandler);
 }
 function closeCheatsheet() {
     document.getElementById('cheatsheetOverlay').classList.remove('active');

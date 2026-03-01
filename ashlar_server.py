@@ -5285,7 +5285,7 @@ class WebSocketHub:
                 d["name"] = name
                 backends_info[name] = d
             try:
-                presets = await self.db.get_presets()
+                presets = await self.db.get_presets() if self.db else []
             except Exception:
                 presets = []
             scanner: ExtensionScanner = request.app.get("extension_scanner")
@@ -5710,7 +5710,7 @@ async def spawn_agent(request: web.Request) -> web.Response:
 
         return web.json_response(agent.to_dict(), status=201)
     except ValueError as e:
-        return web.json_response({"error": str(e)}, status=503)
+        return web.json_response({"error": str(e)}, status=400)
 
 
 async def get_agent(request: web.Request) -> web.Response:
@@ -6357,7 +6357,7 @@ async def get_server_stats(request: web.Request) -> web.Response:
     # Agent stats
     active = len(manager.agents)
     by_status: dict[str, int] = {}
-    for agent in manager.agents.values():
+    for agent in list(manager.agents.values()):
         by_status[agent.status] = by_status.get(agent.status, 0) + 1
 
     # DB size
@@ -6430,7 +6430,7 @@ async def validate_spawn(request: web.Request) -> web.Response:
             errors.append("Agent name is empty after sanitization")
         else:
             resolved["name"] = sanitized
-            existing_names = {a.name for a in manager.agents.values()}
+            existing_names = {a.name for a in list(manager.agents.values())}
             if sanitized in existing_names:
                 warnings.append(f"Name '{sanitized}' already in use — will be suffixed with agent ID")
     else:
@@ -7740,7 +7740,7 @@ async def resume_from_history(request: web.Request) -> web.Response:
 
     # Check agent limit
     config: Config = request.app["config"]
-    active_count = sum(1 for a in manager.agents.values() if a.status not in ("error", "complete"))
+    active_count = sum(1 for a in list(manager.agents.values()) if a.status not in ("error", "complete"))
     if active_count >= config.max_agents:
         return web.json_response({"error": f"Agent limit reached ({config.max_agents})"}, status=409)
 
@@ -7840,7 +7840,7 @@ async def clone_agent(request: web.Request) -> web.Response:
 
     config: Config = request.app["config"]
     if len(manager.agents) >= config.max_agents:
-        return web.json_response({"error": "Max agents reached"}, status=503)
+        return web.json_response({"error": "Max agents reached"}, status=409)
 
     try:
         agent = await manager.spawn(

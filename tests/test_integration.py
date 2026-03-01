@@ -2004,3 +2004,302 @@ class TestWorkflowRun:
         assert resp.status == 400
         data = await resp.json()
         assert "regex" in data.get("error", "").lower()
+
+
+# ── Bulk Agent Action Tests ────────────────────────────
+class TestBulkAgentAction:
+    """Tests for POST /api/agents/bulk endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_bulk_invalid_action(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/agents/bulk", json={
+            "action": "explode", "agent_ids": ["abc"],
+        })
+        assert resp.status == 400
+        body = await resp.json()
+        assert "Invalid action" in body["error"]
+
+    @pytest.mark.asyncio
+    async def test_bulk_empty_agent_ids(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/agents/bulk", json={
+            "action": "kill", "agent_ids": [],
+        })
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_bulk_send_requires_message(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/agents/bulk", json={
+            "action": "send", "agent_ids": ["abc"], "message": "",
+        })
+        assert resp.status == 400
+        body = await resp.json()
+        assert "message" in body["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_bulk_kill_nonexistent_agents(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/agents/bulk", json={
+            "action": "kill", "agent_ids": ["nope1", "nope2"],
+        })
+        assert resp.status == 200
+        body = await resp.json()
+        assert len(body["success"]) == 0
+        assert len(body["failed"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_bulk_pause_existing_agent(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        manager = app["agent_manager"]
+        manager._run_tmux = AsyncMock(return_value=MagicMock(returncode=0, stdout="", stderr=""))
+        manager._tmux_send_keys = AsyncMock(return_value=True)
+        manager._wait_for_tui_ready = AsyncMock(return_value=True)
+        agent = await manager.spawn(
+            role="general", name="bulk-test", task="test", working_dir=TEST_WORKING_DIR,
+        )
+        agent.set_status("working")
+        resp = await client.post("/api/agents/bulk", json={
+            "action": "pause", "agent_ids": [agent.id],
+        })
+        assert resp.status == 200
+        body = await resp.json()
+        assert agent.id in body["success"]
+
+    @pytest.mark.asyncio
+    async def test_bulk_mixed_existing_and_missing(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        manager = app["agent_manager"]
+        manager._run_tmux = AsyncMock(return_value=MagicMock(returncode=0, stdout="", stderr=""))
+        manager._tmux_send_keys = AsyncMock(return_value=True)
+        manager._wait_for_tui_ready = AsyncMock(return_value=True)
+        agent = await manager.spawn(
+            role="general", name="bulk-mix", task="test", working_dir=TEST_WORKING_DIR,
+        )
+        agent.set_status("working")
+        resp = await client.post("/api/agents/bulk", json={
+            "action": "pause", "agent_ids": [agent.id, "nonexistent"],
+        })
+        assert resp.status == 200
+        body = await resp.json()
+        assert agent.id in body["success"]
+        assert any(f["id"] == "nonexistent" for f in body["failed"])
+
+    @pytest.mark.asyncio
+    async def test_bulk_invalid_json(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/agents/bulk", data="not json",
+                                 headers={"Content-Type": "application/json"})
+        assert resp.status == 400
+
+
+# ── Batch Spawn Tests ──────────────────────────────────
+class TestBatchSpawn:
+    """Tests for POST /api/agents/batch-spawn endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_batch_spawn_empty_list(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/agents/batch-spawn", json={"agents": []})
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_batch_spawn_too_many(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        specs = [{"role": "general", "task": f"task-{i}"} for i in range(11)]
+        resp = await client.post("/api/agents/batch-spawn", json={"agents": specs})
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_batch_spawn_missing_task(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        manager = app["agent_manager"]
+        manager._run_tmux = AsyncMock(return_value=MagicMock(returncode=0, stdout="", stderr=""))
+        manager._tmux_send_keys = AsyncMock(return_value=True)
+        manager._wait_for_tui_ready = AsyncMock(return_value=True)
+        resp = await client.post("/api/agents/batch-spawn", json={
+            "agents": [{"role": "general", "task": ""}, {"role": "general", "task": "valid task"}],
+        })
+        # 201 because the valid agent succeeds
+        assert resp.status == 201
+        body = await resp.json()
+        assert len(body["failed"]) >= 1
+        assert body["total_spawned"] >= 1
+        assert any("task" in f.get("error", "").lower() for f in body["failed"])
+
+    @pytest.mark.asyncio
+    async def test_batch_spawn_invalid_role(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        manager = app["agent_manager"]
+        manager._run_tmux = AsyncMock(return_value=MagicMock(returncode=0, stdout="", stderr=""))
+        manager._tmux_send_keys = AsyncMock(return_value=True)
+        manager._wait_for_tui_ready = AsyncMock(return_value=True)
+        resp = await client.post("/api/agents/batch-spawn", json={
+            "agents": [{"role": "mythical-unicorn", "task": "test"}],
+        })
+        # 400 because no agents spawned (only one spec and it fails)
+        assert resp.status == 400
+        body = await resp.json()
+        assert len(body["failed"]) == 1
+        assert "role" in body["failed"][0]["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_batch_spawn_invalid_json(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/agents/batch-spawn", data="bad",
+                                 headers={"Content-Type": "application/json"})
+        assert resp.status == 400
+
+
+# ── Fleet Analytics Tests ──────────────────────────────
+class TestFleetAnalytics:
+    """Tests for GET /api/analytics endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_analytics_empty_fleet(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.get("/api/analytics")
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["total_cost_usd"] == 0
+        assert body["total_tokens_input"] == 0
+        assert body["avg_health_score"] == 0
+
+    @pytest.mark.asyncio
+    async def test_analytics_with_agents(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        manager = app["agent_manager"]
+        manager._run_tmux = AsyncMock(return_value=MagicMock(returncode=0, stdout="", stderr=""))
+        manager._tmux_send_keys = AsyncMock(return_value=True)
+        manager._wait_for_tui_ready = AsyncMock(return_value=True)
+        a1 = await manager.spawn(role="backend", name="a1", task="test", working_dir=TEST_WORKING_DIR)
+        a2 = await manager.spawn(role="frontend", name="a2", task="test", working_dir=TEST_WORKING_DIR)
+        resp = await client.get("/api/analytics")
+        assert resp.status == 200
+        body = await resp.json()
+        assert "status_distribution" in body
+        assert "role_distribution" in body
+        assert "top_files" in body
+        assert "tool_usage" in body
+
+
+# ── Validate Spawn Tests ──────────────────────────────
+class TestValidateSpawn:
+    """Tests for POST /api/agents/validate endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_validate_valid_params(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/agents/validate", json={
+            "role": "backend", "task": "Build API", "working_dir": TEST_WORKING_DIR,
+        })
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["valid"] is True
+        assert body["resolved"]["role"] == "backend"
+
+    @pytest.mark.asyncio
+    async def test_validate_invalid_role(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/agents/validate", json={
+            "role": "wizard", "task": "cast spells",
+        })
+        assert resp.status == 400
+        body = await resp.json()
+        assert body["valid"] is False
+        assert any("role" in e.lower() for e in body["errors"])
+
+    @pytest.mark.asyncio
+    async def test_validate_missing_task_is_warning(self, aiohttp_client):
+        """Missing task is a warning, not an error — validation still passes."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/agents/validate", json={"role": "general"})
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["valid"] is True
+        assert any("task" in w.lower() for w in body.get("warnings", []))
+
+    @pytest.mark.asyncio
+    async def test_validate_invalid_json(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/agents/validate", data="not json",
+                                 headers={"Content-Type": "application/json"})
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_validate_name_sanitization(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/agents/validate", json={
+            "role": "general", "task": "test", "name": "test\x00agent\x01name",
+        })
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["valid"] is True
+        assert "\x00" not in body["resolved"]["name"]
+
+
+# ── Intelligence Command Tests ─────────────────────────
+class TestIntelligenceCommand:
+    """Tests for POST /api/intelligence/command endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_command_missing_transcript(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/intelligence/command", json={})
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_command_keyword_spawn(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/intelligence/command", json={
+            "transcript": "spawn a backend agent",
+        })
+        assert resp.status == 200
+        body = await resp.json()
+        assert "intent" in body
+        intent = body["intent"]
+        assert intent["action"] == "spawn"
+
+    @pytest.mark.asyncio
+    async def test_command_keyword_status(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/intelligence/command", json={
+            "transcript": "what is the status",
+        })
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["intent"]["action"] == "status"
+
+    @pytest.mark.asyncio
+    async def test_command_keyword_unknown(self, aiohttp_client):
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/intelligence/command", json={
+            "transcript": "make me a sandwich",
+        })
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["intent"]["action"] == "unknown"

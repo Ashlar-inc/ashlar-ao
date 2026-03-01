@@ -30,6 +30,7 @@ with patch("psutil.cpu_percent", return_value=0.0):
         AnthropicIntelligenceClient,
         AgentInsight,
         ParsedIntent,
+        _keyword_parse_command,
     )
 
 
@@ -4730,3 +4731,67 @@ class TestOutputIntelligenceParserExtended:
         c2 = parser.parse_incremental(agent)
         assert c2["tools"] == 1
         assert len(agent._tool_invocations) == 2
+
+
+# ─────────────────────────────────────────────
+# Keyword Command Parser Tests
+# ─────────────────────────────────────────────
+class TestKeywordParseCommand:
+    """Unit tests for _keyword_parse_command fallback parser."""
+
+    def test_spawn_keyword(self):
+        intent = _keyword_parse_command("spawn a backend agent", [])
+        assert intent.action == "spawn"
+        assert intent.parameters["role"] == "backend"
+
+    def test_spawn_default_role(self):
+        intent = _keyword_parse_command("create a new agent", [])
+        assert intent.action == "spawn"
+        assert intent.parameters["role"] == "general"
+
+    def test_kill_keyword(self):
+        intent = _keyword_parse_command("kill all agents", [])
+        assert intent.action == "kill"
+
+    def test_pause_keyword(self):
+        intent = _keyword_parse_command("pause agent work", [])
+        assert intent.action == "pause"
+
+    def test_resume_keyword(self):
+        intent = _keyword_parse_command("resume the agent", [])
+        assert intent.action == "resume"
+
+    def test_status_query(self):
+        intent = _keyword_parse_command("what is the status", [])
+        assert intent.action == "status"
+
+    def test_approve_message(self):
+        intent = _keyword_parse_command("approve the plan", [])
+        assert intent.action == "send"
+        assert intent.message == "yes, proceed"
+
+    def test_reject_message(self):
+        intent = _keyword_parse_command("reject that change", [])
+        assert intent.action == "send"
+        assert intent.message == "no, stop"
+
+    def test_unknown_command(self):
+        intent = _keyword_parse_command("make me a sandwich", [])
+        assert intent.action == "unknown"
+        assert intent.confidence < 0.5
+
+    def test_spawn_tester_role(self):
+        intent = _keyword_parse_command("launch a tester agent", [])
+        assert intent.action == "spawn"
+        assert intent.parameters["role"] == "tester"
+
+    def test_spawn_security_role(self):
+        intent = _keyword_parse_command("start security audit", [])
+        assert intent.action == "spawn"
+        assert intent.parameters["role"] == "security"
+
+    def test_confidence_levels(self):
+        spawn = _keyword_parse_command("spawn backend", [])
+        assert spawn.confidence == 0.6
+        unknown = _keyword_parse_command("gibberish", [])
+        assert unknown.confidence == 0.2
