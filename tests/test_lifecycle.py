@@ -4464,3 +4464,91 @@ class TestSummaryOutputCache:
         # So the first summary check (0 != new_hash) will pass
         assert agent._summary_output_hash == 0
         assert agent._prev_output_hash == 0
+
+
+# ─────────────────────────────────────────────
+# Activity Performance Timing (#261)
+# ─────────────────────────────────────────────
+
+
+class TestActivityPerformanceTiming:
+    def test_activity_summary_includes_timing(self):
+        """Activity summary should include timing field."""
+        parser = ashlar_server.OutputIntelligenceParser()
+        agent = ashlar_server.Agent(
+            id="pt1", name="test", role="general", status="working",
+            working_dir="/tmp", backend="claude-code", task="test",
+        )
+        summary = parser.get_activity_summary(agent)
+        assert "timing" in summary
+
+    def test_timing_with_no_invocations(self):
+        """Timing should return zeros with no invocations."""
+        parser = ashlar_server.OutputIntelligenceParser()
+        agent = ashlar_server.Agent(
+            id="pt2", name="test", role="general", status="working",
+            working_dir="/tmp", backend="claude-code", task="test",
+        )
+        summary = parser.get_activity_summary(agent)
+        assert summary["timing"]["avg_interval_sec"] == 0
+        assert summary["timing"]["longest_gap_sec"] == 0
+
+    def test_timing_with_invocations(self):
+        """Timing should compute intervals between invocations."""
+        parser = ashlar_server.OutputIntelligenceParser()
+        agent = ashlar_server.Agent(
+            id="pt3", name="test", role="general", status="working",
+            working_dir="/tmp", backend="claude-code", task="test",
+        )
+        # Add invocations with known timestamps
+        now = time.monotonic()
+        for i in range(5):
+            agent._tool_invocations.append(ashlar_server.ToolInvocation(
+                agent_id="pt3", tool="Read", args=f"file{i}.py",
+                timestamp=now - 20 + (i * 5), line_index=i,
+            ))
+        summary = parser.get_activity_summary(agent)
+        timing = summary["timing"]
+        assert timing["avg_interval_sec"] > 0
+        assert timing["longest_gap_sec"] > 0
+        assert "avg_by_tool" in timing
+        assert "recent_intervals" in timing
+
+    def test_timing_tools_per_min(self):
+        """Timing should compute tools_per_min from recent invocations."""
+        parser = ashlar_server.OutputIntelligenceParser()
+        agent = ashlar_server.Agent(
+            id="pt4", name="test", role="general", status="working",
+            working_dir="/tmp", backend="claude-code", task="test",
+        )
+        now = time.monotonic()
+        for i in range(10):
+            agent._tool_invocations.append(ashlar_server.ToolInvocation(
+                agent_id="pt4", tool="Edit", args=f"file{i}.py",
+                timestamp=now - 60 + (i * 6), line_index=i,
+            ))
+        summary = parser.get_activity_summary(agent)
+        assert summary["timing"]["tools_per_min"] > 0
+
+    def test_compute_timing_method_exists(self):
+        """OutputIntelligenceParser should have _compute_timing method."""
+        assert hasattr(ashlar_server.OutputIntelligenceParser, '_compute_timing')
+
+    def test_timing_avg_by_tool(self):
+        """Timing should break down average intervals by tool type."""
+        parser = ashlar_server.OutputIntelligenceParser()
+        agent = ashlar_server.Agent(
+            id="pt5", name="test", role="general", status="working",
+            working_dir="/tmp", backend="claude-code", task="test",
+        )
+        now = time.monotonic()
+        tools = ["Read", "Edit", "Read", "Bash", "Edit"]
+        for i, tool in enumerate(tools):
+            agent._tool_invocations.append(ashlar_server.ToolInvocation(
+                agent_id="pt5", tool=tool, args=f"arg{i}",
+                timestamp=now - 25 + (i * 5), line_index=i,
+            ))
+        summary = parser.get_activity_summary(agent)
+        avg_by_tool = summary["timing"]["avg_by_tool"]
+        assert isinstance(avg_by_tool, dict)
+        assert len(avg_by_tool) > 0

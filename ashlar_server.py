@@ -3626,11 +3626,13 @@ class OutputIntelligenceParser:
 
     def get_activity_summary(self, agent: "Agent") -> dict:
         """Get structured activity summary for an agent."""
+        # Compute performance timing from tool invocations
+        timing = self._compute_timing(agent._tool_invocations)
         return {
-            "tool_invocations": [t.to_dict() for t in agent._tool_invocations[-50:]],
-            "file_operations": [f.to_dict() for f in agent._file_operations[-50:]],
-            "git_operations": [g.to_dict() for g in agent._git_operations[-20:]],
-            "test_results": [t.to_dict() for t in agent._test_results[-10:]],
+            "tool_invocations": [t.to_dict() for t in list(agent._tool_invocations)[-50:]],
+            "file_operations": [f.to_dict() for f in list(agent._file_operations)[-50:]],
+            "git_operations": [g.to_dict() for g in list(agent._git_operations)[-20:]],
+            "test_results": [t.to_dict() for t in list(agent._test_results)[-10:]],
             "summary": {
                 "total_tools": len(agent._tool_invocations),
                 "total_files": len(agent._file_operations),
@@ -3640,6 +3642,43 @@ class OutputIntelligenceParser:
                 "tools_by_type": self._count_by_field(agent._tool_invocations, "tool"),
                 "files_by_operation": self._count_by_field(agent._file_operations, "operation"),
             },
+            "timing": timing,
+        }
+
+    @staticmethod
+    def _compute_timing(invocations: collections.deque) -> dict:
+        """Compute performance timing stats from tool invocations."""
+        if len(invocations) < 2:
+            return {"intervals": [], "avg_interval_sec": 0, "longest_gap_sec": 0, "tools_per_min": 0}
+        items = list(invocations)
+        intervals: list[float] = []
+        for i in range(1, len(items)):
+            gap = items[i].timestamp - items[i - 1].timestamp
+            if gap > 0:
+                intervals.append(round(gap, 2))
+        if not intervals:
+            return {"intervals": [], "avg_interval_sec": 0, "longest_gap_sec": 0, "tools_per_min": 0}
+        avg_interval = round(sum(intervals) / len(intervals), 2)
+        longest_gap = round(max(intervals), 2)
+        # Tools per minute over last 5 minutes
+        now = time.monotonic()
+        recent = [t for t in items if now - t.timestamp <= 300]
+        window = min(300.0, now - items[0].timestamp) if items else 300.0
+        tools_per_min = round((len(recent) / max(window, 1.0)) * 60.0, 1) if recent else 0
+        # Slowest tool types (avg interval by tool)
+        tool_gaps: dict[str, list[float]] = {}
+        for i in range(1, len(items)):
+            gap = items[i].timestamp - items[i - 1].timestamp
+            tool = items[i].tool
+            if gap > 0:
+                tool_gaps.setdefault(tool, []).append(gap)
+        slowest_tools = {k: round(sum(v) / len(v), 2) for k, v in tool_gaps.items() if v}
+        return {
+            "avg_interval_sec": avg_interval,
+            "longest_gap_sec": longest_gap,
+            "tools_per_min": tools_per_min,
+            "recent_intervals": intervals[-20:],  # Last 20 gaps for sparkline
+            "avg_by_tool": slowest_tools,
         }
 
     @staticmethod
