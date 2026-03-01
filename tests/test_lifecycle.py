@@ -5673,3 +5673,221 @@ class TestCostBurnRate:
         # Has remaining minutes estimate
         assert result["minutes_remaining"] is not None
         assert result["minutes_remaining"] > 0
+
+
+# ─────────────────────────────────────────────
+# T15: _check_file_conflicts() — real output parsing
+# ─────────────────────────────────────────────
+
+class TestCheckFileConflictsReal:
+    """Tests for AgentManager._check_file_conflicts(), the actual parsing entry point."""
+
+    def _make_manager(self, agents_dict):
+        """Create an AgentManager with mocked internals and given agents."""
+        manager = ashlar_server.AgentManager.__new__(ashlar_server.AgentManager)
+        manager.agents = agents_dict
+        manager.file_activity = {}
+        manager.backend_configs = {}
+        return manager
+
+    def _make_agent_for_mgr(self, agent_id="aaaa", name="test", status="working", role="backend"):
+        agent = ashlar_server.Agent(
+            id=agent_id, name=name, role=role, status=status,
+            task="test task", backend="claude-code",
+            working_dir="/tmp", tmux_session=f"ashlar-{agent_id}",
+        )
+        agent.created_at = ashlar_server.datetime.now(ashlar_server.timezone.utc).isoformat()
+        agent._spawn_time = time.monotonic() - 60
+        agent.last_output_time = time.monotonic() - 5
+        return agent
+
+    def test_write_populates_file_activity(self):
+        agent = self._make_agent_for_mgr("aaaa")
+        manager = self._make_manager({"aaaa": agent})
+        manager._check_file_conflicts("aaaa", ["Writing src/auth/handler.py"])
+        assert "src/auth/handler.py" in manager.file_activity
+        assert manager.file_activity["src/auth/handler.py"]["aaaa"] == "write"
+
+    def test_write_write_conflict_detected(self):
+        a1 = self._make_agent_for_mgr("aaaa", name="agent-a")
+        a2 = self._make_agent_for_mgr("bbbb", name="agent-b")
+        manager = self._make_manager({"aaaa": a1, "bbbb": a2})
+        manager._check_file_conflicts("aaaa", ["Writing src/auth.py"])
+        conflicts = manager._check_file_conflicts("bbbb", ["Writing src/auth.py"])
+        assert len(conflicts) == 1
+        assert conflicts[0]["severity"] == "conflict"
+        assert conflicts[0]["file_path"] == "src/auth.py"
+
+    def test_write_over_read_returns_warning(self):
+        a1 = self._make_agent_for_mgr("aaaa", name="agent-a")
+        a2 = self._make_agent_for_mgr("bbbb", name="agent-b")
+        manager = self._make_manager({"aaaa": a1, "bbbb": a2})
+        manager._check_file_conflicts("aaaa", ["Reading src/config.py"])
+        conflicts = manager._check_file_conflicts("bbbb", ["Writing src/config.py"])
+        assert len(conflicts) == 1
+        assert conflicts[0]["severity"] == "warning"
+
+    def test_read_read_no_conflict(self):
+        a1 = self._make_agent_for_mgr("aaaa")
+        a2 = self._make_agent_for_mgr("bbbb")
+        manager = self._make_manager({"aaaa": a1, "bbbb": a2})
+        manager._check_file_conflicts("aaaa", ["Reading src/config.py"])
+        conflicts = manager._check_file_conflicts("bbbb", ["Reading src/config.py"])
+        assert len(conflicts) == 0
+
+    def test_ansi_encoded_line_parsed(self):
+        agent = self._make_agent_for_mgr("aaaa")
+        manager = self._make_manager({"aaaa": agent})
+        manager._check_file_conflicts("aaaa", ["\033[32mWriting src/app.ts\033[0m"])
+        assert "src/app.ts" in manager.file_activity
+
+    def test_files_touched_increments(self):
+        agent = self._make_agent_for_mgr("aaaa")
+        manager = self._make_manager({"aaaa": agent})
+        assert agent.files_touched == 0
+        manager._check_file_conflicts("aaaa", ["Writing src/a.ts", "Writing src/b.ts"])
+        assert agent.files_touched == 2
+
+    def test_missing_agent_returns_empty(self):
+        manager = self._make_manager({})
+        result = manager._check_file_conflicts("nonexistent", ["Writing src/x.py"])
+        assert result == []
+
+    def test_idle_agent_not_conflicting(self):
+        """An idle agent's file activity should not generate conflicts (not in working/planning)."""
+        a1 = self._make_agent_for_mgr("aaaa", status="idle")
+        a2 = self._make_agent_for_mgr("bbbb", status="working")
+        manager = self._make_manager({"aaaa": a1, "bbbb": a2})
+        manager._check_file_conflicts("aaaa", ["Writing src/auth.py"])
+        conflicts = manager._check_file_conflicts("bbbb", ["Writing src/auth.py"])
+        assert len(conflicts) == 0  # aaaa is idle, so not a conflict
+
+
+# ─────────────────────────────────────────────
+# T16: _cleanup_file_activity()
+# ─────────────────────────────────────────────
+
+class TestCleanupFileActivity:
+    """Tests for AgentManager._cleanup_file_activity()."""
+
+    def _make_manager(self):
+        manager = ashlar_server.AgentManager.__new__(ashlar_server.AgentManager)
+        manager.agents = {}
+        manager.file_activity = {}
+        manager.backend_configs = {}
+        return manager
+
+    def test_single_file_pruned(self):
+        manager = self._make_manager()
+        manager.file_activity = {"src/auth.py": {"aaaa": "write"}}
+        manager._cleanup_file_activity("aaaa")
+        assert "src/auth.py" not in manager.file_activity
+
+    def test_other_agents_preserved(self):
+        manager = self._make_manager()
+        manager.file_activity = {"src/auth.py": {"aaaa": "write", "bbbb": "read"}}
+        manager._cleanup_file_activity("aaaa")
+        assert "src/auth.py" in manager.file_activity
+        assert "aaaa" not in manager.file_activity["src/auth.py"]
+        assert "bbbb" in manager.file_activity["src/auth.py"]
+
+    def test_multi_file_cleanup(self):
+        manager = self._make_manager()
+        manager.file_activity = {
+            "src/a.py": {"aaaa": "write"},
+            "src/b.py": {"aaaa": "read"},
+            "src/c.py": {"aaaa": "write", "bbbb": "write"},
+        }
+        manager._cleanup_file_activity("aaaa")
+        assert "src/a.py" not in manager.file_activity
+        assert "src/b.py" not in manager.file_activity
+        assert "src/c.py" in manager.file_activity
+        assert "aaaa" not in manager.file_activity["src/c.py"]
+
+    def test_nonexistent_agent_no_crash(self):
+        manager = self._make_manager()
+        manager.file_activity = {"src/x.py": {"aaaa": "write"}}
+        manager._cleanup_file_activity("nonexistent")
+        assert manager.file_activity == {"src/x.py": {"aaaa": "write"}}
+
+    def test_empty_activity_no_crash(self):
+        manager = self._make_manager()
+        manager.file_activity = {}
+        manager._cleanup_file_activity("aaaa")  # should not raise
+        assert manager.file_activity == {}
+
+
+# ─────────────────────────────────────────────
+# T17: detect_status() — AgentManager method
+# ─────────────────────────────────────────────
+
+class TestDetectStatusMethod:
+    """Tests for AgentManager.detect_status() — the orchestration wrapper."""
+
+    def _make_manager_with_agent(self, agent):
+        manager = ashlar_server.AgentManager.__new__(ashlar_server.AgentManager)
+        manager.agents = {agent.id: agent}
+        manager.backend_configs = {}
+        return manager
+
+    def _make_agent(self, agent_id="aaaa", status="working", plan_mode=False):
+        agent = ashlar_server.Agent(
+            id=agent_id, name="test", role="general", status=status,
+            task="test task", backend="claude-code",
+            working_dir="/tmp", tmux_session=f"ashlar-{agent_id}",
+        )
+        agent.plan_mode = plan_mode
+        agent.created_at = ashlar_server.datetime.now(ashlar_server.timezone.utc).isoformat()
+        agent._spawn_time = time.monotonic() - 60
+        agent.last_output_time = time.monotonic() - 5
+        return agent
+
+    def test_paused_agent_always_paused(self):
+        agent = self._make_agent(status="paused")
+        agent.output_lines.extend(["Do you want me to proceed?"])
+        manager = self._make_manager_with_agent(agent)
+        result = asyncio.run(manager.detect_status("aaaa"))
+        assert result == "paused"
+
+    def test_empty_output_returns_current(self):
+        agent = self._make_agent(status="working")
+        # output_lines is empty
+        manager = self._make_manager_with_agent(agent)
+        result = asyncio.run(manager.detect_status("aaaa"))
+        assert result == "working"
+
+    def test_plan_mode_blocks_working(self):
+        agent = self._make_agent(status="planning", plan_mode=True)
+        agent.output_lines.extend(["Writing src/app.ts", "Creating handler..."])
+        manager = self._make_manager_with_agent(agent)
+        result = asyncio.run(manager.detect_status("aaaa"))
+        assert result == "planning"
+
+    def test_plan_mode_allows_waiting(self):
+        agent = self._make_agent(status="planning", plan_mode=True)
+        agent.output_lines.extend(["Here is my plan:", "Shall I proceed? (yes/no)"])
+        manager = self._make_manager_with_agent(agent)
+        result = asyncio.run(manager.detect_status("aaaa"))
+        assert result == "waiting"
+
+    def test_plan_mode_allows_error(self):
+        agent = self._make_agent(status="planning", plan_mode=True)
+        agent.output_lines.extend(["Error: Failed to read file", "Traceback (most recent call last):"])
+        manager = self._make_manager_with_agent(agent)
+        result = asyncio.run(manager.detect_status("aaaa"))
+        assert result == "error"
+
+    def test_plan_mode_inactive_when_not_planning(self):
+        agent = self._make_agent(status="working", plan_mode=True)
+        agent.output_lines.extend(["Writing src/app.ts"])
+        manager = self._make_manager_with_agent(agent)
+        result = asyncio.run(manager.detect_status("aaaa"))
+        # Guard inactive (status not "planning"), so working passes through
+        assert result != "planning"
+
+    def test_nonexistent_agent_returns_error(self):
+        manager = ashlar_server.AgentManager.__new__(ashlar_server.AgentManager)
+        manager.agents = {}
+        manager.backend_configs = {}
+        result = asyncio.run(manager.detect_status("nonexistent"))
+        assert result == "error"
