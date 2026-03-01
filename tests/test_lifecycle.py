@@ -31,6 +31,9 @@ with patch("psutil.cpu_percent", return_value=0.0):
         AgentInsight,
         ParsedIntent,
         _keyword_parse_command,
+        WorkflowRun,
+        _extract_question,
+        _resolve_agent_refs,
     )
 
 
@@ -5064,3 +5067,402 @@ class TestIdleReaping:
             and (time.monotonic() - agent.last_output_time) > idle_ttl
         )
         assert should_reap is False
+
+
+# ─────────────────────────────────────────────
+# T16: WorkflowRun dependency resolution
+# ─────────────────────────────────────────────
+
+def _make_wf_run(specs, **kwargs):
+    """Helper to create a WorkflowRun with sane defaults."""
+    return WorkflowRun(
+        id="wf-test-001",
+        workflow_id="wf-001",
+        workflow_name="Test Workflow",
+        agent_specs=specs,
+        pending_indices=set(range(len(specs))),
+        **kwargs,
+    )
+
+
+class TestWorkflowRunGetReadyIndices:
+    """Test _get_ready_indices via direct WorkflowRun state manipulation."""
+
+    def _make_manager(self):
+        """Create a minimal AgentManager mock with _get_ready_indices."""
+        mgr = MagicMock()
+        mgr._get_ready_indices = ashlar_server.AgentManager._get_ready_indices.__get__(mgr)
+        return mgr
+
+    def test_no_deps_all_ready(self):
+        specs = [
+            {"name": "a1", "role": "backend", "task": "task1"},
+            {"name": "a2", "role": "frontend", "task": "task2"},
+        ]
+        wf = _make_wf_run(specs)
+        mgr = self._make_manager()
+        ready = mgr._get_ready_indices(wf)
+        assert sorted(ready) == [0, 1]
+
+    def test_deps_not_satisfied(self):
+        specs = [
+            {"name": "a1", "role": "backend", "task": "task1"},
+            {"name": "a2", "role": "frontend", "task": "task2", "depends_on": [0]},
+        ]
+        wf = _make_wf_run(specs)
+        mgr = self._make_manager()
+        ready = mgr._get_ready_indices(wf)
+        assert ready == [0]
+
+    def test_deps_satisfied(self):
+        specs = [
+            {"name": "a1", "role": "backend", "task": "task1"},
+            {"name": "a2", "role": "frontend", "task": "task2", "depends_on": [0]},
+        ]
+        wf = _make_wf_run(specs)
+        wf.pending_indices.discard(0)
+        wf.agent_map[0] = "agent-a1"
+        wf.completed_ids.add("agent-a1")
+        mgr = self._make_manager()
+        ready = mgr._get_ready_indices(wf)
+        assert ready == [1]
+
+    def test_partial_deps_satisfied(self):
+        specs = [
+            {"name": "a1", "role": "backend", "task": "task1"},
+            {"name": "a2", "role": "backend", "task": "task2"},
+            {"name": "a3", "role": "frontend", "task": "task3", "depends_on": [0, 1]},
+        ]
+        wf = _make_wf_run(specs)
+        wf.pending_indices.discard(0)
+        wf.agent_map[0] = "agent-a1"
+        wf.completed_ids.add("agent-a1")
+        mgr = self._make_manager()
+        ready = mgr._get_ready_indices(wf)
+        assert sorted(ready) == [1]
+
+    def test_all_deps_satisfied_multi(self):
+        specs = [
+            {"name": "a1", "role": "backend", "task": "task1"},
+            {"name": "a2", "role": "backend", "task": "task2"},
+            {"name": "a3", "role": "frontend", "task": "task3", "depends_on": [0, 1]},
+        ]
+        wf = _make_wf_run(specs)
+        wf.pending_indices = {2}
+        wf.agent_map = {0: "agent-a1", 1: "agent-a2"}
+        wf.completed_ids = {"agent-a1", "agent-a2"}
+        mgr = self._make_manager()
+        ready = mgr._get_ready_indices(wf)
+        assert ready == [2]
+
+    def test_empty_pending(self):
+        specs = [{"name": "a1", "role": "backend", "task": "task1"}]
+        wf = _make_wf_run(specs)
+        wf.pending_indices = set()
+        mgr = self._make_manager()
+        ready = mgr._get_ready_indices(wf)
+        assert ready == []
+
+
+class TestOnAgentComplete:
+    def _make_manager(self):
+        mgr = MagicMock()
+        mgr.on_agent_complete = ashlar_server.AgentManager.on_agent_complete.__get__(mgr)
+        mgr.workflow_runs = {}
+        return mgr
+
+    def test_moves_to_completed(self):
+        specs = [{"name": "a1", "role": "backend", "task": "t"}]
+        wf = _make_wf_run(specs)
+        wf.running_ids = {"agent-a1"}
+        wf.pending_indices = set()
+        mgr = self._make_manager()
+        mgr.workflow_runs = {"wf-test-001": wf}
+        result = mgr.on_agent_complete("agent-a1")
+        assert result is wf
+        assert "agent-a1" not in wf.running_ids
+        assert "agent-a1" in wf.completed_ids
+
+    def test_returns_none_for_non_workflow_agent(self):
+        mgr = self._make_manager()
+        result = mgr.on_agent_complete("agent-unknown")
+        assert result is None
+
+    def test_does_not_affect_other_agents(self):
+        specs = [
+            {"name": "a1", "role": "backend", "task": "t"},
+            {"name": "a2", "role": "frontend", "task": "t"},
+        ]
+        wf = _make_wf_run(specs)
+        wf.running_ids = {"agent-a1", "agent-a2"}
+        wf.pending_indices = set()
+        mgr = self._make_manager()
+        mgr.workflow_runs = {"wf-test-001": wf}
+        mgr.on_agent_complete("agent-a1")
+        assert "agent-a2" in wf.running_ids
+        assert "agent-a1" in wf.completed_ids
+
+
+class TestOnAgentFailed:
+    def _make_manager(self):
+        mgr = MagicMock()
+        mgr.on_agent_failed = ashlar_server.AgentManager.on_agent_failed.__get__(mgr)
+        mgr.workflow_runs = {}
+        return mgr
+
+    def test_abort_default(self):
+        specs = [
+            {"name": "a1", "role": "backend", "task": "t"},
+            {"name": "a2", "role": "frontend", "task": "t", "depends_on": [0]},
+        ]
+        wf = _make_wf_run(specs)
+        wf.agent_map = {0: "agent-a1"}
+        wf.running_ids = {"agent-a1"}
+        wf.pending_indices = {1}
+        mgr = self._make_manager()
+        mgr.workflow_runs = {"wf-test-001": wf}
+        result, action = mgr.on_agent_failed("agent-a1")
+        assert result is wf
+        assert action == "abort"
+        assert "agent-a1" in wf.failed_ids
+        assert 1 not in wf.pending_indices
+        assert "blocked_spec_1" in wf.failed_ids
+
+    def test_skip_treats_as_completed(self):
+        specs = [
+            {"name": "a1", "role": "backend", "task": "t", "on_failure": "skip"},
+            {"name": "a2", "role": "frontend", "task": "t", "depends_on": [0]},
+        ]
+        wf = _make_wf_run(specs)
+        wf.agent_map = {0: "agent-a1"}
+        wf.running_ids = {"agent-a1"}
+        wf.pending_indices = {1}
+        mgr = self._make_manager()
+        mgr.workflow_runs = {"wf-test-001": wf}
+        result, action = mgr.on_agent_failed("agent-a1")
+        assert action == "skip"
+        assert "agent-a1" in wf.completed_ids
+        assert 1 in wf.pending_indices
+
+    def test_retry_re_adds_to_pending(self):
+        specs = [
+            {"name": "a1", "role": "backend", "task": "t", "on_failure": "retry", "retry_count": 2},
+        ]
+        wf = _make_wf_run(specs)
+        wf.agent_map = {0: "agent-a1"}
+        wf.running_ids = {"agent-a1"}
+        wf.pending_indices = set()
+        mgr = self._make_manager()
+        mgr.workflow_runs = {"wf-test-001": wf}
+        result, action = mgr.on_agent_failed("agent-a1")
+        assert action == "retry"
+        assert 0 in wf.pending_indices
+        assert 0 not in wf.agent_map
+        assert specs[0]["_retries"] == 1
+
+    def test_retry_exhausted_falls_to_abort(self):
+        specs = [
+            {"name": "a1", "role": "backend", "task": "t", "on_failure": "retry", "retry_count": 2, "_retries": 2},
+        ]
+        wf = _make_wf_run(specs)
+        wf.agent_map = {0: "agent-a1"}
+        wf.running_ids = {"agent-a1"}
+        wf.pending_indices = set()
+        mgr = self._make_manager()
+        mgr.workflow_runs = {"wf-test-001": wf}
+        result, action = mgr.on_agent_failed("agent-a1")
+        assert action == "abort"
+        assert "agent-a1" in wf.failed_ids
+
+    def test_retry_capped_at_3(self):
+        specs = [
+            {"name": "a1", "role": "backend", "task": "t", "on_failure": "retry", "retry_count": 10, "_retries": 3},
+        ]
+        wf = _make_wf_run(specs)
+        wf.agent_map = {0: "agent-a1"}
+        wf.running_ids = {"agent-a1"}
+        wf.pending_indices = set()
+        mgr = self._make_manager()
+        mgr.workflow_runs = {"wf-test-001": wf}
+        result, action = mgr.on_agent_failed("agent-a1")
+        assert action == "abort"
+
+    def test_non_workflow_agent_returns_none(self):
+        mgr = self._make_manager()
+        result, action = mgr.on_agent_failed("agent-unknown")
+        assert result is None
+        assert action == "abort"
+
+
+class TestWorkflowRunCircularDeps:
+    def test_valid_dag(self):
+        specs = [
+            {"name": "a1", "task": "t"},
+            {"name": "a2", "task": "t", "depends_on": [0]},
+            {"name": "a3", "task": "t", "depends_on": [1]},
+        ]
+        assert WorkflowRun.detect_circular_deps(specs) is None
+
+    def test_self_reference(self):
+        specs = [{"name": "a1", "task": "t", "depends_on": [0]}]
+        result = WorkflowRun.detect_circular_deps(specs)
+        assert result is not None
+
+    def test_mutual_cycle(self):
+        specs = [
+            {"name": "a1", "task": "t", "depends_on": [1]},
+            {"name": "a2", "task": "t", "depends_on": [0]},
+        ]
+        result = WorkflowRun.detect_circular_deps(specs)
+        assert result is not None
+
+    def test_out_of_range_dep(self):
+        specs = [{"name": "a1", "task": "t", "depends_on": [5]}]
+        result = WorkflowRun.detect_circular_deps(specs)
+        assert result is not None
+
+    def test_no_deps(self):
+        specs = [{"name": "a1", "task": "t"}, {"name": "a2", "task": "t"}]
+        assert WorkflowRun.detect_circular_deps(specs) is None
+
+
+# ─────────────────────────────────────────────
+# T17: _extract_question
+# ─────────────────────────────────────────────
+
+class TestExtractQuestion:
+    def test_single_line(self):
+        lines = ["some output", "", "Do you want to proceed?"]
+        result = _extract_question(lines)
+        assert result == "Do you want to proceed?"
+
+    def test_multiple_lines(self):
+        lines = ["", "I found 3 issues:", "1. Missing import", "2. Type error"]
+        result = _extract_question(lines)
+        assert "I found 3 issues:" in result
+        assert "Missing import" in result
+
+    def test_empty_lines_only(self):
+        result = _extract_question(["", "", ""])
+        assert result == "Agent needs your input"
+
+    def test_empty_list(self):
+        result = _extract_question([])
+        assert result == "Agent needs your input"
+
+    def test_max_three_lines(self):
+        lines = ["Line1", "Line2", "Line3", "Line4", "Line5"]
+        result = _extract_question(lines)
+        assert len(result.split("\n")) == 3
+
+    def test_stops_at_blank_after_content(self):
+        lines = ["old output", "", "Question part 1", "Question part 2"]
+        result = _extract_question(lines)
+        assert "Question part 1" in result
+        assert "Question part 2" in result
+        assert "old output" not in result
+
+    def test_strips_whitespace(self):
+        lines = ["  Padded question  "]
+        result = _extract_question(lines)
+        assert result == "Padded question"
+
+
+# ─────────────────────────────────────────────
+# T18: _resolve_agent_refs
+# ─────────────────────────────────────────────
+
+class TestResolveAgentRefs:
+    def _agent(self, name, agent_id):
+        a = MagicMock()
+        a.name = name
+        a.id = agent_id
+        return a
+
+    def test_name_match(self):
+        agents = [self._agent("auth-api", "a7f3"), self._agent("test-runner", "b2e9")]
+        result = _resolve_agent_refs("kill auth-api now", agents)
+        assert "a7f3" in result
+
+    def test_id_match(self):
+        agents = [self._agent("auth-api", "a7f3")]
+        result = _resolve_agent_refs("check a7f3 status", agents)
+        assert "a7f3" in result
+
+    def test_numeric_reference(self):
+        agents = [self._agent("first", "a001"), self._agent("second", "b002")]
+        result = _resolve_agent_refs("pause agent 2", agents)
+        assert "b002" in result
+
+    def test_numeric_out_of_range(self):
+        agents = [self._agent("only", "a001")]
+        result = _resolve_agent_refs("agent 99", agents)
+        assert "a001" not in result
+
+    def test_no_match(self):
+        agents = [self._agent("auth-api", "a7f3")]
+        result = _resolve_agent_refs("do something random", agents)
+        assert result == []
+
+    def test_empty_agents(self):
+        result = _resolve_agent_refs("agent 1", [])
+        assert result == []
+
+    def test_multiple_matches(self):
+        agents = [self._agent("auth-api", "a001"), self._agent("test-runner", "b002")]
+        result = _resolve_agent_refs("check auth-api and test-runner", agents)
+        assert "a001" in result
+        assert "b002" in result
+
+
+# ─────────────────────────────────────────────
+# T19: WorkflowRun.to_dict
+# ─────────────────────────────────────────────
+
+class TestWorkflowRunToDict:
+    def test_basic_to_dict(self):
+        specs = [{"name": "a1", "task": "t"}]
+        wf = _make_wf_run(specs)
+        d = wf.to_dict()
+        assert d["id"] == "wf-test-001"
+        assert d["workflow_name"] == "Test Workflow"
+        assert d["status"] == "running"
+        assert isinstance(d["pending_indices"], list)
+
+    def test_agent_map_keys_are_strings(self):
+        specs = [{"name": "a1", "task": "t"}]
+        wf = _make_wf_run(specs)
+        wf.agent_map = {0: "agent-a1", 1: "agent-a2"}
+        d = wf.to_dict()
+        assert all(isinstance(k, str) for k in d["agent_map"].keys())
+        assert d["agent_map"]["0"] == "agent-a1"
+
+
+# ─────────────────────────────────────────────
+# T20: Safe condition evaluation
+# ─────────────────────────────────────────────
+
+class TestSafeEvalCondition:
+    def _eval(self, expr, ctx=None):
+        return ashlar_server.AgentManager._safe_eval_condition(expr, ctx or {})
+
+    def test_equals_true(self):
+        assert self._eval("prev.status == 'complete'", {"prev.status": "complete"}) is True
+
+    def test_equals_false(self):
+        assert self._eval("prev.status == 'error'", {"prev.status": "complete"}) is False
+
+    def test_not_equals(self):
+        assert self._eval("prev.status != 'error'", {"prev.status": "complete"}) is True
+
+    def test_in_operator(self):
+        assert self._eval("'auth' in prev.summary", {"prev.summary": "Fixed auth bug"}) is True
+
+    def test_not_in_operator(self):
+        assert self._eval("'error' not in prev.summary", {"prev.summary": "All good"}) is True
+
+    def test_unresolvable_returns_false(self):
+        assert self._eval("unknown_var == 'test'", {}) is False
+
+    def test_no_operator_returns_false(self):
+        assert self._eval("just a string", {}) is False

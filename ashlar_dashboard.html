@@ -7313,11 +7313,15 @@ function renderInsightsPanel() {
             <div class="insight-msg">${escapeHtml(i.message || '')}</div>
             ${agentNames ? `<div class="insight-agents">Agents: ${escapeHtml(agentNames)}</div>` : ''}
             <div class="insight-action">
-                ${i.suggested_action ? `<button class="btn-suggest" onclick="showToast('${escapeHtml(i.suggested_action).replace(/'/g, "\\'")}', 'info')">${escapeHtml(i.suggested_action.slice(0, 30))}</button>` : ''}
+                ${i.suggested_action ? `<button class="btn-suggest" data-suggest="${escapeHtml(i.suggested_action)}">${escapeHtml(i.suggested_action.slice(0, 30))}</button>` : ''}
                 ${!i.acknowledged ? `<button class="btn-dismiss" onclick="acknowledgeInsight('${i.id}')">Dismiss</button>` : ''}
             </div>
         </div>`;
     }).join('');
+    // Wire suggest buttons via event delegation (avoid inline onclick XSS)
+    body.querySelectorAll('[data-suggest]').forEach(btn => {
+        btn.addEventListener('click', () => showToast(btn.dataset.suggest, 'info'));
+    });
 }
 
 async function acknowledgeInsight(insightId) {
@@ -7535,6 +7539,9 @@ function handleAgentRemoved(agentId) {
     if (state.pinnedAgents.delete(agentId)) {
         localStorage.setItem('ashlar_pinned', JSON.stringify([...state.pinnedAgents]));
     }
+    // Clean up per-agent localStorage entries
+    localStorage.removeItem(`ashlar_annot_${agentId}`);
+    localStorage.removeItem(`ashlar_pinned_${agentId}`);
     if (state.view === 'deep' && state.focusedAgentId === agentId) closeDeepView();
     if (state.commandTargetId === agentId) clearCommandTarget();
     if (state.interactionAgentId === agentId) closeInteraction();
@@ -10041,9 +10048,12 @@ function renderQuickReplies() {
     const container = document.getElementById('quickCommands');
     if (!container) return;
     const templates = getReplyTemplates();
-    container.innerHTML = templates.map(t =>
-        `<button class="qc-btn" onclick="quickSend('${t.message.replace(/'/g, "\\'")}')">${escapeHtml(t.label)}</button>`
+    container.innerHTML = templates.map((t, i) =>
+        `<button class="qc-btn" data-qr-idx="${i}">${escapeHtml(t.label)}</button>`
     ).join('') + `<button class="qc-btn" onclick="openReplyTemplateEditor()" title="Edit templates" style="opacity:0.5">+</button>`;
+    container.querySelectorAll('[data-qr-idx]').forEach(btn => {
+        btn.addEventListener('click', () => quickSend(templates[parseInt(btn.dataset.qrIdx)].message));
+    });
 }
 
 function openReplyTemplateEditor() {
@@ -10808,10 +10818,14 @@ function showSearchHistory() {
         dd.style.cssText = 'position:absolute;bottom:calc(100% + 2px);left:40px;right:40px;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--radius-md);padding:4px;z-index:100;box-shadow:var(--shadow-lg);max-height:200px;overflow-y:auto';
         document.getElementById('deepSearchBar').appendChild(dd);
     }
-    dd.innerHTML = history.map(h =>
-        `<div style="padding:5px 8px;font-size:11px;color:var(--text-secondary);cursor:pointer;border-radius:var(--radius-sm);font-family:var(--font-mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" onmousedown="event.preventDefault();document.getElementById('deepSearchInput').value='${h.replace(/'/g,"\\'")}';hideSearchHistory();deepSearch()"
-        onmouseenter="this.style.background='var(--bg-overlay)'" onmouseleave="this.style.background=''">${escapeHtml(h)}</div>`
+    dd.innerHTML = history.map((h, i) =>
+        `<div class="search-history-item" data-sh-idx="${i}" style="padding:5px 8px;font-size:11px;color:var(--text-secondary);cursor:pointer;border-radius:var(--radius-sm);font-family:var(--font-mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(h)}</div>`
     ).join('');
+    dd.querySelectorAll('[data-sh-idx]').forEach(el => {
+        el.addEventListener('mousedown', (e) => { e.preventDefault(); document.getElementById('deepSearchInput').value = history[parseInt(el.dataset.shIdx)]; hideSearchHistory(); deepSearch(); });
+        el.addEventListener('mouseenter', () => el.style.background = 'var(--bg-overlay)');
+        el.addEventListener('mouseleave', () => el.style.background = '');
+    });
     dd.style.display = '';
 }
 
@@ -14346,9 +14360,12 @@ function openBatchSend() {
 
     // Populate templates
     const templates = getReplyTemplates();
-    tplContainer.innerHTML = templates.map(t =>
-        `<button class="batch-tpl-btn" onclick="setBatchTemplate('${t.message.replace(/'/g, "\\'")}')">${t.label}</button>`
+    tplContainer.innerHTML = templates.map((t, i) =>
+        `<button class="batch-tpl-btn" data-bt-idx="${i}">${escapeHtml(t.label)}</button>`
     ).join('');
+    tplContainer.querySelectorAll('[data-bt-idx]').forEach(btn => {
+        btn.addEventListener('click', () => setBatchTemplate(templates[parseInt(btn.dataset.btIdx)].message));
+    });
 
     input.value = '';
     document.getElementById('batchPreview').style.display = 'none';
@@ -16191,6 +16208,8 @@ closeDeepView = function() {
     _activeOutputFilter = 'all';
     _progressiveLoading = false;
     _srOriginalContent = null;
+    // Stop clipboard watcher when leaving deep view
+    if (_clipboardWatcherTimer) { clearInterval(_clipboardWatcherTimer); _clipboardWatcherTimer = null; }
     _origCloseDeep();
 };
 
@@ -17265,7 +17284,9 @@ renderAgentGrid = function() {
                 return 0;
         }
     });
-    state.agents = new Map(entries);
+    // Re-insert sorted entries without replacing the Map reference
+    state.agents.clear();
+    for (const [k, v] of entries) state.agents.set(k, v);
     _origRenderGrid();
 };
 
@@ -18671,7 +18692,7 @@ function showClipboardToast(text, agentId) {
     const preview = text.length > 60 ? text.substring(0, 60) + '...' : text;
     el.innerHTML = `
         <span style="font-size:14px">${icon('clipboard', 16)}</span>
-        <span class="clipboard-toast-text" title="${text.replace(/"/g, '&quot;').substring(0, 200)}">${preview.replace(/</g, '&lt;')}</span>
+        <span class="clipboard-toast-text" title="${escapeHtml(text).substring(0, 200)}">${escapeHtml(preview)}</span>
         <div class="clipboard-toast-actions">
             <button class="btn btn-primary btn-sm" style="font-size:10px;padding:3px 10px" onclick="pasteClipboardToAgent('${agentId}')">Paste to Agent</button>
             <button class="btn btn-secondary btn-sm" style="font-size:10px;padding:3px 6px" onclick="dismissClipboardToast()">✕</button>
@@ -18709,16 +18730,22 @@ async function loadSettingsPresets() {
         }
         list.innerHTML = presets.map(p => `
             <div class="preset-item">
-                <span class="preset-item-role">${p.role || 'general'}</span>
-                <span class="preset-item-name">${(p.name || 'Unnamed').replace(/</g, '&lt;')}</span>
-                <span style="font-size:10px;color:var(--text-tertiary)">${(p.task || '').substring(0, 40).replace(/</g, '&lt;')}</span>
-                <div class="preset-item-actions">
-                    <button onclick="spawnFromPreset('${p.id}')">Spawn</button>
-                    <button onclick="editPreset('${p.id}')">Edit</button>
-                    <button class="danger" onclick="deletePreset('${p.id}')">Delete</button>
+                <span class="preset-item-role">${escapeHtml(p.role || 'general')}</span>
+                <span class="preset-item-name">${escapeHtml((p.name || 'Unnamed').substring(0, 60))}</span>
+                <span style="font-size:10px;color:var(--text-tertiary)">${escapeHtml((p.task || '').substring(0, 40))}</span>
+                <div class="preset-item-actions" data-preset-id="${escapeHtml(p.id)}">
+                    <button data-action="spawn">Spawn</button>
+                    <button data-action="edit">Edit</button>
+                    <button class="danger" data-action="delete">Delete</button>
                 </div>
             </div>
         `).join('');
+        list.querySelectorAll('[data-preset-id]').forEach(el => {
+            const pid = el.dataset.presetId;
+            el.querySelector('[data-action="spawn"]').addEventListener('click', () => spawnFromPreset(pid));
+            el.querySelector('[data-action="edit"]').addEventListener('click', () => editPreset(pid));
+            el.querySelector('[data-action="delete"]').addEventListener('click', () => deletePreset(pid));
+        });
     } catch { list.innerHTML = '<span style="color:var(--danger);font-size:11px">Failed to load presets</span>'; }
 }
 

@@ -1086,7 +1086,7 @@ class Agent:
     _snapshots: list = field(default_factory=list, repr=False)  # list[OutputSnapshot], capped at 20
     _status_history: list = field(default_factory=list, repr=False)  # list of {"status": str, "at": float (monotonic)}
     _last_parse_index: int = field(default=0, repr=False)  # Incremental parsing watermark
-    _overflow_to_archive: bool = field(default=False, repr=False)
+    _overflow_to_archive: tuple | None = field(default=None, repr=False)
     # Notes and tags
     notes: str = ""
     tags: list = field(default_factory=list)
@@ -4774,12 +4774,12 @@ class Database:
         )
         await self._safe_commit()
 
-    async def get_messages_for_agent(self, agent_id: str, limit: int = 50) -> list[dict]:
+    async def get_messages_for_agent(self, agent_id: str, limit: int = 50, offset: int = 0) -> list[dict]:
         if not self._db:
             return []
         async with self._db.execute(
-            "SELECT * FROM agent_messages WHERE to_agent_id = ? ORDER BY created_at DESC LIMIT ?",
-            (agent_id, limit),
+            "SELECT * FROM agent_messages WHERE to_agent_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (agent_id, limit, offset),
         ) as cur:
             return [dict(r) for r in await cur.fetchall()]
 
@@ -7185,7 +7185,7 @@ async def get_agent_messages(request: web.Request) -> web.Response:
     limit = max(1, min(limit, 1000))
     offset = max(0, offset)
 
-    messages = await db.get_messages_for_agent(agent_id, limit)
+    messages = await db.get_messages_for_agent(agent_id, limit, offset)
     total = await db.get_message_count_for_agent(agent_id)
 
     # Mark as read
@@ -8756,7 +8756,7 @@ async def output_capture_loop(app: web.Application) -> None:
                     agent._output_line_timestamps.append((now_mono, line_count))
 
                     # Archive overflow lines to DB if flagged by capture_output
-                    if hasattr(agent, '_overflow_to_archive') and agent._overflow_to_archive:
+                    if agent._overflow_to_archive:
                         aid_arch, overflow_lines, offset = agent._overflow_to_archive
                         agent._overflow_to_archive = None
                         if app.get("db_available", True):
@@ -9048,7 +9048,7 @@ async def output_capture_loop(app: web.Application) -> None:
 
             # Prune _seen_conflicts for agents that no longer exist
             active_ids = set(manager.agents.keys())
-            _seen_conflicts = {k for k in _seen_conflicts if k[1] <= active_ids}
+            _seen_conflicts = {k for k in _seen_conflicts if k[1] & active_ids}
 
         except Exception as e:
             log.error(f"Output capture loop error: {e}")
@@ -9271,7 +9271,7 @@ async def health_check_loop(app: web.Application) -> None:
             if config.cost_budget_usd > 0 and config.cost_budget_auto_pause:
                 fleet_cost = sum(a.estimated_cost_usd for a in list(manager.agents.values()))
                 if fleet_cost >= config.cost_budget_usd:
-                    if not getattr(app, '_fleet_budget_warned', False):
+                    if not app.get('_fleet_budget_warned', False):
                         app['_fleet_budget_warned'] = True
                         log.warning(f"Fleet cost ${fleet_cost:.2f} exceeds budget ${config.cost_budget_usd:.2f} — auto-pausing working agents")
                         working = [a for a in list(manager.agents.values()) if a.status in ("working", "planning", "reading")]
@@ -9831,7 +9831,9 @@ def setup_signal_handlers(agent_manager: AgentManager) -> None:
         print("\n\033[33m→ Shutting down Ashlar...\033[0m")
         agent_manager.cleanup_all()
         print("\033[32m✓ All agent sessions cleaned up\033[0m")
-        raise SystemExit(0)
+        # Raise KeyboardInterrupt so aiohttp's run_app() runs its cleanup hooks
+        # (background task cancellation, DB close, HTTP session close)
+        raise KeyboardInterrupt()
 
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
