@@ -7,7 +7,7 @@ name = "ashlar-ao"
 dynamic = ["version"]
 description = "Local-first agent orchestration platform — one developer, many AI coding agents, single command center."
 readme = "README.md"
-license = "MIT"
+license = { file = "LICENSE" }
 requires-python = ">=3.11"
 authors = [{ name = "Mason Wyatt" }]
 keywords = ["ai", "agents", "orchestration", "claude", "codex", "tmux"]
@@ -18,6 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
     "Topic :: Software Development :: Build Tools",
 ]
 dependencies = [
@@ -36,8 +37,8 @@ dev = ["pytest>=7.0"]
 ashlar = "ashlar_ao.server:main"
 
 [project.urls]
-Homepage = "https://github.com/masonwyatt/ashlar-ao"
-Repository = "https://github.com/masonwyatt/ashlar-ao"
+Homepage = "https://github.com/Ashlar-inc/ashlar-ao"
+Repository = "https://github.com/Ashlar-inc/ashlar-ao"
 
 [tool.setuptools.dynamic]
 version = { attr = "ashlar_ao.__version__" }
