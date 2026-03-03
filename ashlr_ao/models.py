@@ -226,7 +226,7 @@ class Agent:
 
     def _cost_burn_rate(self) -> dict | None:
         """Calculate cost burn rate ($/min) and estimated time to context exhaustion."""
-        if self._spawn_time <= 0 or self.estimated_cost_usd <= 0:
+        if self._spawn_time == 0.0 or self.estimated_cost_usd <= 0:
             return None
         uptime_min = (time.monotonic() - self._spawn_time) / 60.0
         if uptime_min < 0.5:
@@ -622,7 +622,7 @@ class WorkflowRun:
 def calculate_efficiency_score(agent: Agent) -> dict:
     """Calculate efficiency metrics: tools/min, error rate, context efficiency, productivity."""
     now = time.monotonic()
-    uptime_min = max(0.1, (now - agent._spawn_time) / 60) if agent._spawn_time > 0 else 0.1
+    uptime_min = max(0.1, (now - agent._spawn_time) / 60) if agent._spawn_time != 0.0 else 0.1
 
     tool_count = len(agent._tool_invocations) if hasattr(agent, '_tool_invocations') else 0
     tools_per_min = round(tool_count / uptime_min, 2)
