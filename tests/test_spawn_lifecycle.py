@@ -593,7 +593,7 @@ class TestSpawnTimeout:
     def test_spawn_timeout_triggers_after_30s(self):
         agent = self._make_agent(status="spawning", spawn_time=time.monotonic() - 31)
         # Simulate the timeout check from output_capture_loop
-        if agent.status == "spawning" and agent._spawn_time > 0:
+        if agent.status == "spawning" and agent._spawn_time != 0.0:
             if time.monotonic() - agent._spawn_time > 30:
                 agent.set_status("error")
                 agent.error_message = "Spawn timeout — no output after 30s"
@@ -602,14 +602,14 @@ class TestSpawnTimeout:
 
     def test_no_timeout_within_30s(self):
         agent = self._make_agent(status="spawning", spawn_time=time.monotonic() - 10)
-        if agent.status == "spawning" and agent._spawn_time > 0:
+        if agent.status == "spawning" and agent._spawn_time != 0.0:
             if time.monotonic() - agent._spawn_time > 30:
                 agent.set_status("error")
         assert agent.status == "spawning"
 
     def test_non_spawning_agents_not_checked(self):
         agent = self._make_agent(status="working", spawn_time=time.monotonic() - 60)
-        if agent.status == "spawning" and agent._spawn_time > 0:
+        if agent.status == "spawning" and agent._spawn_time != 0.0:
             if time.monotonic() - agent._spawn_time > 30:
                 agent.set_status("error")
         assert agent.status == "working"
@@ -652,11 +652,11 @@ class TestIdleReaping:
         from ashlr_server import Agent
         agent = Agent(id="i001", name="idle", role="general", status="idle", backend="claude-code", task="t", working_dir="/tmp")
         agent.status = "idle"
-        agent.last_output_time = max(time.monotonic() - 600, 1.0)  # 10 min ago
+        agent.last_output_time = time.monotonic() - 600  # 10 min ago (may be negative on fresh VMs)
         idle_ttl = 300  # 5 min TTL
         should_reap = (
             agent.status in ("idle", "complete")
-            and agent.last_output_time > 0
+            and agent.last_output_time != 0.0
             and idle_ttl > 0
             and (time.monotonic() - agent.last_output_time) > idle_ttl
         )
@@ -670,7 +670,7 @@ class TestIdleReaping:
         idle_ttl = 300
         should_reap = (
             agent.status in ("idle", "complete")
-            and agent.last_output_time > 0
+            and agent.last_output_time != 0.0
             and idle_ttl > 0
             and (time.monotonic() - agent.last_output_time) > idle_ttl
         )
@@ -684,7 +684,7 @@ class TestIdleReaping:
         idle_ttl = 300
         should_reap = (
             agent.status in ("idle", "complete")
-            and agent.last_output_time > 0
+            and agent.last_output_time != 0.0
             and idle_ttl > 0
             and (time.monotonic() - agent.last_output_time) > idle_ttl
         )
@@ -698,7 +698,7 @@ class TestIdleReaping:
         idle_ttl = 0
         should_reap = (
             agent.status in ("idle", "complete")
-            and agent.last_output_time > 0
+            and agent.last_output_time != 0.0
             and idle_ttl > 0
             and (time.monotonic() - agent.last_output_time) > idle_ttl
         )
