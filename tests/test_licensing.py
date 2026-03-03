@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 with patch("psutil.cpu_percent", return_value=0.0):
     import ashlr_server
     import ashlr_ao.server as _server_mod  # For patching module-level constants
+    import ashlr_ao.licensing as _licensing_mod  # Canonical location of LICENSE_PUBLIC_KEY_PEM
     from ashlr_server import (
         License, COMMUNITY_LICENSE, PRO_FEATURES, validate_license,
         _effective_max_agents, _check_feature, Organization, Database,
@@ -182,18 +183,18 @@ class TestValidateLicense:
         other_key = Ed25519PrivateKey.generate()
         payload = _make_pro_payload()
         token = jwt.encode(payload, other_key, algorithm="EdDSA")
-        with patch.object(_server_mod, "LICENSE_PUBLIC_KEY_PEM", TEST_PUB_PEM):
+        with patch.object(_licensing_mod, "LICENSE_PUBLIC_KEY_PEM", TEST_PUB_PEM):
             result = validate_license(token)
         assert result.tier == "community"
 
-    @patch.object(_server_mod, "LICENSE_PUBLIC_KEY_PEM", TEST_PUB_PEM)
+    @patch.object(_licensing_mod, "LICENSE_PUBLIC_KEY_PEM", TEST_PUB_PEM)
     def test_expired_jwt_returns_community(self):
         payload = _make_expired_payload()
         token = _sign_license(payload)
         result = validate_license(token)
         assert result.tier == "community"
 
-    @patch.object(_server_mod, "LICENSE_PUBLIC_KEY_PEM", TEST_PUB_PEM)
+    @patch.object(_licensing_mod, "LICENSE_PUBLIC_KEY_PEM", TEST_PUB_PEM)
     def test_valid_pro_jwt(self):
         payload = _make_pro_payload(org_id="acme", max_agents=50, max_seats=25)
         token = _sign_license(payload)
@@ -206,7 +207,7 @@ class TestValidateLicense:
         assert result.raw_key == token
         assert result.features == PRO_FEATURES
 
-    @patch.object(_server_mod, "LICENSE_PUBLIC_KEY_PEM", TEST_PUB_PEM)
+    @patch.object(_licensing_mod, "LICENSE_PUBLIC_KEY_PEM", TEST_PUB_PEM)
     def test_valid_jwt_with_custom_features(self):
         payload = _make_pro_payload()
         payload["features"] = ["intelligence", "workflows"]
@@ -214,7 +215,7 @@ class TestValidateLicense:
         result = validate_license(token)
         assert result.features == frozenset({"intelligence", "workflows"})
 
-    @patch.object(_server_mod, "LICENSE_PUBLIC_KEY_PEM", TEST_PUB_PEM)
+    @patch.object(_licensing_mod, "LICENSE_PUBLIC_KEY_PEM", TEST_PUB_PEM)
     def test_missing_required_claims_returns_community(self):
         """JWT without required claims (exp, iss, sub) should fail."""
         payload = {"tier": "pro", "max_agents": 100}
@@ -458,7 +459,7 @@ class TestLicenseStatusEndpoint:
 
 class TestActivateLicenseEndpoint:
     @pytest.mark.asyncio
-    @patch.object(_server_mod, "LICENSE_PUBLIC_KEY_PEM", TEST_PUB_PEM)
+    @patch.object(_licensing_mod, "LICENSE_PUBLIC_KEY_PEM", TEST_PUB_PEM)
     async def test_activate_valid_key(self, aiohttp_client, tmp_path):
         app = _make_test_app()
         # Patch ASHLR_DIR to avoid writing to real config
@@ -493,7 +494,7 @@ class TestActivateLicenseEndpoint:
         assert "error" in body
 
     @pytest.mark.asyncio
-    @patch.object(_server_mod, "LICENSE_PUBLIC_KEY_PEM", TEST_PUB_PEM)
+    @patch.object(_licensing_mod, "LICENSE_PUBLIC_KEY_PEM", TEST_PUB_PEM)
     async def test_activate_expired_key(self, aiohttp_client):
         app = _make_test_app()
         client = await aiohttp_client(app)

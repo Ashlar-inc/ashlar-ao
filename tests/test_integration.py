@@ -103,10 +103,10 @@ def _make_test_app():
 
 
 @pytest.fixture
-def cli(event_loop, aiohttp_client):
+async def cli(aiohttp_client):
     """Create a test client for the Ashlr app."""
     app = _make_test_app()
-    return event_loop.run_until_complete(aiohttp_client(app))
+    return await aiohttp_client(app)
 
 
 # ── WebSocket Tests ──

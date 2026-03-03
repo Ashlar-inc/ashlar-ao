@@ -7376,7 +7376,7 @@ class AshlrSocket {
             this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, this.maxDelay);
         };
 
-        this.ws.onerror = () => {};
+        this.ws.onerror = (e) => { console.warn('WebSocket error:', e); };
     }
 
     send(data) {
@@ -7647,7 +7647,7 @@ async function fetchInsights() {
     const body = document.getElementById('insightsBody');
     body.innerHTML = '<div class="activity-empty" style="opacity:0.6">Loading insights...</div>';
     try {
-        const resp = await fetch('/api/intelligence/insights');
+        const resp = await apiFetch('/api/intelligence/insights');
         if (resp.ok) {
             const data = await resp.json();
             if (data.insights) {
@@ -7935,7 +7935,8 @@ function handleAgentRemoved(agentId) {
     if (state.interactionAgentId === agentId) closeInteraction();
     // Close card menu if open for this agent
     if (activeMenu) {
-        const menuEl = document.getElementById(`menu-${agentId}`);
+        const card = document.querySelector(`.agent-card[data-agent-id="${agentId}"]`);
+        const menuEl = card?.querySelector('.card-menu');
         if (menuEl && activeMenu === menuEl) { activeMenu.classList.remove('active'); activeMenu = null; }
     }
     // Auto-close project panel if this was the last agent in the project
@@ -8363,19 +8364,19 @@ function createAgentCard(agent) {
         }
     };
     card.innerHTML = `
-        <div class="card-select" data-agent-id="${agent.id}" onclick="toggleAgentSelection('${agent.id}', event)"></div>
+        <div class="card-select" data-action="select"></div>
         <div class="card-header">
             <span class="card-icon"></span>
             <span class="card-conn-dot" title="Connected"></span>
             <span class="card-name"></span>
             <span class="plan-mode-indicator">PLAN</span>
             <span class="card-health" title="Health" role="img" aria-label="Agent health"></span>
-            <span class="card-message-badge" id="msgBadge-${agent.id}" aria-label="Unread messages"></span>
+            <span class="card-message-badge" aria-label="Unread messages"></span>
             <span class="card-conflict-badge"></span>
             <span class="card-files-badge"></span>
             <span class="card-bookmarks-badge" style="display:none" title="Bookmarked output lines"></span>
             <span class="card-error-count-badge" style="display:none" title="Error lines detected"></span>
-            <button class="card-menu-btn" onclick="event.stopPropagation();toggleCardMenu('${agent.id}')" aria-haspopup="true" aria-label="Agent actions menu">⋯</button>
+            <button class="card-menu-btn" data-action="menu" aria-haspopup="true" aria-label="Agent actions menu">⋯</button>
         </div>
         <div class="card-info-row">
             <span class="card-project-badge" style="display:none"></span>
@@ -8387,7 +8388,7 @@ function createAgentCard(agent) {
             <span class="card-pipeline-badge"></span>
         </div>
         <div class="agent-owner" style="display:none"></div>
-        <div class="card-dir" onclick="event.stopPropagation();copyWorkingDir('${agent.id}')" title="Click to copy path"></div>
+        <div class="card-dir" data-action="copy-dir" title="Click to copy path"></div>
         <div class="card-summary"></div>
         <div class="card-last-action" style="display:none"></div>
         <div class="card-last-file" style="display:none" title="Last file touched"></div>
@@ -8395,7 +8396,7 @@ function createAgentCard(agent) {
             <div class="card-input-row">
                 <div class="card-input-prompt"></div>
                 <div class="card-quick-actions"></div>
-                <button class="card-respond-btn" onclick="event.stopPropagation();openInteraction('${agent.id}')">Reply</button>
+                <button class="card-respond-btn" data-action="reply">Reply</button>
             </div>
         </div>
         <div class="progress-bar" role="progressbar" aria-label="Task progress"><div class="progress-bar-fill"></div></div>
@@ -8413,25 +8414,49 @@ function createAgentCard(agent) {
             <span class="card-line-count" style="display:none" title="Total output lines"></span>
             <span class="card-meta"></span>
         </div>
-        <div class="card-hover-actions" onclick="event.stopPropagation()">
-            <button class="card-hover-btn" onclick="pauseResumeAgent('${agent.id}')" title="Pause/Resume">${icon('pause', 12)}</button>
-            <button class="card-hover-btn" onclick="restartAgent('${agent.id}')" title="Restart">${icon('refresh-cw', 12)}</button>
-            <button class="card-hover-btn" onclick="togglePin('${agent.id}')" title="Pin">${icon('pin', 12)}</button>
-            <button class="card-hover-btn" onclick="cloneAgent('${agent.id}')" title="Clone">${icon('copy', 12)}</button>
-            <button class="card-hover-btn danger" onclick="killAgent('${agent.id}')" title="Kill">${icon('x', 12)}</button>
+        <div class="card-hover-actions">
+            <button class="card-hover-btn" data-action="pause-resume" title="Pause/Resume">${icon('pause', 12)}</button>
+            <button class="card-hover-btn" data-action="restart" title="Restart">${icon('refresh-cw', 12)}</button>
+            <button class="card-hover-btn" data-action="pin" title="Pin">${icon('pin', 12)}</button>
+            <button class="card-hover-btn" data-action="clone" title="Clone">${icon('copy', 12)}</button>
+            <button class="card-hover-btn danger" data-action="kill" title="Kill">${icon('x', 12)}</button>
         </div>
-        <div class="card-menu" id="menu-${agent.id}" role="menu">
-            <div class="card-menu-item" role="menuitem" onclick="event.stopPropagation();openDeepView('${agent.id}')">${icon('terminal', 14)} View Terminal</div>
-            <div class="card-menu-item" role="menuitem" onclick="event.stopPropagation();openEditAgent('${agent.id}')">${icon('edit', 14)} Edit</div>
-            <div class="card-menu-item" role="menuitem" onclick="event.stopPropagation();pauseResumeAgent('${agent.id}')">${icon('pause', 14)} Pause/Resume</div>
-            <div class="card-menu-item" role="menuitem" onclick="event.stopPropagation();cloneAgent('${agent.id}')">${icon('copy', 14)} Clone</div>
-            <div class="card-menu-item" role="menuitem" onclick="event.stopPropagation();togglePin('${agent.id}')">${icon('pin', 14)} Pin/Unpin</div>
-            <div class="card-menu-item" role="menuitem" onclick="event.stopPropagation();openCompare('${agent.id}')">${icon('columns', 14)} Compare</div>
-            <div class="card-menu-item" role="menuitem" onclick="event.stopPropagation();restartAgent('${agent.id}')">${icon('refresh-cw', 14)} Restart</div>
-            <div class="card-menu-item" role="menuitem" onclick="event.stopPropagation();retryWithTask('${agent.id}')">${icon('rotate-ccw', 14)} Retry with Changes</div>
-            <div class="card-menu-item danger" role="menuitem" onclick="event.stopPropagation();killAgent('${agent.id}')">${icon('x', 14)} Kill</div>
+        <div class="card-menu" role="menu">
+            <div class="card-menu-item" role="menuitem" data-action="deep-view">${icon('terminal', 14)} View Terminal</div>
+            <div class="card-menu-item" role="menuitem" data-action="edit">${icon('edit', 14)} Edit</div>
+            <div class="card-menu-item" role="menuitem" data-action="pause-resume">${icon('pause', 14)} Pause/Resume</div>
+            <div class="card-menu-item" role="menuitem" data-action="clone">${icon('copy', 14)} Clone</div>
+            <div class="card-menu-item" role="menuitem" data-action="pin">${icon('pin', 14)} Pin/Unpin</div>
+            <div class="card-menu-item" role="menuitem" data-action="compare">${icon('columns', 14)} Compare</div>
+            <div class="card-menu-item" role="menuitem" data-action="restart">${icon('refresh-cw', 14)} Restart</div>
+            <div class="card-menu-item" role="menuitem" data-action="retry">${icon('rotate-ccw', 14)} Retry with Changes</div>
+            <div class="card-menu-item danger" role="menuitem" data-action="kill">${icon('x', 14)} Kill</div>
         </div>
     `;
+    // Event delegation — handles all data-action clicks securely (no inline onclick)
+    card.addEventListener('click', (e) => {
+        const actionEl = e.target.closest('[data-action]');
+        if (!actionEl) return;
+        const action = actionEl.dataset.action;
+        const aid = card.dataset.agentId;
+        e.stopPropagation();
+        const actions = {
+            'select': () => toggleAgentSelection(aid, e),
+            'menu': () => toggleCardMenu(aid),
+            'copy-dir': () => copyWorkingDir(aid),
+            'reply': () => openInteraction(aid),
+            'pause-resume': () => pauseResumeAgent(aid),
+            'restart': () => restartAgent(aid),
+            'pin': () => togglePin(aid),
+            'clone': () => cloneAgent(aid),
+            'kill': () => killAgent(aid),
+            'deep-view': () => openDeepView(aid),
+            'edit': () => openEditAgent(aid),
+            'compare': () => openCompare(aid),
+            'retry': () => retryWithTask(aid),
+        };
+        if (actions[action]) actions[action]();
+    });
     // Drag-and-drop reordering
     card.draggable = true;
     card.addEventListener('dragstart', (e) => {
@@ -9155,9 +9180,10 @@ function copyWorkingDir(agentId) {
     }).catch(() => showToast('Failed to copy path', 'error'));
 }
 
-function timeAgo(iso) {
-    if (!iso) return '';
-    const d = (Date.now() - new Date(iso).getTime()) / 1000;
+function timeAgo(isoOrDate) {
+    if (!isoOrDate) return '';
+    const t = isoOrDate instanceof Date ? isoOrDate.getTime() : new Date(isoOrDate).getTime();
+    const d = (Date.now() - t) / 1000;
     if (d < 60) return `${Math.round(d)}s`;
     if (d < 3600) return `${Math.round(d / 60)}m`;
     if (d < 86400) return `${Math.round(d / 3600)}h`;
@@ -9168,7 +9194,9 @@ function timeAgo(iso) {
 
 let activeMenu = null;
 function toggleCardMenu(agentId) {
-    const menu = document.getElementById(`menu-${agentId}`);
+    const card = document.querySelector(`.agent-card[data-agent-id="${agentId}"]`);
+    const menu = card?.querySelector('.card-menu');
+    if (!menu) return;
     if (activeMenu && activeMenu !== menu) activeMenu.classList.remove('active');
     menu.classList.toggle('active');
     activeMenu = menu.classList.contains('active') ? menu : null;
@@ -9191,21 +9219,22 @@ function showContextMenu(agentId, x, y) {
     const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
     const isPaused = agent.status === 'paused';
 
+    menu.dataset.agentId = agentId;
     menu.innerHTML = `
-        <div class="context-menu-item" onclick="openDeepView('${agentId}');hideContextMenu()">${icon('eye', 14)} Open Deep View</div>
-        <div class="context-menu-item" onclick="hideContextMenu();openCompare('${agentId}')">${icon('columns', 14)} Compare With...</div>
-        <div class="context-menu-item" onclick="hideContextMenu();openSplitView('${agentId}')">${icon('layout-grid', 14)} Split View</div>
-        <div class="context-menu-item" onclick="hideContextMenu();cloneAgent('${agentId}')">${icon('copy', 14)} Clone Agent</div>
+        <div class="context-menu-item" data-action="deep-view">${icon('eye', 14)} Open Deep View</div>
+        <div class="context-menu-item" data-action="compare">${icon('columns', 14)} Compare With...</div>
+        <div class="context-menu-item" data-action="split-view">${icon('layout-grid', 14)} Split View</div>
+        <div class="context-menu-item" data-action="clone">${icon('copy', 14)} Clone Agent</div>
         <div class="context-menu-sep"></div>
-        <div class="context-menu-item" onclick="hideContextMenu();pauseResumeAgent('${agentId}')">${icon(isPaused ? 'play' : 'circle-pause', 14)} ${isPaused ? 'Resume' : 'Pause'}</div>
-        <div class="context-menu-item" onclick="hideContextMenu();restartAgent('${agentId}')">${icon('refresh-cw', 14)} Restart</div>
-        <div class="context-menu-item" onclick="hideContextMenu();retryWithTask('${agentId}')">${icon('rotate-ccw', 14)} Retry with Changes</div>
+        <div class="context-menu-item" data-action="pause-resume">${icon(isPaused ? 'play' : 'circle-pause', 14)} ${isPaused ? 'Resume' : 'Pause'}</div>
+        <div class="context-menu-item" data-action="restart">${icon('refresh-cw', 14)} Restart</div>
+        <div class="context-menu-item" data-action="retry">${icon('rotate-ccw', 14)} Retry with Changes</div>
         <div class="context-menu-sep"></div>
-        <div class="context-menu-item" onclick="hideContextMenu();togglePin('${agentId}')">${icon('pin', 14)} ${agent.pinned ? 'Unpin' : 'Pin'}</div>
-        <div class="context-menu-item" onclick="hideContextMenu();navigator.clipboard.writeText('${agentId}');showToast('Agent ID copied','success')">${icon('clipboard', 14)} Copy Agent ID</div>
-        <div class="context-menu-item" onclick="hideContextMenu();(function(){const a=state.agents.get('${agentId}');if(a)navigator.clipboard.writeText(JSON.stringify(a,null,2));showToast('Agent JSON copied','success')})()">${icon('code', 14)} Copy as JSON</div>
+        <div class="context-menu-item" data-action="pin">${icon('pin', 14)} ${agent.pinned ? 'Unpin' : 'Pin'}</div>
+        <div class="context-menu-item" data-action="copy-id">${icon('clipboard', 14)} Copy Agent ID</div>
+        <div class="context-menu-item" data-action="copy-json">${icon('code', 14)} Copy as JSON</div>
         <div class="context-menu-sep"></div>
-        <div class="context-menu-item danger" onclick="hideContextMenu();killAgent('${agentId}')">${icon('x', 14)} Kill Agent</div>
+        <div class="context-menu-item danger" data-action="kill">${icon('x', 14)} Kill Agent</div>
     `;
 
     // Position: ensure it doesn't go off-screen
@@ -9225,6 +9254,29 @@ function hideContextMenu() {
     const menu = document.getElementById('contextMenu');
     if (menu) menu.classList.remove('active');
 }
+// Event delegation for context menu actions (no inline onclick)
+document.getElementById('contextMenu')?.addEventListener('click', (e) => {
+    const actionEl = e.target.closest('[data-action]');
+    if (!actionEl) return;
+    const menu = document.getElementById('contextMenu');
+    const aid = menu?.dataset.agentId;
+    if (!aid) return;
+    hideContextMenu();
+    const actions = {
+        'deep-view': () => openDeepView(aid),
+        'compare': () => openCompare(aid),
+        'split-view': () => openSplitView(aid),
+        'clone': () => cloneAgent(aid),
+        'pause-resume': () => pauseResumeAgent(aid),
+        'restart': () => restartAgent(aid),
+        'retry': () => retryWithTask(aid),
+        'pin': () => togglePin(aid),
+        'copy-id': () => { navigator.clipboard.writeText(aid); showToast('Agent ID copied', 'success'); },
+        'copy-json': () => { const a = state.agents.get(aid); if (a) navigator.clipboard.writeText(JSON.stringify(a, null, 2)); showToast('Agent JSON copied', 'success'); },
+        'kill': () => killAgent(aid),
+    };
+    if (actions[actionEl.dataset.action]) actions[actionEl.dataset.action]();
+});
 
 function showCardPreview(agentId, cardEl) {
     const agent = state.agents.get(agentId);
@@ -9484,14 +9536,6 @@ function selectResumeSession(sessionId) {
     item.style.borderColor = 'var(--accent)';
 
     showToast('Session loaded — click Resume Agent to spawn', 'info');
-}
-
-function timeAgo(date) {
-    const sec = Math.floor((Date.now() - date.getTime()) / 1000);
-    if (sec < 60) return 'just now';
-    if (sec < 3600) return Math.floor(sec / 60) + 'm ago';
-    if (sec < 86400) return Math.floor(sec / 3600) + 'h ago';
-    return Math.floor(sec / 86400) + 'd ago';
 }
 
 function filterByBranch(branch) {
@@ -10733,7 +10777,7 @@ function deepCopyMarkdown() {
     const agent = state.agents.get(state.focusedAgentId);
     if (!agent) return;
     const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
-    const lines = agent.output_lines || [];
+    const lines = agent._outputBuffer || agent.output_lines || [];
     // Strip ANSI codes for clean markdown
     const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
     const cleanLines = lines.map(l => l.replace(ansiRe, ''));
@@ -12124,7 +12168,7 @@ async function sendCommand() {
     // Try intelligent command parsing first for messages without explicit target
     if (!targetId || !msg.startsWith('@')) {
         try {
-            const resp = await fetch('/api/intelligence/command', {
+            const resp = await apiFetch('/api/intelligence/command', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ transcript: msg })
@@ -12185,31 +12229,36 @@ document.addEventListener('keydown', (e) => {
         if (e.key === 'r' || e.key === 'n') { e.preventDefault(); sendInteraction('no'); return; }
     }
 
-    // Escape always works
+    // Escape always works — close topmost overlay via stack
     if (e.key === 'Escape') {
         if (state.view === 'deep') { closeDeepView(); return; }
         if (state.view === 'spawn') { closeSpawnDialog(); return; }
         if (state.view === 'palette') { closePalette(); return; }
-        if (document.getElementById('notifDropdown').classList.contains('active')) { closeNotifications(); return; }
-        if (document.getElementById('projectDetailPanel')?.classList.contains('active')) { closeProjectDetail(); return; }
-        if (document.getElementById('historyOverlay').classList.contains('active')) { closeHistory(); return; }
-        if (document.getElementById('cheatsheetOverlay').classList.contains('active')) { closeCheatsheet(); return; }
-        if (document.getElementById('insightsPanel').classList.contains('active')) { closeInsightsPanel(); return; }
-        if (document.getElementById('extensionsOverlay').classList.contains('active')) { closeExtensionsPanel(); return; }
-        if (document.getElementById('settingsOverlay').classList.contains('active')) { closeSettings(); return; }
-        if (document.getElementById('wfEditorOverlay').classList.contains('active')) { closeWfEditor(); return; }
-        if (document.getElementById('wfPickerOverlay').classList.contains('active')) { closeWfPicker(); return; }
-        if (document.getElementById('msgPanelOverlay').classList.contains('active')) { closeMsgPanel(); return; }
-        if (document.getElementById('attentionQueueOverlay').classList.contains('active')) { closeAttentionQueue(); return; }
-        if (document.getElementById('interactionOverlay').classList.contains('active')) { closeInteraction(); return; }
-        if (document.getElementById('timelineOverlay').classList.contains('active')) { closeTimeline(); return; }
-        if (document.getElementById('compareOverlay').classList.contains('active')) { closeCompare(); return; }
-        if (document.getElementById('analyticsOverlay').classList.contains('active')) { closeAnalytics(); return; }
-        if (document.getElementById('conflictsOverlay').classList.contains('active')) { closeConflicts(); return; }
-        if (document.getElementById('eventlogOverlay').classList.contains('active')) { closeEventLog(); return; }
-        if (document.getElementById('gsearchOverlay').classList.contains('active')) { closeGlobalSearch(); return; }
-        if (document.getElementById('pipelineOverlay').classList.contains('active')) { closePipeline(); return; }
-        if (document.getElementById('handoffOverlay').classList.contains('active')) { closeHandoff(); return; }
+        const _overlayStack = [
+            ['notifDropdown', closeNotifications],
+            ['projectDetailPanel', closeProjectDetail],
+            ['historyOverlay', closeHistory],
+            ['cheatsheetOverlay', closeCheatsheet],
+            ['insightsPanel', closeInsightsPanel],
+            ['extensionsOverlay', closeExtensionsPanel],
+            ['settingsOverlay', closeSettings],
+            ['wfEditorOverlay', closeWfEditor],
+            ['wfPickerOverlay', closeWfPicker],
+            ['msgPanelOverlay', closeMsgPanel],
+            ['attentionQueueOverlay', closeAttentionQueue],
+            ['interactionOverlay', closeInteraction],
+            ['timelineOverlay', closeTimeline],
+            ['compareOverlay', closeCompare],
+            ['analyticsOverlay', closeAnalytics],
+            ['conflictsOverlay', closeConflicts],
+            ['eventlogOverlay', closeEventLog],
+            ['gsearchOverlay', closeGlobalSearch],
+            ['pipelineOverlay', closePipeline],
+            ['handoffOverlay', closeHandoff],
+        ];
+        for (const [id, closeFn] of _overlayStack) {
+            if (document.getElementById(id)?.classList.contains('active')) { closeFn(); return; }
+        }
         return;
     }
 
@@ -12595,7 +12644,7 @@ async function openHistory() {
 }
 
 async function resumeSession(sessionId) {
-    const continueMsg = prompt('Optional: add continuation instructions (leave blank to resume as-is)');
+    const continueMsg = await promptInput('Resume Session', 'Optional: add continuation instructions (leave blank to resume as-is)', { confirmText: 'Resume', iconKey: 'play' });
     if (continueMsg === null) return; // User cancelled
     try {
         const body = {};
@@ -12828,7 +12877,7 @@ class VoiceInput {
 
         // Try intelligent command parsing via server before falling back
         try {
-            const cmdResp = await fetch('/api/intelligence/command', {
+            const cmdResp = await apiFetch('/api/intelligence/command', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ transcript: text })
@@ -12920,7 +12969,7 @@ function updateQueueBadge() {
 
 async function addToQueue(role, name, task, workingDir, planMode) {
     try {
-        const resp = await fetch('/api/queue', {
+        const resp = await apiFetch('/api/queue', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ role, name, task, working_dir: workingDir, plan_mode: planMode })
@@ -13770,9 +13819,9 @@ function renderAttentionQueue() {
             </div>
             <div class="aq-item-question" style="color:var(--danger)">${errorMsg}</div>
             <div class="aq-item-actions">
-                <button class="btn btn-primary" onclick="restartAgent('${agent.id}')">Restart</button>
-                <button class="btn btn-secondary" onclick="openDeepView('${agent.id}');closeAttentionQueue()">View Output</button>
-                <button class="btn btn-danger" onclick="killAgent('${agent.id}')">Kill</button>
+                <button class="btn btn-primary" data-action="restart">Restart</button>
+                <button class="btn btn-secondary" data-action="view-output">View Output</button>
+                <button class="btn btn-danger" data-action="kill">Kill</button>
             </div>
         `;
         frag.appendChild(item);
@@ -13810,14 +13859,36 @@ function renderAttentionQueue() {
             ${outputPreview}
             <div class="aq-item-question">${questionText}</div>
             <div class="aq-item-actions">
-                <button class="btn btn-primary" onclick="respondToAgent('${agent.id}','yes')">${approveLabel}</button>
-                <button class="btn btn-secondary" onclick="respondToAgent('${agent.id}','no')">Reject</button>
-                <input class="aq-item-input" placeholder="Custom..." onkeydown="if(event.key==='Enter'){respondToAgent('${agent.id}',this.value);this.value=''}">
+                <button class="btn btn-primary" data-action="approve">${approveLabel}</button>
+                <button class="btn btn-secondary" data-action="reject">Reject</button>
+                <input class="aq-item-input" placeholder="Custom..." data-action="custom-input">
             </div>
         `;
         frag.appendChild(item);
     }
     list.appendChild(frag);
+    // Event delegation for attention queue actions (no inline onclick)
+    list.onclick = (e) => {
+        const actionEl = e.target.closest('[data-action]');
+        if (!actionEl) return;
+        const item = e.target.closest('.aq-item');
+        const aid = item?.dataset.agentId;
+        if (!aid) return;
+        const action = actionEl.dataset.action;
+        if (action === 'restart') restartAgent(aid);
+        else if (action === 'view-output') { openDeepView(aid); closeAttentionQueue(); }
+        else if (action === 'kill') killAgent(aid);
+        else if (action === 'approve') respondToAgent(aid, 'yes');
+        else if (action === 'reject') respondToAgent(aid, 'no');
+    };
+    list.onkeydown = (e) => {
+        if (e.key !== 'Enter') return;
+        const input = e.target.closest('.aq-item-input');
+        if (!input) return;
+        const item = e.target.closest('.aq-item');
+        const aid = item?.dataset.agentId;
+        if (aid && input.value) { respondToAgent(aid, input.value); input.value = ''; }
+    };
 }
 
 function respondToAgent(agentId, message) {
@@ -13986,19 +14057,19 @@ function updateMetricsDropdown() {
 // Fetch service health periodically
 async function fetchServiceHealth() {
     try {
-        const resp = await fetch('/api/system');
+        const resp = await apiFetch('/api/system');
         if (resp.ok) {
             const data = await resp.json();
             state._serviceHealth = data.services || {};
         }
     } catch (e) { /* server may be down */ }
 }
-setInterval(fetchServiceHealth, 10000);
+let _healthTimer = setInterval(fetchServiceHealth, 10000);
 fetchServiceHealth();
 
 // ── Time Updater ──
 
-setInterval(() => {
+function _updateCardTimers() {
     for (const [id, agent] of state.agents) {
         const card = cardElements.get(id);
         if (card) {
@@ -14027,7 +14098,24 @@ setInterval(() => {
         if (a) updateDeepViewHeader(a);
     }
     updateTabTitle();
-}, 5000);
+}
+let _timeUpdaterTimer = setInterval(_updateCardTimers, 5000);
+
+// ── Visibility-based interval pausing ──
+// Pause polling when tab is hidden to save CPU/network
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        clearInterval(_healthTimer);
+        clearInterval(_timeUpdaterTimer);
+        _healthTimer = null;
+        _timeUpdaterTimer = null;
+    } else {
+        if (!_healthTimer) _healthTimer = setInterval(fetchServiceHealth, 10000);
+        if (!_timeUpdaterTimer) _timeUpdaterTimer = setInterval(_updateCardTimers, 5000);
+        fetchServiceHealth();
+        _updateCardTimers();
+    }
+});
 
 // ── Theme Toggle ──
 

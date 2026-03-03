@@ -2,17 +2,18 @@
 """
 Ashlr AO — Agent Orchestration Server
 
-Single-file aiohttp server that manages AI coding agents via tmux,
+aiohttp server that manages AI coding agents via tmux,
 serves the web dashboard, and provides REST + WebSocket APIs.
 """
 
 # ─────────────────────────────────────────────
-# Section 1: Imports, Logging, Banner
+# Section 1: Imports
 # ─────────────────────────────────────────────
 
 import argparse
 import asyncio
 import collections
+import hmac
 import json
 import logging
 import logging.handlers
@@ -34,958 +35,74 @@ from typing import Any
 import aiohttp
 import aiosqlite
 from aiohttp import web
-import aiohttp_cors
+# aiohttp_cors removed — CORS handled natively in security_headers_middleware
 import bcrypt
 import jwt
 import psutil
 import yaml
 
-# ── Logging ──
-
-ASHLR_DIR = Path.home() / ".ashlr"
-
-# ── Migration: ~/.ashlar → ~/.ashlr (one-time) ──
-_LEGACY_DIR = Path.home() / ".ashlar"
-if _LEGACY_DIR.is_dir() and not ASHLR_DIR.exists():
-    _LEGACY_DIR.rename(ASHLR_DIR)
-    # Rename files inside
-    for _old_name, _new_name in [
-        ("ashlar.yaml", "ashlr.yaml"),
-        ("ashlar.db", "ashlr.db"),
-        ("ashlar.log", "ashlr.log"),
-    ]:
-        _old = ASHLR_DIR / _old_name
-        if _old.exists():
-            _old.rename(ASHLR_DIR / _new_name)
-
-ASHLR_DIR.mkdir(exist_ok=True)
-
-LOG_COLORS = {
-    "DEBUG": "\033[36m",     # cyan
-    "INFO": "\033[32m",      # green
-    "WARNING": "\033[33m",   # yellow
-    "ERROR": "\033[31m",     # red
-    "CRITICAL": "\033[35m",  # magenta
-}
-RESET = "\033[0m"
+# Re-export from constants module (backward compat)
+from ashlr_ao.constants import (  # noqa: F401
+    ASHLR_DIR,
+    LOG_COLORS,
+    RESET,
+    ColoredFormatter,
+    setup_logging,
+    log,
+    _ANSI_ESCAPE_RE,
+    _strip_ansi,
+    _SECRET_PATTERNS,
+    redact_secrets,
+    print_banner,
+    check_dependencies,
+)
 
 
-class ColoredFormatter(logging.Formatter):
-    def format(self, record: logging.LogRecord) -> str:
-        color = LOG_COLORS.get(record.levelname, "")
-        record.levelname = f"{color}{record.levelname:<8}{RESET}"
-        return super().format(record)
+# Re-export from config module (backward compat)
+from ashlr_ao.config import (  # noqa: F401
+    DEFAULT_CONFIG,
+    deep_merge,
+    Config,
+    load_config,
+)
 
+# Re-export from licensing module (backward compat)
+from ashlr_ao.licensing import (  # noqa: F401
+    PRO_FEATURES,
+    LICENSE_PUBLIC_KEY_PEM,
+    License,
+    COMMUNITY_LICENSE,
+    validate_license,
+)
 
-def setup_logging(level: str = "INFO") -> None:
-    root = logging.getLogger()
-    root.setLevel(getattr(logging, level.upper(), logging.INFO))
+# Re-export from backends module (backward compat)
+from ashlr_ao.backends import (  # noqa: F401
+    BackendConfig,
+    KNOWN_BACKENDS,
+)
 
-    # Console handler with colors
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setFormatter(ColoredFormatter("%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"))
-    root.addHandler(ch)
+# Re-export from roles module (backward compat)
+from ashlr_ao.roles import (  # noqa: F401
+    Role,
+    BUILTIN_ROLES,
+)
 
-    # File handler with rotation (10 MB max, 5 backups)
-    fh = logging.handlers.RotatingFileHandler(
-        ASHLR_DIR / "ashlr.log", maxBytes=10 * 1024 * 1024, backupCount=5
-    )
-    fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
-    root.addHandler(fh)
-
-
-log = logging.getLogger("ashlr")
-
-# ── Module-level ANSI stripping utility ──
-
-_ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*[a-zA-Z]')
-
-
-def _strip_ansi(text: str) -> str:
-    """Strip ANSI escape sequences from text."""
-    return _ANSI_ESCAPE_RE.sub('', text)
-
-
-# ── Secret Redaction ──
-
-_SECRET_PATTERNS = [
-    re.compile(r'\b(sk-[a-zA-Z0-9]{20,})'),           # OpenAI/Anthropic API keys
-    re.compile(r'\b(ghp_[a-zA-Z0-9]{36,})'),           # GitHub PATs (classic)
-    re.compile(r'\b(github_pat_[a-zA-Z0-9_]{22,})'),   # GitHub PATs (fine-grained)
-    re.compile(r'\b(gho_[a-zA-Z0-9]{36,})'),           # GitHub OAuth tokens
-    re.compile(r'\b(ghs_[a-zA-Z0-9]{36,})'),           # GitHub App installation tokens
-    re.compile(r'\b(xai-[a-zA-Z0-9]{20,})'),           # xAI API keys
-    re.compile(r'\b(AKIA[A-Z0-9]{16})'),               # AWS access keys
-    re.compile(r'\b(xoxb-[a-zA-Z0-9\-]{20,})'),       # Slack bot tokens
-    re.compile(r'\b(xoxp-[a-zA-Z0-9\-]{20,})'),       # Slack user tokens
-    re.compile(r'\b(xoxs-[a-zA-Z0-9\-]{20,})'),       # Slack session tokens
-    re.compile(r'\b(SG\.[a-zA-Z0-9_\-]{22,}\.[a-zA-Z0-9_\-]{22,})'),  # SendGrid API keys
-    re.compile(r'\b(np_[a-zA-Z0-9]{20,})'),            # npm tokens
-    re.compile(r'\b(pypi-[a-zA-Z0-9]{20,})'),          # PyPI tokens
-    re.compile(r'\b(Bearer\s+[a-zA-Z0-9\-._~+/]{20,})'),  # Bearer tokens
-    re.compile(r'(?i)\bpassword\s*[=:]\s*\S+'),        # password= fields
-    re.compile(r'(?i)\bsecret\s*[=:]\s*\S+'),          # secret= fields
-    re.compile(r'(?i)\bapi[_-]?key\s*[=:]\s*\S+'),     # api_key= fields
-    re.compile(r'(?i)\btoken\s*[=:]\s*["\']?[a-zA-Z0-9\-._]{20,}'),  # token= fields
-    re.compile(r'\beyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}'),  # JWT tokens
-    re.compile(r'(?i)\b(mongodb(\+srv)?://[^\s]+)'),   # MongoDB connection strings
-    re.compile(r'(?i)\b(postgres(ql)?://[^\s]+)'),     # PostgreSQL connection strings
-    re.compile(r'(?i)\b(mysql://[^\s]+)'),             # MySQL connection strings
-    re.compile(r'(?i)\b(redis://[^\s]+)'),             # Redis connection strings
-]
-
-
-def redact_secrets(text: str) -> str:
-    """Replace secret patterns with redacted placeholders."""
-    result = text
-    for pattern in _SECRET_PATTERNS:
-        result = pattern.sub('****[REDACTED]', result)
-    return result
-
-
-def print_banner() -> None:
-    from ashlr_ao import __version__
-    print("\n\033[36m", end="")
-    print("  ╔═══════════════════════════════════╗")
-    print("  ║          A S H L R   A O         ║")
-    print("  ║     Agent Orchestration Platform   ║")
-    print("  ╚═══════════════════════════════════╝")
-    print(f"  v{__version__}\033[0m")
-
-
-def check_dependencies() -> bool:
-    """Check for required (tmux) and optional (claude) dependencies.
-    Returns True if claude CLI is found, False for demo mode."""
-    if not shutil.which("tmux"):
-        log.critical("tmux is required but not found. Install: brew install tmux")
-        sys.exit(1)
-    log.info("tmux found")
-
-    if shutil.which("claude") and not os.environ.get("CLAUDECODE"):
-        try:
-            result = subprocess.run(
-                ["claude", "--version"], capture_output=True, timeout=5, text=True
-            )
-            if result.returncode == 0:
-                lines = result.stdout.strip().split('\n')
-                version = lines[0][:80] if lines else "unknown"
-                log.info(f"claude CLI validated: {version}")
-                return True
-            else:
-                log.warning(f"claude CLI found but --version failed (exit {result.returncode}) — using demo mode")
-                return False
-        except (subprocess.TimeoutExpired, OSError) as e:
-            log.warning(f"claude CLI found but not functional ({e}) — using demo mode")
-            return False
-    elif os.environ.get("CLAUDECODE"):
-        log.warning("Running inside Claude Code session — using demo mode to avoid nested sessions")
-        return False
-    else:
-        log.warning("claude CLI not found — agents will run in demo mode (bash)")
-        return False
-
-
-# ─────────────────────────────────────────────
-# Section 2: Configuration
-# ─────────────────────────────────────────────
-
-DEFAULT_CONFIG = {
-    "server": {"host": "127.0.0.1", "port": 5111, "log_level": "INFO", "require_auth": False, "auth_token": ""},
-    "agents": {
-        "max_concurrent": 16,
-        "default_role": "general",
-        "default_working_dir": os.getcwd(),
-        "output_capture_interval_sec": 1.0,
-        "memory_limit_mb": 2048,
-        "default_backend": "claude-code",
-        "backends": {
-            "claude-code": {"command": "claude", "args": ["--dangerously-skip-permissions"]},
-            "codex": {"command": "codex", "args": []},
-        },
-    },
-    "voice": {"enabled": True, "ptt_key": "Space", "feedback_sounds": True},
-    "display": {"theme": "dark", "cards_per_row": 4},
-    "llm": {
-        "enabled": False,
-        "provider": "xai",
-        "model": "grok-4-1-fast-reasoning",
-        "api_key_env": "XAI_API_KEY",
-        "base_url": "https://api.x.ai/v1",
-        "summary_interval_sec": 10.0,
-        "max_output_lines": 30,
-        "meta_interval_sec": 30.0,
-    },
-    "licensing": {"key": ""},
-}
-
-
-def deep_merge(base: dict, override: dict) -> dict:
-    result = base.copy()
-    for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = deep_merge(result[key], value)
-        else:
-            result[key] = value
-    return result
-
-
-@dataclass
-class Config:
-    host: str = "127.0.0.1"
-    port: int = 5111
-    log_level: str = "INFO"
-    max_agents: int = 16
-    default_role: str = "general"
-    default_working_dir: str = "~/Projects"
-    output_capture_interval: float = 1.0
-    output_max_lines: int = 2000  # Max lines per agent output buffer (deque maxlen)
-    memory_limit_mb: int = 2048
-    claude_command: str = "claude"
-    claude_args: list = field(default_factory=lambda: ["--dangerously-skip-permissions"])
-    demo_mode: bool = False
-    # Auth
-    require_auth: bool = False
-    auth_token: str = ""
-    # Multi-backend support
-    backends: dict = field(default_factory=lambda: {
-        "claude-code": {"command": "claude", "args": ["--dangerously-skip-permissions"]},
-        "codex": {"command": "codex", "args": []},
-    })
-    default_backend: str = "claude-code"
-    # Voice
-    voice_feedback: bool = True
-    # Idle agent reaping
-    idle_agent_ttl: int = 3600  # seconds before idle/complete agents are reaped
-    # LLM summary config
-    llm_enabled: bool = False
-    llm_provider: str = "xai"
-    llm_model: str = "grok-4-1-fast-reasoning"
-    llm_api_key: str = ""
-    llm_base_url: str = "https://api.x.ai/v1"
-    llm_summary_interval: float = 10.0
-    llm_max_output_lines: int = 30
-    # Configurable alert thresholds
-    health_low_threshold: float = 0.3
-    health_critical_threshold: float = 0.1
-    stall_timeout_minutes: int = 5
-    hung_timeout_minutes: int = 10
-    # Meta-agent analysis interval (fleet analysis via LLM)
-    llm_meta_interval: float = 30.0
-    # Cost budget
-    cost_budget_usd: float = 0.0  # 0 = no limit
-    cost_budget_auto_pause: bool = False
-    # Resource exhaustion cascade protection
-    system_cpu_pressure_threshold: float = 90.0  # System CPU % to trigger fleet pressure response
-    system_memory_pressure_threshold: float = 90.0  # System memory % to trigger fleet pressure response
-    spawn_pressure_block: bool = True  # Block spawning when system under pressure
-    agent_memory_pause_pct: float = 0.85  # Pause agent at this % of memory_limit_mb
-    context_auto_pause_threshold: float = 0.95  # Auto-pause agent at this context %
-    pathological_error_window_sec: float = 60.0  # If agent errors within this time of restart, mark pathological
-    max_pathological_restarts: int = 1  # Max restarts for agents that error rapidly after restart
-    # Licensing
-    license_key: str = ""
-    # Pattern alerting — regex patterns that trigger high-priority notifications
-    # Archive rotation
-    archive_max_rows_per_agent: int = 50000  # Max archived lines per agent
-    archive_retention_hours: int = 48  # Auto-delete archives older than this
-    # Output flood protection
-    flood_threshold_lines_per_min: int = 3000  # Lines/min to trigger flood detection
-    flood_sustained_ticks: int = 3  # Consecutive capture ticks above threshold before flagging
-    # Server stats
-    _stats_requests: int = 0  # Populated at runtime
-    _stats_start_time: float = 0.0  # Populated at runtime
-    # Alert patterns
-    alert_patterns: list = field(default_factory=lambda: [
-        {"pattern": r"(?i)CRITICAL|FATAL|panic|segfault|segmentation fault", "severity": "critical", "label": "Critical Error"},
-        {"pattern": r"(?i)out of memory|OOM|memory exhausted|MemoryError", "severity": "critical", "label": "Memory Issue"},
-        {"pattern": r"(?i)permission denied|access denied|unauthorized", "severity": "warning", "label": "Access Error"},
-        {"pattern": r"(?i)disk full|no space left|ENOSPC", "severity": "critical", "label": "Disk Full"},
-        {"pattern": r"(?i)connection refused|ECONNREFUSED|timeout exceeded", "severity": "warning", "label": "Connection Error"},
-    ])
-
-    def to_dict(self) -> dict:
-        return {
-            "host": self.host,
-            "port": self.port,
-            "max_agents": self.max_agents,
-            "default_role": self.default_role,
-            "default_working_dir": self.default_working_dir,
-            "output_capture_interval": self.output_capture_interval,
-            "memory_limit_mb": self.memory_limit_mb,
-            "demo_mode": self.demo_mode,
-            "default_backend": self.default_backend,
-            "backends": {k: {"command": v.get("command", ""), "available": bool(shutil.which(v.get("command", "")))} for k, v in self.backends.items() if isinstance(v, dict)},
-            "llm_enabled": self.llm_enabled,
-            "llm_provider": self.llm_provider,
-            "llm_model": self.llm_model,
-            "llm_summary_interval": self.llm_summary_interval,
-            "llm_meta_interval": self.llm_meta_interval,
-            "voice_feedback": self.voice_feedback,
-            "idle_agent_ttl": self.idle_agent_ttl,
-            "health_low_threshold": self.health_low_threshold,
-            "health_critical_threshold": self.health_critical_threshold,
-            "stall_timeout_minutes": self.stall_timeout_minutes,
-            "hung_timeout_minutes": self.hung_timeout_minutes,
-            "intelligence_enabled": self.llm_enabled,  # backward compat alias
-            "cost_budget_usd": self.cost_budget_usd,
-            "cost_budget_auto_pause": self.cost_budget_auto_pause,
-            "alert_patterns": self.alert_patterns,
-        }
-
-
-def load_config(has_claude: bool = True) -> Config:
-    config_dir = ASHLR_DIR
-    config_dir.mkdir(exist_ok=True)
-    config_path = config_dir / "ashlr.yaml"
-
-    # Also check for config in the project directory
-    local_config = Path(__file__).parent / "ashlr.yaml"
-
-    raw = DEFAULT_CONFIG.copy()
-
-    if config_path.exists():
-        try:
-            with open(config_path) as f:
-                user_config = yaml.safe_load(f) or {}
-            raw = deep_merge(raw, user_config)
-        except Exception as e:
-            log.warning(f"Failed to load config from {config_path}: {e}")
-    elif local_config.exists():
-        # Copy local config to ~/.ashlr/ on first run
-        try:
-            shutil.copy2(local_config, config_path)
-            with open(config_path) as f:
-                user_config = yaml.safe_load(f) or {}
-            raw = deep_merge(raw, user_config)
-            log.info(f"Copied config to {config_path}")
-        except Exception as e:
-            log.warning(f"Failed to copy config: {e}")
-    else:
-        # Write defaults
-        try:
-            with open(config_path, "w") as f:
-                yaml.dump(DEFAULT_CONFIG, f, default_flow_style=False, sort_keys=False)
-            log.info(f"Created default config at {config_path}")
-        except Exception as e:
-            log.warning(f"Failed to write default config: {e}")
-
-    server = raw.get("server", {})
-    agents = raw.get("agents", {})
-    backends = agents.get("backends", {})
-    claude_backend = backends.get("claude-code", {})
-    voice = raw.get("voice", {})
-    llm = raw.get("llm", {})
-
-    default_wd = agents.get("default_working_dir", os.getcwd())
-    default_wd = os.path.expanduser(default_wd)
-    if not os.path.isdir(default_wd):
-        log.warning(f"default_working_dir {default_wd!r} does not exist, using server CWD")
-        default_wd = os.getcwd()
-
-    # Validate config values — warn and use defaults for invalid entries
-    def _validate(value, validator, default, name):
-        if validator(value):
-            return value
-        log.warning(f"Invalid config value for {name}: {value!r}, using default: {default!r}")
-        return default
-
-    alerts = raw.get("alerts", {})
-    max_agents_val = agents.get("max_concurrent", 16)
-    max_agents_val = _validate(max_agents_val, lambda v: isinstance(v, int) and 1 <= v <= 100, 16, "max_concurrent")
-    output_interval_val = agents.get("output_capture_interval_sec", 1.0)
-    output_interval_val = _validate(output_interval_val, lambda v: isinstance(v, (int, float)) and 0.5 <= v <= 30.0, 1.0, "output_capture_interval_sec")
-    memory_limit_val = agents.get("memory_limit_mb", 2048)
-    memory_limit_val = _validate(memory_limit_val, lambda v: isinstance(v, int) and 256 <= v <= 32768, 2048, "memory_limit_mb")
-    idle_ttl_val = agents.get("idle_agent_ttl", alerts.get("idle_ttl_seconds", 3600))
-    idle_ttl_val = _validate(idle_ttl_val, lambda v: isinstance(v, int) and 300 <= v <= 86400, 3600, "idle_agent_ttl")
-    llm_interval_val = llm.get("summary_interval_sec", 10.0)
-    llm_interval_val = _validate(llm_interval_val, lambda v: isinstance(v, (int, float)) and 3.0 <= v <= 120.0, 10.0, "llm_summary_interval")
-    llm_meta_interval_val = llm.get("meta_interval_sec", 30.0)
-    llm_meta_interval_val = _validate(llm_meta_interval_val, lambda v: isinstance(v, (int, float)) and 5.0 <= v <= 300.0, 30.0, "llm_meta_interval")
-    health_low_val = alerts.get("health_low_threshold", 0.3)
-    health_low_val = _validate(health_low_val, lambda v: isinstance(v, (int, float)) and 0.0 < v <= 1.0, 0.3, "health_low_threshold")
-    health_crit_val = alerts.get("health_critical_threshold", 0.1)
-    health_crit_val = _validate(health_crit_val, lambda v: isinstance(v, (int, float)) and 0.0 < v <= 1.0, 0.1, "health_critical_threshold")
-    stall_val = alerts.get("stall_timeout_minutes", 5)
-    stall_val = _validate(stall_val, lambda v: isinstance(v, int) and 1 <= v <= 60, 5, "stall_timeout_minutes")
-    hung_val = alerts.get("hung_timeout_minutes", 10)
-    hung_val = _validate(hung_val, lambda v: isinstance(v, int) and 1 <= v <= 120, 10, "hung_timeout_minutes")
-
-    # Load alert patterns from YAML (or use defaults)
-    yaml_alert_patterns = alerts.get("patterns", [])
-    if yaml_alert_patterns and isinstance(yaml_alert_patterns, list):
-        validated_alert_patterns = []
-        for ap in yaml_alert_patterns:
-            if isinstance(ap, dict) and "pattern" in ap:
-                try:
-                    re.compile(ap["pattern"])
-                    validated_alert_patterns.append({
-                        "pattern": ap["pattern"],
-                        "severity": ap.get("severity", "warning"),
-                        "label": ap.get("label", "Alert"),
-                    })
-                except re.error as e:
-                    log.warning(f"Invalid alert pattern regex: {ap.get('pattern')!r} — {e}")
-        alert_patterns_final = validated_alert_patterns if validated_alert_patterns else None
-    else:
-        alert_patterns_final = None  # Will use Config defaults
-
-    # Resolve LLM API key from env var
-    api_key_env = llm.get("api_key_env", "XAI_API_KEY")
-    llm_api_key = os.environ.get(api_key_env, "")
-
-    # Deprecation warning for old ANTHROPIC_API_KEY users
-    if os.environ.get("ANTHROPIC_API_KEY") and not os.environ.get("XAI_API_KEY"):
-        log.warning("ANTHROPIC_API_KEY is deprecated for intelligence features. Set XAI_API_KEY instead (xAI Grok via OpenAI-compatible API).")
-
-    # Auth config — ASHLR_REQUIRE_AUTH env var overrides config file
-    require_auth = server.get("require_auth", False)
-    if os.environ.get("ASHLR_REQUIRE_AUTH", "").lower() in ("true", "1", "yes"):
-        require_auth = True
-    auth_token = server.get("auth_token", "")
-    if require_auth and not auth_token:
-        # Auto-generate a 24-char token
-        import secrets as _secrets
-        auth_token = _secrets.token_urlsafe(18)
-        log.info(f"Auto-generated auth token: {auth_token[:8]}...{auth_token[-4:]}")
-        # Save it back to config
-        try:
-            if config_path.exists():
-                with open(config_path) as f:
-                    raw_yaml = yaml.safe_load(f) or {}
-            else:
-                raw_yaml = {}
-            raw_yaml.setdefault("server", {})["auth_token"] = auth_token
-            tmp_fd, tmp_path = tempfile.mkstemp(dir=str(config_path.parent), suffix='.yaml.tmp')
-            try:
-                with os.fdopen(tmp_fd, 'w') as f:
-                    yaml.dump(raw_yaml, f, default_flow_style=False, sort_keys=False)
-                Path(tmp_path).rename(config_path)
-            except Exception:
-                Path(tmp_path).unlink(missing_ok=True)
-                raise
-        except Exception as e:
-            log.warning(f"Failed to save auto-generated auth token to config: {e}")
-
-    # ASHLR_PORT env var overrides config file
-    port_raw = os.environ.get("ASHLR_PORT")
-    if port_raw is not None:
-        try:
-            port = int(port_raw)
-        except ValueError:
-            log.warning(f"Invalid ASHLR_PORT '{port_raw}', using default")
-            port = server.get("port", 5111)
-    else:
-        port = server.get("port", 5111)
-
-    # ASHLR_HOST env var overrides config file (use 0.0.0.0 for Docker/deployment)
-    host = os.environ.get("ASHLR_HOST", server.get("host", "127.0.0.1"))
-
-    # Licensing key from config (fallback when no org in DB)
-    licensing = raw.get("licensing", {})
-    license_key_val = licensing.get("key", "")
-
-    return Config(
-        host=host,
-        port=port,
-        log_level=server.get("log_level", "INFO"),
-        max_agents=max_agents_val,
-        default_role=agents.get("default_role", "general"),
-        default_working_dir=default_wd,
-        output_capture_interval=output_interval_val,
-        memory_limit_mb=memory_limit_val,
-        claude_command=claude_backend.get("command", "claude"),
-        claude_args=claude_backend.get("args", ["--dangerously-skip-permissions"]),
-        demo_mode=not has_claude,
-        voice_feedback=voice.get("feedback_sounds", True),
-        require_auth=require_auth,
-        auth_token=auth_token,
-        backends=backends or DEFAULT_CONFIG["agents"]["backends"],
-        default_backend=agents.get("default_backend", "claude-code"),
-        llm_enabled=llm.get("enabled", False) and bool(llm_api_key),
-        llm_provider=llm.get("provider", "xai"),
-        llm_model=llm.get("model", "grok-4-1-fast-reasoning"),
-        llm_api_key=llm_api_key,
-        llm_base_url=llm.get("base_url", "https://api.x.ai/v1"),
-        llm_summary_interval=llm_interval_val,
-        llm_max_output_lines=llm.get("max_output_lines", 30),
-        llm_meta_interval=llm_meta_interval_val,
-        idle_agent_ttl=idle_ttl_val,
-        health_low_threshold=health_low_val,
-        health_critical_threshold=health_crit_val,
-        stall_timeout_minutes=stall_val,
-        hung_timeout_minutes=hung_val,
-        cost_budget_usd=float(raw.get("cost_budget_usd", 0)),
-        cost_budget_auto_pause=bool(raw.get("cost_budget_auto_pause", False)),
-        license_key=license_key_val,
-        **({"alert_patterns": alert_patterns_final} if alert_patterns_final else {}),
-    )
+# Re-export from extensions module (backward compat)
+from ashlr_ao.extensions import (  # noqa: F401
+    SkillInfo,
+    MCPServerInfo,
+    PluginInfo,
+    ExtensionScanner,
+)
 
 
 # ─────────────────────────────────────────────
 # Section 3: Data Models
 # ─────────────────────────────────────────────
 
-@dataclass
-class BackendConfig:
-    """Rich configuration for an agent backend CLI tool."""
-    command: str
-    args: list[str] = field(default_factory=list)
-    available: bool = False
-    # Orchestration capabilities
-    supports_json_output: bool = False
-    supports_system_prompt: bool = False
-    supports_tool_restriction: bool = False
-    supports_session_resume: bool = False
-    supports_model_select: bool = False
-    supports_prompt_arg: bool = False  # If True, task is passed as CLI positional arg (not via send-keys)
-    # Automation
-    auto_approve_flag: str = ""
-    plan_mode_flag: str = ""  # CLI flag to enable plan/review mode (e.g. "--permission-mode plan")
-    inject_role_prompt: bool = True  # Whether to inject role system prompt (disable for tools with their own context)
-    # Status detection overrides (merge with defaults)
-    status_patterns: dict[str, list[str]] = field(default_factory=dict)
-    # Cost rates (per 1K tokens)
-    cost_input_per_1k: float = 0.003
-    cost_output_per_1k: float = 0.015
-    # Context window sizing
-    context_window: int = 200_000  # tokens
-    char_to_token_ratio: float = 3.5
 
-    def to_dict(self) -> dict:
-        return {
-            "command": self.command,
-            "args": self.args,
-            "available": self.available,
-            "supports_json_output": self.supports_json_output,
-            "supports_system_prompt": self.supports_system_prompt,
-            "supports_tool_restriction": self.supports_tool_restriction,
-            "supports_session_resume": self.supports_session_resume,
-            "supports_model_select": self.supports_model_select,
-            "supports_prompt_arg": self.supports_prompt_arg,
-            "auto_approve_flag": self.auto_approve_flag,
-            "plan_mode_flag": self.plan_mode_flag,
-            "inject_role_prompt": self.inject_role_prompt,
-            "cost_input_per_1k": self.cost_input_per_1k,
-            "cost_output_per_1k": self.cost_output_per_1k,
-            "context_window": self.context_window,
-            "char_to_token_ratio": self.char_to_token_ratio,
-        }
-
-
-KNOWN_BACKENDS: dict[str, BackendConfig] = {
-    "claude-code": BackendConfig(
-        command="claude",
-        args=["--dangerously-skip-permissions"],
-        supports_json_output=True,
-        supports_system_prompt=True,
-        supports_tool_restriction=True,
-        supports_session_resume=True,
-        supports_model_select=True,
-        supports_prompt_arg=True,
-        auto_approve_flag="--dangerously-skip-permissions",
-        plan_mode_flag="--permission-mode plan",
-        status_patterns={
-            "working": [r"⎿", r"╭─", r"╰─", r"Tool Use:", r"Bash:", r"\$ ",
-                        r"esc to interrupt", r"Running ", r"Updated \d+ file",
-                        r"Created ", r"Wrote ", r"tokens remaining",
-                        r"Reading file", r"Editing file", r"Writing file",
-                        r"Searching for", r"Globbing", r"Grepping",
-                        r"npm (run|install|test)", r"pip install",
-                        r"pytest", r"jest", r"vitest", r"mocha",
-                        r"compiling|building|bundling",
-                        r"git (add|commit|push|pull|diff|log|status)"],
-            "waiting": [r"Do you want to proceed", r"Allow once", r"Allow always",
-                        r"Press Enter to retry", r"Type your response",
-                        r"waiting for your", r"What would you like",
-                        r"Approve", r"Deny", r"Skip",
-                        r"Y/n\]", r"y/N\]",
-                        r"Enter a value", r"Select an option",
-                        r"Choose (a|an|one|which)"],
-            "planning": [r"Thinking\.\.\.", r"Schlepping", r"I'll start by",
-                         r"Let me analyze", r"Let me plan",
-                         r"I need to", r"First,? I('ll| will)",
-                         r"Analyzing", r"Understanding"],
-            "complete": [r"❯", r"Task completed", r"All done",
-                         r"Successfully completed", r"Finished"],
-        },
-        cost_input_per_1k=0.003,
-        cost_output_per_1k=0.015,
-        context_window=200_000,
-        char_to_token_ratio=3.5,
-    ),
-    "codex": BackendConfig(
-        command="codex",
-        args=[],
-        supports_json_output=True,
-        auto_approve_flag="--full-auto",
-        status_patterns={
-            "working": [r"Generating", r"Applying changes", r"Reviewing",
-                        r"Searching codebase", r"Editing ", r"Writing ",
-                        r"Running command", r"Installing", r"Testing",
-                        r"Building", r"Compiling"],
-            "waiting": [r"Do you want to", r"Confirm", r"Y/n",
-                        r"Select an option", r"Enter a value"],
-            "planning": [r"Analyzing", r"Understanding", r"Planning",
-                         r"Thinking", r"Researching"],
-            "complete": [r"Complete", r"Done", r"Finished", r"All changes applied"],
-        },
-        cost_input_per_1k=0.003,
-        cost_output_per_1k=0.012,
-        context_window=128_000,
-        char_to_token_ratio=3.2,
-    ),
-    "aider": BackendConfig(
-        command="aider",
-        args=[],
-        supports_model_select=True,
-        auto_approve_flag="-y",
-        status_patterns={
-            "working": [r"Editing ", r"Applied edit to", r"Creating ",
-                        r"Committing", r"Running ", r"Added .+ to the chat",
-                        r"Searching", r"tokens used", r"Sending"],
-            "waiting": [r"Do you want to", r"y/n", r"Enter",
-                        r"would you like", r"Type your response",
-                        r"aider>"],
-            "planning": [r"Thinking", r"Analyzing", r"Understanding",
-                         r"Looking at", r"Let me"],
-            "complete": [r"Completed", r"All done", r"Finished"],
-        },
-        cost_input_per_1k=0.003,
-        cost_output_per_1k=0.015,
-        context_window=128_000,
-        char_to_token_ratio=3.5,
-    ),
-    "goose": BackendConfig(
-        command="goose",
-        args=[],
-        supports_session_resume=True,
-        auto_approve_flag="-y",
-        status_patterns={
-            "working": [r"Executing", r"Running", r"Modifying",
-                        r"Creating", r"Writing", r"Editing",
-                        r"Installing", r"Building", r"Testing"],
-            "waiting": [r"Do you want", r"Confirm", r"Select",
-                        r"goose>", r"Enter"],
-            "planning": [r"Planning", r"Analyzing", r"Thinking",
-                         r"Reviewing", r"Investigating"],
-            "complete": [r"Complete", r"Done", r"Finished",
-                         r"Successfully"],
-        },
-        cost_input_per_1k=0.003,
-        cost_output_per_1k=0.015,
-        context_window=200_000,
-        char_to_token_ratio=3.5,
-    ),
-}
-
-
-# ── Extension Discovery (Skills, MCP Servers, Plugins) ──
-
-@dataclass
-class SkillInfo:
-    """A Claude Code slash-command skill discovered from filesystem."""
-    name: str              # e.g. "commit" or "gsd/add-phase"
-    description: str
-    source: str            # "user" (global) or "project"
-    file_path: str         # absolute path to the .md file
-    argument_hint: str = ""
-    allowed_tools: str = ""
-
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "description": self.description,
-            "source": self.source,
-            "file_path": self.file_path,
-            "argument_hint": self.argument_hint,
-            "allowed_tools": self.allowed_tools,
-        }
-
-
-@dataclass
-class MCPServerInfo:
-    """An MCP server discovered from settings.json or .mcp.json."""
-    name: str
-    server_type: str       # "stdio" | "http" | "sse" | "unknown"
-    url_or_command: str    # URL for http/sse, command for stdio
-    source: str            # "user" (global) or project path
-    args: list[str] = field(default_factory=list)
-
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "type": self.server_type,
-            "url_or_command": self.url_or_command,
-            "source": self.source,
-            "args": self.args,
-        }
-
-
-@dataclass
-class PluginInfo:
-    """A Claude Code plugin discovered from settings.json."""
-    name: str              # e.g. "frontend-design@claude-plugins-official"
-    provider: str          # e.g. "claude-plugins-official"
-    enabled: bool
-
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "provider": self.provider,
-            "enabled": self.enabled,
-        }
-
-
-class ExtensionScanner:
-    """Scans the filesystem for Claude Code skills, MCP servers, and plugins.
-    Results are cached in memory and refreshed on demand."""
-
-    def __init__(self) -> None:
-        self.skills: list[SkillInfo] = []
-        self.mcp_servers: list[MCPServerInfo] = []
-        self.plugins: list[PluginInfo] = []
-        self._scanned_at: str = ""
-
-    def to_dict(self) -> dict:
-        return {
-            "skills": [s.to_dict() for s in self.skills],
-            "mcp_servers": [m.to_dict() for m in self.mcp_servers],
-            "plugins": [p.to_dict() for p in self.plugins],
-            "scanned_at": self._scanned_at,
-        }
-
-    def scan(self, project_dirs: list[str] | None = None) -> dict:
-        """Full filesystem scan. Returns to_dict() result."""
-        self.skills = self._scan_skills(project_dirs or [])
-        self.mcp_servers = self._scan_mcp_servers(project_dirs or [])
-        self.plugins = self._scan_plugins()
-        self._scanned_at = datetime.now(timezone.utc).isoformat()
-        log.info(
-            f"Extension scan: {len(self.skills)} skills, "
-            f"{len(self.mcp_servers)} MCP servers, {len(self.plugins)} plugins"
-        )
-        return self.to_dict()
-
-    def _scan_skills(self, project_dirs: list[str]) -> list[SkillInfo]:
-        """Scan for .md skill files in user global + project dirs."""
-        skills: list[SkillInfo] = []
-        # User global: ~/.claude/commands/**/*.md
-        global_dir = Path.home() / ".claude" / "commands"
-        if global_dir.is_dir():
-            skills.extend(self._scan_skill_dir(global_dir, "user"))
-        # Per-project: {project}/.claude/commands/**/*.md
-        for pdir in project_dirs:
-            proj_cmd_dir = Path(pdir) / ".claude" / "commands"
-            if proj_cmd_dir.is_dir():
-                skills.extend(self._scan_skill_dir(proj_cmd_dir, pdir))
-        return skills
-
-    def _scan_skill_dir(self, base_dir: Path, source: str) -> list[SkillInfo]:
-        """Scan a single commands directory for .md skill files."""
-        results: list[SkillInfo] = []
-        try:
-            for md_file in sorted(base_dir.rglob("*.md")):
-                if not md_file.is_file():
-                    continue
-                # Build skill name: relative to base_dir, without extension
-                rel = md_file.relative_to(base_dir)
-                name = str(rel.with_suffix(""))  # e.g. "commit" or "gsd/add-phase"
-                # Parse YAML frontmatter
-                desc, arg_hint, allowed = self._parse_skill_frontmatter(md_file)
-                results.append(SkillInfo(
-                    name=name,
-                    description=desc,
-                    source=source,
-                    file_path=str(md_file),
-                    argument_hint=arg_hint,
-                    allowed_tools=allowed,
-                ))
-        except Exception as e:
-            log.warning(f"Error scanning skills in {base_dir}: {e}")
-        return results
-
-    @staticmethod
-    def _parse_skill_frontmatter(path: Path) -> tuple[str, str, str]:
-        """Parse YAML frontmatter from a skill .md file.
-        Returns (description, argument_hint, allowed_tools)."""
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except Exception:
-            return ("", "", "")
-        if not text.startswith("---"):
-            return ("", "", "")
-        end = text.find("---", 3)
-        if end < 0:
-            return ("", "", "")
-        frontmatter = text[3:end].strip()
-        try:
-            meta = yaml.safe_load(frontmatter) or {}
-        except Exception:
-            return ("", "", "")
-        desc = str(meta.get("description", ""))
-        arg_hint = str(meta.get("argument-hint", ""))
-        allowed = str(meta.get("allowed-tools", ""))
-        return (desc, arg_hint, allowed)
-
-    def _scan_mcp_servers(self, project_dirs: list[str]) -> list[MCPServerInfo]:
-        """Scan for MCP server configurations."""
-        servers: list[MCPServerInfo] = []
-        # Global: ~/.claude/settings.json → mcpServers
-        settings_path = Path.home() / ".claude" / "settings.json"
-        if settings_path.is_file():
-            servers.extend(self._parse_mcp_from_settings(settings_path, "user"))
-        # Per-project: {project}/.mcp.json
-        for pdir in project_dirs:
-            mcp_path = Path(pdir) / ".mcp.json"
-            if mcp_path.is_file():
-                servers.extend(self._parse_mcp_from_file(mcp_path, pdir))
-        return servers
-
-    def _parse_mcp_from_settings(self, path: Path, source: str) -> list[MCPServerInfo]:
-        """Parse mcpServers from a settings.json file."""
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            mcp_section = data.get("mcpServers", {})
-            return self._parse_mcp_dict(mcp_section, source)
-        except Exception as e:
-            log.warning(f"Error parsing MCP from {path}: {e}")
-            return []
-
-    def _parse_mcp_from_file(self, path: Path, source: str) -> list[MCPServerInfo]:
-        """Parse an .mcp.json file."""
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            mcp_section = data.get("mcpServers", data)
-            return self._parse_mcp_dict(mcp_section, source)
-        except Exception as e:
-            log.warning(f"Error parsing MCP from {path}: {e}")
-            return []
-
-    @staticmethod
-    def _parse_mcp_dict(mcp_dict: dict, source: str) -> list[MCPServerInfo]:
-        """Convert a mcpServers dict to list of MCPServerInfo."""
-        results: list[MCPServerInfo] = []
-        if not isinstance(mcp_dict, dict):
-            return results
-        for name, cfg in mcp_dict.items():
-            if not isinstance(cfg, dict):
-                continue
-            # Determine type
-            stype = cfg.get("type", "unknown")
-            if stype == "stdio":
-                url_or_cmd = cfg.get("command", "")
-                args = cfg.get("args", [])
-            elif stype in ("http", "sse"):
-                url_or_cmd = cfg.get("url", "")
-                args = []
-            else:
-                url_or_cmd = cfg.get("command", cfg.get("url", ""))
-                args = cfg.get("args", [])
-            results.append(MCPServerInfo(
-                name=name,
-                server_type=stype,
-                url_or_command=url_or_cmd,
-                source=source,
-                args=args if isinstance(args, list) else [],
-            ))
-        return results
-
-    def _scan_plugins(self) -> list[PluginInfo]:
-        """Scan for enabled plugins from settings.json."""
-        settings_path = Path.home() / ".claude" / "settings.json"
-        if not settings_path.is_file():
-            return []
-        try:
-            data = json.loads(settings_path.read_text(encoding="utf-8"))
-            plugins_section = data.get("enabledPlugins", {})
-            if not isinstance(plugins_section, dict):
-                return []
-            results: list[PluginInfo] = []
-            for full_name, enabled in plugins_section.items():
-                # Parse "name@provider" format
-                parts = full_name.split("@", 1)
-                short_name = parts[0]
-                provider = parts[1] if len(parts) > 1 else "unknown"
-                results.append(PluginInfo(
-                    name=short_name,
-                    provider=provider,
-                    enabled=bool(enabled),
-                ))
-            return results
-        except Exception as e:
-            log.warning(f"Error scanning plugins: {e}")
-            return []
-
-
-@dataclass
-class Role:
-    key: str
-    name: str
-    icon: str
-    color: str
-    description: str
-    system_prompt: str
-    max_memory_mb: int = 2048
-
-    def to_dict(self) -> dict:
-        return {
-            "key": self.key,
-            "name": self.name,
-            "icon": self.icon,
-            "color": self.color,
-            "description": self.description,
-            "system_prompt": self.system_prompt,
-        }
-
-
-BUILTIN_ROLES: dict[str, Role] = {
-    "frontend": Role(
-        key="frontend", name="Frontend Engineer", icon="paintbrush", color="#8B5CF6",
-        description="React, Vue, CSS, UI/UX, accessibility",
-        system_prompt="You are a frontend specialist. Focus on component architecture, responsive design, accessibility (WCAG), and performance. Prefer TypeScript, functional components, and Tailwind. Write tests for all components.",
-    ),
-    "backend": Role(
-        key="backend", name="Backend Engineer", icon="server", color="#3B82F6",
-        description="APIs, databases, Python, Node.js, auth",
-        system_prompt="You are a backend specialist. Focus on API design, database schemas, auth, and error handling. Write clean, well-tested code with proper validation and logging. Prefer async patterns.",
-    ),
-    "devops": Role(
-        key="devops", name="DevOps Engineer", icon="rocket", color="#F97316",
-        description="Infrastructure, CI/CD, Docker, deployment",
-        system_prompt="You are a DevOps specialist. Focus on infrastructure as code, CI/CD pipelines, containerization, monitoring, and deployment automation. Prioritize reliability and observability.",
-    ),
-    "tester": Role(
-        key="tester", name="QA Engineer", icon="test-tube", color="#22C55E",
-        description="Unit tests, integration tests, E2E, coverage",
-        system_prompt="You are a QA specialist. Write comprehensive tests: unit, integration, and E2E. Aim for high coverage on critical paths. Test edge cases, error conditions, and race conditions.",
-    ),
-    "reviewer": Role(
-        key="reviewer", name="Code Reviewer", icon="scan-search", color="#EAB308",
-        description="Code review, best practices, architecture",
-        system_prompt="You are a code reviewer. Audit code for bugs, security issues, performance problems, and maintainability. Be thorough but constructive. Suggest specific improvements with code examples.",
-    ),
-    "security": Role(
-        key="security", name="Security Auditor", icon="shield-check", color="#EF4444",
-        description="Vulnerability audit, dependency scanning, hardening",
-        system_prompt="You are a security specialist. Audit for vulnerabilities: injection, XSS, CSRF, auth bypass, secrets exposure, dependency CVEs. Provide severity ratings and specific fix recommendations.",
-    ),
-    "architect": Role(
-        key="architect", name="Architect", icon="blocks", color="#06B6D4",
-        description="System design, planning, technical decisions",
-        system_prompt="You are a systems architect. Focus on high-level design, component boundaries, data flow, scalability, and technical tradeoffs. Create clear plans before implementation. Document decisions.",
-    ),
-    "docs": Role(
-        key="docs", name="Documentation", icon="file-text", color="#A855F7",
-        description="READMEs, API docs, inline comments, guides",
-        system_prompt="You are a documentation specialist. Write clear, concise docs: READMEs, API references, inline comments, architecture guides. Focus on the 'why' not just the 'what'. Include examples.",
-    ),
-    "general": Role(
-        key="general", name="General", icon="bot", color="#64748B",
-        description="All-purpose agent, no specialization",
-        system_prompt="You are a skilled software engineer. Approach tasks methodically: understand the requirement, explore the codebase, plan your approach, implement, and verify. Ask clarifying questions when needed.",
-    ),
-}
+# SkillInfo, MCPServerInfo, PluginInfo, ExtensionScanner → ashlr_ao.extensions
+# Role + BUILTIN_ROLES → ashlr_ao.roles
 
 
 @dataclass
@@ -1052,99 +169,6 @@ class User:
 # ─────────────────────────────────────────────
 # Licensing — Ed25519-signed JWT, offline-first
 # ─────────────────────────────────────────────
-
-PRO_FEATURES: frozenset[str] = frozenset({
-    "multi_user", "intelligence", "workflows", "fleet_presets", "unlimited_agents",
-})
-
-LICENSE_PUBLIC_KEY_PEM = """-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEABZK/hIk2v95CNsJJ1tXRzZHIA7XUinjXqr17PoF8p9A=
------END PUBLIC KEY-----"""
-
-
-@dataclass
-class License:
-    """Represents a validated license for an Ashlr instance."""
-    tier: str = "community"
-    max_agents: int = 5
-    max_seats: int = 1
-    features: frozenset[str] = field(default_factory=frozenset)
-    org_id: str = ""
-    issued_at: str = ""
-    expires_at: str = ""
-    raw_key: str = ""
-
-    @property
-    def is_expired(self) -> bool:
-        if not self.expires_at:
-            return self.tier != "community"
-        try:
-            exp = datetime.fromisoformat(self.expires_at)
-            if exp.tzinfo is None:
-                exp = exp.replace(tzinfo=timezone.utc)
-            return datetime.now(timezone.utc) > exp
-        except Exception:
-            return True
-
-    @property
-    def is_pro(self) -> bool:
-        return self.tier == "pro" and not self.is_expired
-
-    def to_dict(self) -> dict:
-        return {
-            "tier": self.tier,
-            "max_agents": self.max_agents,
-            "max_seats": self.max_seats,
-            "features": sorted(self.features),
-            "org_id": self.org_id,
-            "issued_at": self.issued_at,
-            "expires_at": self.expires_at,
-            "is_pro": self.is_pro,
-            "is_expired": self.is_expired,
-        }
-
-
-COMMUNITY_LICENSE = License()
-
-
-def validate_license(key: str) -> License:
-    """Decode and verify an Ed25519-signed JWT license key.
-
-    Returns a License on success; COMMUNITY_LICENSE on any failure.
-    """
-    if not key or not isinstance(key, str):
-        return COMMUNITY_LICENSE
-    key = key.strip()
-    try:
-        payload = jwt.decode(
-            key,
-            LICENSE_PUBLIC_KEY_PEM,
-            algorithms=["EdDSA"],
-            issuer="ashlr-licensing",
-            options={"require": ["exp", "iss", "sub"]},
-        )
-        tier = payload.get("tier", "community")
-        exp_ts = payload.get("exp", 0)
-        iat_ts = payload.get("iat", 0)
-        expires_at = datetime.fromtimestamp(exp_ts, tz=timezone.utc).isoformat() if exp_ts else ""
-        issued_at = datetime.fromtimestamp(iat_ts, tz=timezone.utc).isoformat() if iat_ts else ""
-        features = frozenset(payload.get("features", []))
-        return License(
-            tier=tier,
-            max_agents=int(payload.get("max_agents", 100)),
-            max_seats=int(payload.get("max_seats", 50)),
-            features=features if features else (PRO_FEATURES if tier == "pro" else frozenset()),
-            org_id=payload.get("sub", ""),
-            issued_at=issued_at,
-            expires_at=expires_at,
-            raw_key=key,
-        )
-    except jwt.ExpiredSignatureError:
-        log.warning("License key expired")
-        return COMMUNITY_LICENSE
-    except Exception as e:
-        log.warning(f"License validation failed: {e}")
-        return COMMUNITY_LICENSE
 
 
 @dataclass
@@ -1999,6 +1023,9 @@ class AgentManager:
                     await self._run_tmux(["kill-session", "-t", session_name])
                 except Exception as cleanup_err:
                     log.warning(f"Failed to cleanup tmux session {session_name}: {cleanup_err}")
+                # Remove zombie agent from dict (skip in demo mode — tmux expected to fail)
+                if not self.config.demo_mode:
+                    self.agents.pop(agent_id, None)
                 return agent
         except Exception as e:
             agent.status = "error"
@@ -2007,6 +1034,9 @@ class AgentManager:
                 await self._run_tmux(["kill-session", "-t", session_name])
             except Exception as cleanup_err:
                 log.warning(f"Failed to cleanup tmux session {session_name}: {cleanup_err}")
+            # Remove zombie agent from dict (skip in demo mode — tmux expected to fail)
+            if not self.config.demo_mode:
+                self.agents.pop(agent_id, None)
             return agent
 
         # Get pane PID
@@ -2383,6 +1413,17 @@ class AgentManager:
         if not agent:
             return False
 
+        # Check if restart is in progress — wait for it to finish
+        if getattr(agent, '_restart_in_progress', False):
+            log.warning(f"Kill requested for agent {agent_id} during restart — waiting for restart to complete")
+            for _ in range(30):  # Wait up to 3s
+                await asyncio.sleep(0.1)
+                if not getattr(agent, '_restart_in_progress', False):
+                    break
+
+        # Mark as killed immediately so background loops skip this agent
+        agent.status = "killed"
+
         session = agent.tmux_session
         log.info(f"Killing agent {agent_id} ({agent.name})")
 
@@ -2415,7 +1456,9 @@ class AgentManager:
         except Exception as e:
             log.warning(f"Failed to release DB file locks for agent {agent_id}: {e}")
 
-        del self.agents[agent_id]
+        # Guard deletion — agent may have been removed by concurrent operation
+        if agent_id in self.agents:
+            del self.agents[agent_id]
         self._total_killed += 1
         return True
 
@@ -5670,8 +4713,27 @@ async def compression_middleware(request: web.Request, handler):
 
 @web.middleware
 async def security_headers_middleware(request: web.Request, handler):
-    """Add security headers including Content-Security-Policy."""
+    """Add security headers including Content-Security-Policy and CORS."""
+    # Handle CORS preflight
+    allowed_origin = os.environ.get("ASHLR_ALLOWED_ORIGINS", "*")
+    if request.method == "OPTIONS":
+        response = web.Response(status=204)
+        response.headers["Access-Control-Allow-Origin"] = allowed_origin
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = request.headers.get("Access-Control-Request-Headers", "*")
+        response.headers["Access-Control-Max-Age"] = "3600"
+        if allowed_origin != "*":
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
+
     response = await handler(request)
+
+    # CORS headers
+    response.headers["Access-Control-Allow-Origin"] = allowed_origin
+    if allowed_origin != "*":
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Expose-Headers"] = "*"
+
     # CSP: allow inline styles/scripts (required for single-file dashboard)
     response.headers.setdefault(
         "Content-Security-Policy",
@@ -5745,7 +4807,7 @@ class WebSocketHub:
         # Store user metadata for org-filtered broadcasting
         user = request.get("user")
         if user:
-            self.client_meta[ws] = {"user_id": user.id, "org_id": user.org_id}
+            self.client_meta[ws] = {"user_id": user.id, "org_id": user.org_id, "role": user.role}
         log.info(f"WebSocket client connected ({len(self.clients)} total)")
 
         try:
@@ -5827,6 +4889,19 @@ class WebSocketHub:
         allowed, _ = rl.check(key, cost=1.0, rate=rate, burst=burst)
         return allowed
 
+    def _ws_check_ownership(self, ws: web.WebSocketResponse, agent) -> bool:
+        """Check if WS client can control this agent. Returns True if allowed."""
+        meta = self.client_meta.get(ws, {})
+        user_id = meta.get("user_id")
+        if not user_id:
+            return True  # No auth — allow (require_auth is false)
+        user_role = meta.get("role")
+        if user_role == "admin":
+            return True
+        if agent.owner_id and agent.owner_id != user_id:
+            return False
+        return True
+
     async def handle_message(self, data: dict, ws: web.WebSocketResponse) -> None:
         msg_type = data.get("type")
 
@@ -5874,6 +4949,9 @@ class WebSocketHub:
                 agent_id = data.get("agent_id")
                 if agent_id:
                     agent = self.agent_manager.agents.get(agent_id)
+                    if agent and not self._ws_check_ownership(ws, agent):
+                        await ws.send_json({"type": "error", "message": "Only the agent owner or an admin can perform this action"})
+                        return
                     name = agent.name if agent else "unknown"
                     # Archive to history before killing
                     if agent and self.db:
@@ -5892,6 +4970,10 @@ class WebSocketHub:
             case "pause":
                 agent_id = data.get("agent_id")
                 if agent_id:
+                    agent = self.agent_manager.agents.get(agent_id)
+                    if agent and not self._ws_check_ownership(ws, agent):
+                        await ws.send_json({"type": "error", "message": "Only the agent owner or an admin can perform this action"})
+                        return
                     await self.agent_manager.pause(agent_id)
                     agent = self.agent_manager.agents.get(agent_id)
                     if agent:
@@ -5903,6 +4985,10 @@ class WebSocketHub:
                 if message is not None and not isinstance(message, str):
                     message = None
                 if agent_id:
+                    agent = self.agent_manager.agents.get(agent_id)
+                    if agent and not self._ws_check_ownership(ws, agent):
+                        await ws.send_json({"type": "error", "message": "Only the agent owner or an admin can perform this action"})
+                        return
                     await self.agent_manager.resume(agent_id, message)
                     agent = self.agent_manager.agents.get(agent_id)
                     if agent:
@@ -6095,7 +5181,7 @@ async def auth_middleware(request: web.Request, handler) -> web.Response:
                     return await handler(request)
         # Fallback: bearer token for backward compat
         token = request.query.get("token", "")
-        if token and token == config.auth_token:
+        if token and config.auth_token and hmac.compare_digest(token, config.auth_token):
             return await handler(request)
         return web.json_response({"error": "Unauthorized"}, status=401)
 
@@ -6114,7 +5200,7 @@ async def auth_middleware(request: web.Request, handler) -> web.Response:
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
-        if token == config.auth_token:
+        if config.auth_token and hmac.compare_digest(token, config.auth_token):
             return await handler(request)
 
     return web.json_response({"error": "Unauthorized"}, status=401)
@@ -6197,7 +5283,7 @@ async def auth_register(request: web.Request) -> web.Response:
         return web.json_response({"error": "Email already registered"}, status=409)
 
     user_count = await db.user_count()
-    pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    pw_hash = await asyncio.to_thread(lambda: bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode())
 
     if user_count == 0:
         # First user: create org + admin
@@ -6241,7 +5327,7 @@ async def auth_login(request: web.Request) -> web.Response:
         log.warning(f"Failed login: unknown email {email} from {ip}")
         return web.json_response({"error": "Invalid credentials"}, status=401)
 
-    if not bcrypt.checkpw(password.encode(), user.password_hash.encode()):
+    if not await asyncio.to_thread(bcrypt.checkpw, password.encode(), user.password_hash.encode()):
         log.warning(f"Failed login: wrong password for {email} from {ip}")
         return web.json_response({"error": "Invalid credentials"}, status=401)
 
@@ -6324,7 +5410,7 @@ async def auth_invite(request: web.Request) -> web.Response:
 
     # Generate temp password
     temp_password = uuid.uuid4().hex[:12]
-    pw_hash = bcrypt.hashpw(temp_password.encode(), bcrypt.gensalt()).decode()
+    pw_hash = await asyncio.to_thread(lambda: bcrypt.hashpw(temp_password.encode(), bcrypt.gensalt()).decode())
 
     invited_user = await db.create_user(email, display_name, pw_hash, role="member", org_id=user.org_id)
     log.info(f"User invited: {email} by {user.email}")
@@ -6367,7 +5453,7 @@ async def verify_auth(request: web.Request) -> web.Response:
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
 
-    valid = token == config.auth_token
+    valid = bool(token and config.auth_token and hmac.compare_digest(token, config.auth_token))
     return web.json_response({"valid": valid, "auth_required": True})
 
 
@@ -6954,6 +6040,8 @@ async def collaboration_graph(request: web.Request) -> web.Response:
                 file_agents[path] = set()
             file_agents[path].add(a.id)
 
+    # Use dict for O(1) edge weight updates instead of scanning edges list
+    edge_dict: dict[tuple, dict] = {}  # (from_id, to_id, type) → edge dict
     for path, agent_ids in file_agents.items():
         ids = list(agent_ids)
         for i in range(len(ids)):
@@ -6961,14 +6049,11 @@ async def collaboration_graph(request: web.Request) -> web.Response:
                 key = (min(ids[i], ids[j]), max(ids[i], ids[j]), "shared_file")
                 if key not in edge_set:
                     edge_set.add(key)
-                    edges.append({"from": ids[i], "to": ids[j], "type": "shared_file", "weight": 1, "file": path.split("/")[-1]})
+                    edge = {"from": ids[i], "to": ids[j], "type": "shared_file", "weight": 1, "file": path.split("/")[-1]}
+                    edges.append(edge)
+                    edge_dict[key] = edge
                 else:
-                    # Increment weight for existing shared-file edge between this pair
-                    pair_key = (min(ids[i], ids[j]), max(ids[i], ids[j]))
-                    for e in edges:
-                        if e["from"] == pair_key[0] and e["to"] == pair_key[1] and e["type"] == "shared_file":
-                            e["weight"] += 1
-                            break
+                    edge_dict[key]["weight"] += 1
 
     # 3. Same-project edges
     project_agents: dict[str, list[str]] = {}
@@ -6984,7 +6069,9 @@ async def collaboration_graph(request: web.Request) -> web.Response:
                 key = (min(agent_ids[i], agent_ids[j]), max(agent_ids[i], agent_ids[j]), "project")
                 if key not in edge_set:
                     edge_set.add(key)
-                    edges.append({"from": agent_ids[i], "to": agent_ids[j], "type": "project", "weight": 1})
+                    edge = {"from": agent_ids[i], "to": agent_ids[j], "type": "project", "weight": 1}
+                    edges.append(edge)
+                    edge_dict[key] = edge
 
     # 4. Conflict edges (from file_activity — agents writing to same files)
     agent_id_set = {a.id for a in agents}
@@ -7575,21 +6662,22 @@ async def put_config(request: web.Request) -> web.Response:
     # FIRST: write YAML to disk. Only update in-memory config on success.
     config_path = ASHLR_DIR / "ashlr.yaml"
     try:
-        raw = DEFAULT_CONFIG.copy()
-        if config_path.exists():
-            with open(config_path) as f:
-                raw = deep_merge(raw, yaml.safe_load(f) or {})
-        raw = deep_merge(raw, yaml_update)
-        # Atomic write: write to temp then rename
-        tmp_path = config_path.with_suffix(".yaml.tmp")
-        with open(tmp_path, "w") as f:
-            yaml.dump(raw, f, default_flow_style=False, sort_keys=False)
-        tmp_path.rename(config_path)
+        def _write_config():
+            raw = DEFAULT_CONFIG.copy()
+            if config_path.exists():
+                with open(config_path) as f:
+                    raw = deep_merge(raw, yaml.safe_load(f) or {})
+            raw = deep_merge(raw, yaml_update)
+            tmp_path = config_path.with_suffix(".yaml.tmp")
+            with open(tmp_path, "w") as f:
+                yaml.dump(raw, f, default_flow_style=False, sort_keys=False)
+            tmp_path.rename(config_path)
+        await asyncio.to_thread(_write_config)
         log.info(f"Config saved to disk: {', '.join(data.keys())}")
     except Exception as e:
         log.warning(f"Failed to save config to disk: {e}")
         try:
-            tmp_path.unlink(missing_ok=True)
+            config_path.with_suffix(".yaml.tmp").unlink(missing_ok=True)
         except Exception as e2:
             log.debug(f"Failed to clean up temp config file: {e2}")
         # Do NOT update in-memory config — disk write failed
@@ -8053,6 +7141,9 @@ async def send_agent_message(request: web.Request) -> web.Response:
     from_agent = manager.agents.get(from_agent_id)
     if not from_agent:
         return web.json_response({"error": "Sender agent not found"}, status=404)
+
+    if r := _check_agent_ownership(request, from_agent):
+        return r
 
     try:
         data = await request.json()
@@ -8675,11 +7766,11 @@ async def resume_from_history(request: web.Request) -> web.Response:
     if not os.path.isdir(working_dir):
         return web.json_response({"error": f"Working directory no longer exists: {working_dir}"}, status=400)
 
-    # Check agent limit
+    # Check agent limit (license-aware)
     config: Config = request.app["config"]
-    active_count = sum(1 for a in list(manager.agents.values()) if a.status not in ("error", "complete"))
-    if active_count >= config.max_agents:
-        return web.json_response({"error": f"Agent limit reached ({config.max_agents})"}, status=409)
+    effective_max = _effective_max_agents(request.app)
+    if len(manager.agents) >= effective_max:
+        return web.json_response({"error": f"Agent limit reached ({effective_max})"}, status=409)
 
     # Spawn a new agent with the archived session's config
     backend = session.get("backend", config.default_backend)
@@ -8784,8 +7875,7 @@ async def clone_agent(request: web.Request) -> web.Response:
     working_dir = data.get("working_dir", source.working_dir)
     name = data.get("name", f"{source.name}-clone")
 
-    config: Config = request.app["config"]
-    if len(manager.agents) >= config.max_agents:
+    if len(manager.agents) >= _effective_max_agents(request.app):
         return web.json_response({"error": "Max agents reached"}, status=409)
 
     try:
@@ -9008,6 +8098,19 @@ async def import_config(request: web.Request) -> web.Response:
 
     if not isinstance(data, dict):
         return web.json_response({"error": "Config must be a JSON object"}, status=400)
+
+    # Allowlist safe config sections — never allow backends, server, or auth_token
+    _SAFE_IMPORT_KEYS = {"display", "agents", "llm", "voice", "licensing"}
+    unsafe_keys = set(data.keys()) - _SAFE_IMPORT_KEYS
+    if unsafe_keys:
+        return web.json_response(
+            {"error": f"Import not allowed for sections: {', '.join(sorted(unsafe_keys))}. "
+             f"Allowed: {', '.join(sorted(_SAFE_IMPORT_KEYS))}"},
+            status=400,
+        )
+    # Strip dangerous nested fields even within allowed sections
+    if isinstance(data.get("agents"), dict):
+        data["agents"].pop("backends", None)
 
     # Read current config for diff
     config_path = ASHLR_DIR / "ashlr.yaml"
@@ -9239,7 +8342,6 @@ async def global_search(request: web.Request) -> web.Response:
     case_sensitive = request.query.get("case", "false").lower() == "true"
     use_regex = request.query.get("regex", "false").lower() == "true"
 
-    results: list[dict] = []
     pattern = None
     if use_regex:
         try:
@@ -9248,35 +8350,44 @@ async def global_search(request: web.Request) -> web.Response:
         except re.error:
             return web.json_response({"error": "invalid regex"}, status=400)
 
+    # Snapshot search data to avoid holding references during thread execution
+    search_data = []
     for agent in list(manager.agents.values()):
         if agent_filter and agent.id != agent_filter:
             continue
-        lines = agent.output_lines or []
-        for i, line in enumerate(lines):
+        search_data.append((agent.id, agent.name, agent.role, list(agent.output_lines or [])))
+
+    def _do_search() -> list[dict]:
+        results: list[dict] = []
+        query_lower = query.lower() if not case_sensitive else ""
+        for agent_id, agent_name, agent_role, lines in search_data:
+            for i, line in enumerate(lines):
+                if len(results) >= max_results:
+                    return results
+                matched = False
+                if pattern:
+                    matched = bool(pattern.search(line))
+                elif case_sensitive:
+                    matched = query in line
+                else:
+                    matched = query_lower in line.lower()
+                if matched:
+                    ctx_before = lines[i - 1] if i > 0 else ""
+                    ctx_after = lines[i + 1] if i + 1 < len(lines) else ""
+                    results.append({
+                        "agent_id": agent_id,
+                        "agent_name": agent_name,
+                        "agent_role": agent_role,
+                        "line_index": i,
+                        "line": line[:500],
+                        "context_before": ctx_before[:500],
+                        "context_after": ctx_after[:500],
+                    })
             if len(results) >= max_results:
                 break
-            matched = False
-            if pattern:
-                matched = bool(pattern.search(line))
-            elif case_sensitive:
-                matched = query in line
-            else:
-                matched = query.lower() in line.lower()
-            if matched:
-                # Include context: 1 line before and after
-                ctx_before = lines[i - 1] if i > 0 else ""
-                ctx_after = lines[i + 1] if i + 1 < len(lines) else ""
-                results.append({
-                    "agent_id": agent.id,
-                    "agent_name": agent.name,
-                    "agent_role": agent.role,
-                    "line_index": i,
-                    "line": line[:500],
-                    "context_before": ctx_before[:500],
-                    "context_after": ctx_after[:500],
-                })
-        if len(results) >= max_results:
-            break
+        return results
+
+    results = await asyncio.to_thread(_do_search)
 
     return web.json_response({
         "query": query,
@@ -9664,7 +8775,7 @@ async def output_capture_loop(app: web.Application) -> None:
             # Phase 1: Parallel output capture
             active_agents = [
                 (aid, agent) for aid, agent in list(manager.agents.items())
-                if agent.status != "paused"
+                if agent.status not in ("paused", "killed")
             ]
 
             # Check spawn timeouts first (cheap, no I/O)
@@ -9701,13 +8812,18 @@ async def output_capture_loop(app: web.Application) -> None:
                     continue
 
                 if new_lines is None:
-                    # Capture failed — mark error
-                    agent.set_status("error")
-                    agent.error_message = "Output capture failed"
-                    agent._error_entered_at = time.monotonic()
-                    agent.updated_at = datetime.now(timezone.utc).isoformat()
-                    await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
+                    # Track consecutive capture failures — only error after 3
+                    agent._capture_fail_count = getattr(agent, '_capture_fail_count', 0) + 1
+                    if agent._capture_fail_count >= 3:
+                        agent.set_status("error")
+                        agent.error_message = "Output capture failed (3 consecutive failures)"
+                        agent._error_entered_at = time.monotonic()
+                        agent.updated_at = datetime.now(timezone.utc).isoformat()
+                        await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
                     continue
+
+                # Reset consecutive failure counter on successful capture
+                agent._capture_fail_count = 0
 
                 if new_lines:
                     now_mono = time.monotonic()
@@ -10943,23 +10059,6 @@ def create_app(config: Config) -> web.Application:
     app.router.add_post("/api/license/activate", activate_license)
     app.router.add_delete("/api/license/deactivate", deactivate_license)
 
-    # CORS — restrict origins in production via ASHLR_ALLOWED_ORIGINS env var
-    allowed_origin = os.environ.get("ASHLR_ALLOWED_ORIGINS", "*")
-    # Browsers reject Access-Control-Allow-Origin: * with credentials; be explicit
-    allow_creds = allowed_origin != "*"
-    cors = aiohttp_cors.setup(app, defaults={
-        allowed_origin: aiohttp_cors.ResourceOptions(
-            allow_credentials=allow_creds,
-            expose_headers="*",
-            allow_headers="*",
-        )
-    })
-    for route in list(app.router.routes()):
-        try:
-            cors.add(route)
-        except ValueError:
-            pass
-
     # Background tasks
     app.on_startup.append(start_background_tasks)
     app.on_cleanup.append(cleanup_background_tasks)
@@ -10968,16 +10067,35 @@ def create_app(config: Config) -> web.Application:
 
 
 def setup_signal_handlers(agent_manager: AgentManager) -> None:
+    _shutdown_requested = False
+
     def handle_shutdown(signum: int, frame: Any) -> None:
+        nonlocal _shutdown_requested
+        if _shutdown_requested:
+            return  # Prevent re-entry
+        _shutdown_requested = True
         print("\n\033[33m→ Shutting down Ashlr...\033[0m")
-        agent_manager.cleanup_all()
-        print("\033[32m✓ All agent sessions cleaned up\033[0m")
-        # Raise KeyboardInterrupt so aiohttp's run_app() runs its cleanup hooks
-        # (background task cancellation, DB close, HTTP session close)
+        # Schedule cleanup in the event loop instead of calling subprocess.run
+        # in signal handler (which can deadlock)
+        try:
+            loop = asyncio.get_running_loop()
+            loop.call_soon_threadsafe(lambda: asyncio.ensure_future(_async_shutdown(agent_manager)))
+        except RuntimeError:
+            # No running loop — fall back to synchronous cleanup
+            agent_manager.cleanup_all()
         raise KeyboardInterrupt()
 
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
+
+
+async def _async_shutdown(agent_manager: AgentManager) -> None:
+    """Async-safe shutdown: runs cleanup in event loop context."""
+    try:
+        agent_manager.cleanup_all()
+        print("\033[32m✓ All agent sessions cleaned up\033[0m")
+    except Exception as e:
+        log.warning(f"Shutdown cleanup error: {e}")
 
 
 def main() -> None:

@@ -1,0 +1,14 @@
+.git/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+htmlcov/
+.coverage
+.pytest_cache/
+tests/
+*.egg-info/
+dist/
+build/
+.ruff_cache/
+.claude/
