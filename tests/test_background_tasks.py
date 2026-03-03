@@ -30,6 +30,42 @@ with patch("psutil.cpu_percent", return_value=0.0):
 
 # ── Helpers ──
 
+def _make_mock_agent(**overrides):
+    """Create a MagicMock agent with all attributes needed by output_capture_loop."""
+    agent = MagicMock()
+    defaults = {
+        "status": "working", "name": "test-agent", "task": "test",
+        "role": "general", "plan_mode": False, "needs_input": False,
+        "input_prompt": "", "output_lines": [], "summary": "",
+        "progress_pct": 0, "health_score": 1.0, "error_count": 0,
+        "memory_mb": 0.0, "total_output_lines": 0, "output_rate": 0.0,
+        "estimated_cost_usd": 0.0, "last_output_time": time.monotonic(),
+        "_spawn_time": time.monotonic() - 60, "_stale_warned": False,
+        "_first_output_received": True, "time_to_first_output": 1.0,
+        "_output_line_timestamps": [], "_overflow_to_archive": None,
+        "_flood_ticks": 0, "_flood_detected": False,
+        "_last_llm_summary_time": 0, "_prev_output_hash": "",
+        "_summary_output_hash": "", "_llm_summary": "",
+        "_capture_fail_count": 0, "_last_needs_input_event": 0,
+        "_error_entered_at": 0, "_health_low_warned": False,
+        "_health_critical_warned": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    defaults.update(overrides)
+    for k, v in defaults.items():
+        setattr(agent, k, v)
+    if "to_dict" not in overrides:
+        agent.to_dict = MagicMock(return_value={"id": "mock", "status": defaults["status"]})
+    if "set_status" not in overrides:
+        def _set_status(s):
+            agent.status = s
+        agent.set_status = MagicMock(side_effect=_set_status)
+    if "create_snapshot" not in overrides:
+        agent.create_snapshot = MagicMock()
+    return agent
+
+
 def _make_mock_app(with_intel=False):
     """Create a minimal mock app dict-like object for background task tests."""
     config = Config()
@@ -570,47 +606,11 @@ class TestOutputCaptureLoop:
         manager = app["agent_manager"]
         hub = app["ws_hub"]
 
-        # Create a mock agent
-        agent = MagicMock()
-        agent.status = "working"
-        agent.name = "test-agent"
-        agent.task = "test task"
-        agent.role = "general"
-        agent.plan_mode = False
-        agent.needs_input = False
-        agent.input_prompt = ""
-        agent.output_lines = ["line1", "line2"]
-        agent.summary = ""
-        agent.progress_pct = 0
-        agent.health_score = 1.0
-        agent.error_count = 0
-        agent.memory_mb = 0.0
-        agent.total_output_lines = 0
-        agent.output_rate = 0.0
-        agent.estimated_cost_usd = 0.0
-        agent.last_output_time = time.monotonic()
-        agent._spawn_time = time.monotonic() - 60
-        agent._stale_warned = False
-        agent._first_output_received = True
-        agent.time_to_first_output = 1.0
-        agent._output_line_timestamps = []
-        agent._overflow_to_archive = None
-        agent._flood_ticks = 0
-        agent._flood_detected = False
-        agent._last_llm_summary_time = 0
-        agent._prev_output_hash = ""
-        agent._summary_output_hash = ""
-        agent._llm_summary = ""
-        agent._capture_fail_count = 0
-        agent._last_needs_input_event = 0
-        agent._error_entered_at = 0
-        agent._health_low_warned = False
-        agent._health_critical_warned = False
-        agent.created_at = datetime.now(timezone.utc).isoformat()
-        agent.updated_at = datetime.now(timezone.utc).isoformat()
-        agent.to_dict = MagicMock(return_value={"id": "a1b2", "status": "working"})
-        agent.set_status = MagicMock()
-        agent.create_snapshot = MagicMock()
+        # Create a mock agent with all required attributes
+        agent = _make_mock_agent(
+            task="test task", output_lines=["line1", "line2"],
+            to_dict=MagicMock(return_value={"id": "a1b2", "status": "working"}),
+        )
 
         manager.agents = {"a1b2": agent}
         manager.capture_output = AsyncMock(return_value=["new output line"])
@@ -660,12 +660,11 @@ class TestOutputCaptureLoop:
         manager = app["agent_manager"]
         hub = app["ws_hub"]
 
-        agent = MagicMock()
-        agent.status = "spawning"
-        agent._spawn_time = time.monotonic() - 35  # 35 seconds ago — past 30s timeout
-        agent.name = "stuck-spawn"
-        agent.set_status = MagicMock()
-        agent.to_dict = MagicMock(return_value={"id": "s1", "status": "error"})
+        agent = _make_mock_agent(
+            status="spawning", name="stuck-spawn",
+            _spawn_time=time.monotonic() - 35,
+            to_dict=MagicMock(return_value={"id": "s1", "status": "error"}),
+        )
 
         manager.agents = {"s1": agent}
         # No output to capture for spawning agent with error status after set
@@ -690,19 +689,10 @@ class TestOutputCaptureLoop:
         manager = app["agent_manager"]
         hub = app["ws_hub"]
 
-        agent = MagicMock()
-        agent.status = "working"
-        agent.name = "failing-agent"
-        agent._spawn_time = time.monotonic() - 60
-        agent.last_output_time = time.monotonic()
-        agent._stale_warned = False
-        agent._capture_fail_count = 0
-        agent._error_entered_at = 0
-        agent.health_score = 1.0
-        agent._health_low_warned = False
-        agent._health_critical_warned = False
-        agent.set_status = MagicMock()
-        agent.to_dict = MagicMock(return_value={"id": "f1", "status": "error"})
+        agent = _make_mock_agent(
+            name="failing-agent",
+            to_dict=MagicMock(return_value={"id": "f1", "status": "error"}),
+        )
 
         manager.agents = {"f1": agent}
         # capture_output returns None to simulate failure
@@ -744,19 +734,12 @@ class TestOutputCaptureLoop:
         manager = app["agent_manager"]
         hub = app["ws_hub"]
 
-        agent = MagicMock()
-        agent.status = "working"
-        agent.name = "stale-agent"
-        agent._spawn_time = time.monotonic() - 1200
-        agent.last_output_time = time.monotonic() - 901  # >900s = 15 min
-        agent._stale_warned = False
-        agent._capture_fail_count = 0
-        agent._error_entered_at = 0
-        agent.health_score = 1.0
-        agent._health_low_warned = False
-        agent._health_critical_warned = False
-        agent.set_status = MagicMock()
-        agent.to_dict = MagicMock(return_value={"id": "st1", "status": "error"})
+        agent = _make_mock_agent(
+            name="stale-agent",
+            _spawn_time=time.monotonic() - 1200,
+            last_output_time=time.monotonic() - 901,
+            to_dict=MagicMock(return_value={"id": "st1", "status": "error"}),
+        )
 
         manager.agents = {"st1": agent}
         # Agent has no new output
@@ -780,19 +763,12 @@ class TestOutputCaptureLoop:
         manager = app["agent_manager"]
         hub = app["ws_hub"]
 
-        agent = MagicMock()
-        agent.status = "working"
-        agent.name = "quiet-agent"
-        agent._spawn_time = time.monotonic() - 600
-        agent.last_output_time = time.monotonic() - 350  # >300s = 5 min but <900s
-        agent._stale_warned = False
-        agent._capture_fail_count = 0
-        agent._error_entered_at = 0
-        agent.health_score = 1.0
-        agent._health_low_warned = False
-        agent._health_critical_warned = False
-        agent.set_status = MagicMock()
-        agent.to_dict = MagicMock(return_value={"id": "q1", "status": "working"})
+        agent = _make_mock_agent(
+            name="quiet-agent",
+            _spawn_time=time.monotonic() - 600,
+            last_output_time=time.monotonic() - 350,
+            to_dict=MagicMock(return_value={"id": "q1", "status": "working"}),
+        )
 
         manager.agents = {"q1": agent}
         manager.capture_output = AsyncMock(return_value=[])
@@ -820,16 +796,7 @@ class TestOutputCaptureLoop:
         app = self._make_capture_app()
         manager = app["agent_manager"]
 
-        agent = MagicMock()
-        agent.status = "error"
-        agent.name = "errored-agent"
-        agent._spawn_time = time.monotonic() - 60
-        agent.last_output_time = time.monotonic()
-        agent._stale_warned = False
-        agent._capture_fail_count = 0
-        agent.health_score = 1.0
-        agent._health_low_warned = False
-        agent._health_critical_warned = False
+        agent = _make_mock_agent(status="error", name="errored-agent")
 
         manager.agents = {"e1": agent}
         manager.capture_output = AsyncMock(return_value=[])

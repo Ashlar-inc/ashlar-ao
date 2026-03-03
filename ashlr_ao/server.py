@@ -2650,7 +2650,7 @@ def calculate_health_score(agent: Agent, memory_limit_mb: int = 2048) -> float:
     now = time.monotonic()
 
     # Uptime factor: ramp from 0.5 to 1.0 over 600s (10 min)
-    if agent._spawn_time > 0:
+    if agent._spawn_time != 0.0:
         uptime_s = now - agent._spawn_time
         uptime_factor = min(1.0, 0.5 + (uptime_s / 1200))  # 0.5 base, full at 10min
     else:
@@ -2661,7 +2661,7 @@ def calculate_health_score(agent: Agent, memory_limit_mb: int = 2048) -> float:
     error_factor = max(0.2, 1.0 / (1.0 + agent.error_count * 0.15))
 
     # Output factor: penalize stale agents (no output for >60s)
-    if agent.last_output_time > 0:
+    if agent.last_output_time != 0.0:
         silence_s = now - agent.last_output_time
         if silence_s < 30:
             output_factor = 1.0
@@ -2669,7 +2669,7 @@ def calculate_health_score(agent: Agent, memory_limit_mb: int = 2048) -> float:
             output_factor = max(0.3, 1.0 - (silence_s - 30) / 180)
         else:
             output_factor = 0.3
-    elif agent._spawn_time > 0 and (now - agent._spawn_time) > 30:
+    elif agent._spawn_time != 0.0 and (now - agent._spawn_time) > 30:
         # Never received output but agent has been alive >30s
         output_factor = 0.4
     else:
@@ -8153,7 +8153,7 @@ async def output_capture_loop(app: web.Application) -> None:
 
             # Check spawn timeouts first (cheap, no I/O)
             for agent_id, agent in active_agents:
-                if agent.status == "spawning" and agent._spawn_time > 0:
+                if agent.status == "spawning" and agent._spawn_time != 0.0:
                     if time.monotonic() - agent._spawn_time > 30:
                         agent.set_status("error")
                         agent.error_message = "Spawn timeout — no output after 30s"
@@ -8202,7 +8202,7 @@ async def output_capture_loop(app: web.Application) -> None:
                     now_mono = time.monotonic()
 
                     # -- Per-agent metrics tracking --
-                    if not agent._first_output_received and agent._spawn_time > 0:
+                    if not agent._first_output_received and agent._spawn_time != 0.0:
                         agent._first_output_received = True
                         agent.time_to_first_output = round(now_mono - agent._spawn_time, 2)
 
@@ -8231,7 +8231,7 @@ async def output_capture_loop(app: web.Application) -> None:
                     recent_lines_count = sum(
                         count for ts, count in agent._output_line_timestamps if ts >= cutoff
                     )
-                    window = min(60.0, now_mono - agent._spawn_time) if agent._spawn_time > 0 else 60.0
+                    window = min(60.0, now_mono - agent._spawn_time) if agent._spawn_time != 0.0 else 60.0
                     agent.output_rate = (recent_lines_count / max(window, 1.0)) * 60.0
 
                     # Flood detection: flag agents producing excessive output
@@ -8357,7 +8357,7 @@ async def output_capture_loop(app: web.Application) -> None:
                                 agent._last_llm_summary_time = now_mono
 
                 # Output staleness detection (runs whether or not there were new lines)
-                if agent.status in ("working", "planning") and agent.last_output_time > 0:
+                if agent.status in ("working", "planning") and agent.last_output_time != 0.0:
                     silence = time.monotonic() - agent.last_output_time
                     if silence > 900:
                         agent.set_status("error")
@@ -8366,6 +8366,7 @@ async def output_capture_loop(app: web.Application) -> None:
                         agent.updated_at = datetime.now(timezone.utc).isoformat()
                         await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
                         await hub.broadcast_event("agent_stale", f"Agent {agent.name} stale — no output for 15 minutes", agent_id, agent.name)
+                        continue  # Skip detect_status — don't let it revert error
                     elif silence > 300:
                         if not agent._stale_warned:
                             agent._stale_warned = True
@@ -8648,7 +8649,7 @@ async def health_check_loop(app: web.Application) -> None:
                         pass  # Process exists but we can't signal it — that's fine
 
                 # -- Idle agent reaping --
-                if agent.status in ("idle", "complete") and agent.last_output_time > 0:
+                if agent.status in ("idle", "complete") and agent.last_output_time != 0.0:
                     idle_duration = time.monotonic() - agent.last_output_time
                     idle_ttl = app["config"].idle_agent_ttl
                     if idle_ttl > 0 and idle_duration > idle_ttl:
@@ -8699,7 +8700,7 @@ async def health_check_loop(app: web.Application) -> None:
 
                 # -- Workflow stage stall detection --
                 if agent.workflow_run_id and agent.status == "paused":
-                    pause_duration = time.monotonic() - agent.last_output_time if agent.last_output_time > 0 else 0
+                    pause_duration = time.monotonic() - agent.last_output_time if agent.last_output_time != 0.0 else 0
                     if pause_duration > app["config"].stall_timeout_minutes * 60:
                         if not getattr(agent, '_workflow_stall_warned', False):
                             agent._workflow_stall_warned = True
@@ -8709,7 +8710,7 @@ async def health_check_loop(app: web.Application) -> None:
                                 agent_id, agent.name,
                             )
 
-                if agent.workflow_run_id and agent.status == "working" and agent.last_output_time > 0:
+                if agent.workflow_run_id and agent.status == "working" and agent.last_output_time != 0.0:
                     wf_silence = time.monotonic() - agent.last_output_time
                     if wf_silence > app["config"].hung_timeout_minutes * 60:
                         if not getattr(agent, '_workflow_hung_warned', False):
