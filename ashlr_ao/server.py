@@ -9433,6 +9433,11 @@ def create_app(config: Config) -> web.Application:
     app.router.add_post("/api/license/activate", activate_license)
     app.router.add_delete("/api/license/deactivate", deactivate_license)
 
+    # Signal handlers (register in on_startup when event loop is running)
+    async def _register_signals(app: web.Application) -> None:
+        setup_signal_handlers(app["agent_manager"])
+    app.on_startup.append(_register_signals)
+
     # Background tasks
     app.on_startup.append(start_background_tasks)
     app.on_cleanup.append(cleanup_background_tasks)
@@ -9441,35 +9446,41 @@ def create_app(config: Config) -> web.Application:
 
 
 def setup_signal_handlers(agent_manager: AgentManager) -> None:
+    """Register async-safe signal handlers using loop.add_signal_handler."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        # No running loop yet — use synchronous signal.signal as fallback
+        def handle_shutdown(signum: int, frame: Any) -> None:
+            print("\n\033[33m→ Shutting down Ashlr...\033[0m")
+            agent_manager.cleanup_all()
+            raise KeyboardInterrupt()
+        signal.signal(signal.SIGINT, handle_shutdown)
+        signal.signal(signal.SIGTERM, handle_shutdown)
+        return
+
     _shutdown_requested = False
 
-    def handle_shutdown(signum: int, frame: Any) -> None:
+    def _signal_handler() -> None:
         nonlocal _shutdown_requested
         if _shutdown_requested:
-            return  # Prevent re-entry
+            return
         _shutdown_requested = True
         print("\n\033[33m→ Shutting down Ashlr...\033[0m")
-        # Schedule cleanup in the event loop instead of calling subprocess.run
-        # in signal handler (which can deadlock)
-        try:
-            loop = asyncio.get_running_loop()
-            loop.call_soon_threadsafe(lambda: asyncio.ensure_future(_async_shutdown(agent_manager)))
-        except RuntimeError:
-            # No running loop — fall back to synchronous cleanup
-            agent_manager.cleanup_all()
-        raise KeyboardInterrupt()
+        asyncio.ensure_future(_async_shutdown(agent_manager))
 
-    signal.signal(signal.SIGINT, handle_shutdown)
-    signal.signal(signal.SIGTERM, handle_shutdown)
+    loop.add_signal_handler(signal.SIGINT, _signal_handler)
+    loop.add_signal_handler(signal.SIGTERM, _signal_handler)
 
 
 async def _async_shutdown(agent_manager: AgentManager) -> None:
-    """Async-safe shutdown: runs cleanup in event loop context."""
+    """Async-safe shutdown: runs cleanup then raises GracefulExit."""
     try:
-        agent_manager.cleanup_all()
+        await asyncio.to_thread(agent_manager.cleanup_all)
         print("\033[32m✓ All agent sessions cleaned up\033[0m")
     except Exception as e:
         log.warning(f"Shutdown cleanup error: {e}")
+    raise web.GracefulExit()
 
 
 def main() -> None:
@@ -9507,11 +9518,8 @@ def main() -> None:
 
     app = create_app(config)
 
-    # Signal handlers need the agent manager reference
-    manager = app["agent_manager"]
-    setup_signal_handlers(manager)
-
     # Clean up orphaned tmux sessions from prior ungraceful shutdowns
+    manager = app["agent_manager"]
     orphans = manager.cleanup_orphaned_sessions()
     if orphans:
         print(f"  \033[33mCleaned up {orphans} orphaned tmux session{'s' if orphans != 1 else ''}\033[0m")
