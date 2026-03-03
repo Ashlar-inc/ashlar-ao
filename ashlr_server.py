@@ -25,6 +25,7 @@ from ashlr_ao.server import (  # noqa: F401
     _INTENT_RE,
     _GIT_COMMIT_RE,
     _get_client_ip,
+    _alert_throttle,
     _resolve_agent_refs,
     _alert_throttle,
     _get_rate_tier,
