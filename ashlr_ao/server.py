@@ -872,6 +872,63 @@ class AgentManager:
             raise ValueError(f"Backend '{backend}' command not found: {cmd}")
         return cmd, args
 
+    @staticmethod
+    def _build_backend_command(
+        bc: BackendConfig,
+        role: str,
+        task: str,
+        plan_mode: bool = False,
+        model: str | None = None,
+        tools: list[str] | None = None,
+        system_prompt: str | None = None,
+        resume_session: str | None = None,
+    ) -> tuple[list[str], str]:
+        """Build CLI command parts and task text for a backend.
+
+        Returns (cmd_parts, task_to_send) where cmd_parts is the full
+        command argument list and task_to_send is the task text (possibly
+        with plan-mode prefix).
+        """
+        cmd_parts = [bc.command]
+        cmd_parts.extend(bc.args)
+        if bc.auto_approve_flag and bc.auto_approve_flag not in bc.args:
+            cmd_parts.append(bc.auto_approve_flag)
+
+        if model and bc.supports_model_select:
+            cmd_parts.extend(["--model", model])
+        if tools and bc.supports_tool_restriction:
+            cmd_parts.extend(["--allowedTools", ",".join(tools)])
+
+        # Plan mode: use backend-specific plan flag (incompatible with auto-approve)
+        if plan_mode and bc.plan_mode_flag:
+            if bc.auto_approve_flag and bc.auto_approve_flag in cmd_parts:
+                cmd_parts.remove(bc.auto_approve_flag)
+            cmd_parts.extend(bc.plan_mode_flag.split())
+
+        # System prompt injection
+        if system_prompt and bc.supports_system_prompt:
+            cmd_parts.extend(["--append-system-prompt", system_prompt])
+
+        # Session resume
+        if resume_session and bc.supports_session_resume:
+            cmd_parts.extend(["--resume", resume_session])
+
+        # Prepare task text — plan-mode prefix for backends without native plan flag
+        if plan_mode and not bc.plan_mode_flag:
+            task_to_send = (
+                "IMPORTANT: Create a detailed plan for the following task. "
+                "DO NOT execute any changes. Present your plan and ask for approval.\n\n"
+                f"Task: {task}"
+            )
+        else:
+            task_to_send = task
+
+        # Include task as CLI positional arg if supported (must be last)
+        if bc.supports_prompt_arg and task_to_send:
+            cmd_parts.append(task_to_send)
+
+        return cmd_parts, task_to_send
+
     # ── Core operations ──
 
     async def spawn(
@@ -1082,62 +1139,27 @@ class AgentManager:
                         log.warning(f"Failed to cleanup tmux session {session_name}: {cleanup_err}")
                     return agent
 
-            cmd_parts = [bc.command]
-
-            # Always include configured args, then add auto-approve flag if not already present
-            cmd_parts.extend(bc.args)
-            if bc.auto_approve_flag and bc.auto_approve_flag not in bc.args:
-                cmd_parts.append(bc.auto_approve_flag)
-
-            # Model selection
-            if model and bc.supports_model_select:
-                cmd_parts.extend(["--model", model])
-
-            # Tool restriction
-            if tools and bc.supports_tool_restriction:
-                cmd_parts.extend(["--allowedTools", ",".join(tools)])
-
-            # Plan mode: use backend-specific plan flag (incompatible with auto-approve)
-            if plan_mode and bc.plan_mode_flag:
-                if bc.auto_approve_flag and bc.auto_approve_flag in cmd_parts:
-                    cmd_parts.remove(bc.auto_approve_flag)
-                cmd_parts.extend(bc.plan_mode_flag.split())
-
-            # System prompt injection (role context + predecessor output)
-            # Skip role prompt for backends that manage their own context (e.g. claude-code has CLAUDE.md)
+            # Build system prompt from role + extra
             role_obj = BUILTIN_ROLES.get(role)
             if not role_obj:
                 log.warning(f"Role '{role}' not in BUILTIN_ROLES, falling back to 'general'")
                 role_obj = BUILTIN_ROLES["general"]
-            parts = []
+            sys_parts = []
             if bc.inject_role_prompt and role != "general":
-                parts.append(f"You are a {role_obj.name}. {role_obj.system_prompt}")
+                sys_parts.append(f"You are a {role_obj.name}. {role_obj.system_prompt}")
             if system_prompt_extra:
-                parts.append(system_prompt_extra)
-            full_system = "\n\n".join(parts)
-            if full_system and bc.supports_system_prompt:
-                cmd_parts.extend(["--append-system-prompt", full_system])
+                sys_parts.append(system_prompt_extra)
+            full_system = "\n\n".join(sys_parts)
+            if full_system:
                 agent.system_prompt = full_system
-
-            # Session resume
-            if resume_session and bc.supports_session_resume:
-                cmd_parts.extend(["--resume", resume_session])
+            if resume_session:
                 agent.session_id = resume_session
 
-            # Prepare task text — plan-mode prefix for backends without native plan flag
-            if plan_mode and not bc.plan_mode_flag:
-                task_to_send = (
-                    "IMPORTANT: Create a detailed plan for the following task. "
-                    "DO NOT execute any changes. Present your plan and ask for approval.\n\n"
-                    f"Task: {task}"
-                )
-            else:
-                task_to_send = task
-
-            # Include task as CLI positional arg if supported (e.g. claude-code)
-            # Must be the last argument (positional, not a flag)
-            if bc.supports_prompt_arg and task_to_send:
-                cmd_parts.append(task_to_send)
+            cmd_parts, task_to_send = self._build_backend_command(
+                bc, role, task,
+                plan_mode=plan_mode, model=model, tools=tools,
+                system_prompt=full_system, resume_session=resume_session,
+            )
 
             # Build command string and launch
             cmd = " ".join(shlex.quote(p) for p in cmd_parts)
@@ -1626,40 +1648,12 @@ class AgentManager:
                         agent.error_message = str(e)
                         return False
 
-                cmd_parts = [bc.command]
-                cmd_parts.extend(bc.args)
-                if bc.auto_approve_flag and bc.auto_approve_flag not in bc.args:
-                    cmd_parts.append(bc.auto_approve_flag)
-
-                if saved_model and bc.supports_model_select:
-                    cmd_parts.extend(["--model", saved_model])
-                if saved_tools and bc.supports_tool_restriction:
-                    cmd_parts.extend(["--allowedTools", ",".join(saved_tools)])
-
-                # Plan mode: use backend-specific plan flag (incompatible with auto-approve)
-                if saved_plan_mode and bc.plan_mode_flag:
-                    if bc.auto_approve_flag and bc.auto_approve_flag in cmd_parts:
-                        cmd_parts.remove(bc.auto_approve_flag)
-                    cmd_parts.extend(bc.plan_mode_flag.split())
-
-                # Rebuild system prompt from role + saved extra
                 role_obj = BUILTIN_ROLES.get(saved_role, BUILTIN_ROLES["general"])
-                if bc.supports_system_prompt and saved_system_prompt:
-                    cmd_parts.extend(["--append-system-prompt", saved_system_prompt])
-
-                # Prepare task text — plan-mode prefix for backends without native plan flag
-                if saved_plan_mode and not bc.plan_mode_flag:
-                    task_to_send = (
-                        "IMPORTANT: Create a detailed plan for the following task. "
-                        "DO NOT execute any changes. Present your plan and ask for approval.\n\n"
-                        f"Task: {saved_task}"
-                    )
-                else:
-                    task_to_send = saved_task
-
-                # Include task as CLI positional arg if supported
-                if bc.supports_prompt_arg and task_to_send:
-                    cmd_parts.append(task_to_send)
+                cmd_parts, task_to_send = self._build_backend_command(
+                    bc, saved_role, saved_task,
+                    plan_mode=saved_plan_mode, model=saved_model, tools=saved_tools,
+                    system_prompt=saved_system_prompt,
+                )
 
                 cmd = " ".join(shlex.quote(p) for p in cmd_parts)
                 await self._tmux_send_keys(session_name, cmd)

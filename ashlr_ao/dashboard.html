@@ -8454,6 +8454,8 @@ function createAgentCard(agent) {
             'edit': () => openEditAgent(aid),
             'compare': () => openCompare(aid),
             'retry': () => retryWithTask(aid),
+            'quick-approve': () => quickRespond(aid, 'yes'),
+            'quick-reject': () => quickRespond(aid, 'no'),
         };
         if (actions[action]) actions[action]();
     });
@@ -8766,9 +8768,9 @@ function updateAgentCard(card, agent) {
         if (isYesNo || isApprove) {
             const aid = agent.id;
             if (isApprove) {
-                quickActions.innerHTML = `<button class="card-quick-btn approve" onclick="event.stopPropagation();quickRespond('${aid}','yes')">Approve</button><button class="card-quick-btn reject" onclick="event.stopPropagation();quickRespond('${aid}','no')">Reject</button>`;
+                quickActions.innerHTML = `<button class="card-quick-btn approve" data-action="quick-approve">Approve</button><button class="card-quick-btn reject" data-action="quick-reject">Reject</button>`;
             } else {
-                quickActions.innerHTML = `<button class="card-quick-btn approve" onclick="event.stopPropagation();quickRespond('${aid}','yes')">Yes</button><button class="card-quick-btn reject" onclick="event.stopPropagation();quickRespond('${aid}','no')">No</button>`;
+                quickActions.innerHTML = `<button class="card-quick-btn approve" data-action="quick-approve">Yes</button><button class="card-quick-btn reject" data-action="quick-reject">No</button>`;
             }
             quickActions.style.display = 'flex';
         } else {
