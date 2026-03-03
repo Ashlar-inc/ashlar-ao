@@ -2187,8 +2187,8 @@ class TestFleetAnalytics:
         manager._run_tmux = AsyncMock(return_value=MagicMock(returncode=0, stdout="", stderr=""))
         manager._tmux_send_keys = AsyncMock(return_value=True)
         manager._wait_for_tui_ready = AsyncMock(return_value=True)
-        a1 = await manager.spawn(role="backend", name="a1", task="test", working_dir=TEST_WORKING_DIR)
-        a2 = await manager.spawn(role="frontend", name="a2", task="test", working_dir=TEST_WORKING_DIR)
+        await manager.spawn(role="backend", name="a1", task="test", working_dir=TEST_WORKING_DIR)
+        await manager.spawn(role="frontend", name="a2", task="test", working_dir=TEST_WORKING_DIR)
         resp = await client.get("/api/analytics")
         assert resp.status == 200
         body = await resp.json()

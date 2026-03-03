@@ -3166,10 +3166,10 @@ class AgentManager:
                                 capture_output=True, timeout=5
                             )
                             killed += 1
-                        except Exception:
-                            pass
-        except Exception:
-            pass
+                        except Exception as e:
+                            log.warning(f"Failed to kill orphaned tmux session {session_name}: {e}")
+        except Exception as e:
+            log.warning(f"Failed to list tmux sessions for orphan cleanup: {e}")
         return killed
 
 
@@ -3318,7 +3318,6 @@ def parse_agent_status(recent_lines: list[str], agent: Agent, backend_patterns: 
     Priority: waiting > error > reading > planning > working > complete > current status.
     Tracks non-fatal error mentions for health scoring without flipping status.
     backend_patterns override defaults for specific status categories."""
-    text_block = "\n".join(recent_lines)
     tail_text = "\n".join(recent_lines[-5:])
 
     # Merge backend-specific patterns with defaults
@@ -4178,8 +4177,8 @@ class Database:
         if self._db:
             try:
                 await self._db.close()
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning(f"Failed to close existing DB connection: {e}")
             self._db = None
         self._db = await aiosqlite.connect(str(self.db_path))
         try:
@@ -4368,8 +4367,8 @@ class Database:
             if self._db:
                 try:
                     await self._db.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.warning(f"Failed to close DB during init error cleanup: {e}")
                 self._db = None
             raise
 
@@ -5327,6 +5326,8 @@ _RATE_LIMIT_TIERS: dict[str, tuple[float, float]] = {
     "bulk": (0.2, 2.0),        # 1 bulk op per 5s, burst of 2
     "batch-spawn": (0.2, 2.0),
     "fleet-export": (0.1, 1.0), # 1 export per 10s
+    # Auth — strict to prevent brute-force
+    "auth": (0.3, 3.0),        # 1 attempt per ~3s, burst of 3
     # Moderate operations
     "send": (2.0, 10.0),       # 2 sends/sec, burst of 10
     "restart": (0.5, 3.0),
@@ -5338,6 +5339,8 @@ _RATE_LIMIT_TIERS: dict[str, tuple[float, float]] = {
 
 def _get_rate_tier(path: str, method: str) -> str:
     """Determine rate limit tier from request path and method."""
+    if "/auth/" in path:
+        return "auth"
     if method == "POST" and "/agents" in path and "bulk" in path:
         return "bulk"
     if method == "POST" and "batch-spawn" in path:
@@ -5875,7 +5878,6 @@ async def auth_status(request: web.Request) -> web.Response:
 
 async def auth_register(request: web.Request) -> web.Response:
     """POST /api/auth/register — register a new user. First user becomes admin + creates org."""
-    config: Config = request.app["config"]
     db: Database = request.app["db"]
 
     try:
@@ -5997,7 +5999,6 @@ async def auth_me(request: web.Request) -> web.Response:
 async def auth_invite(request: web.Request) -> web.Response:
     """POST /api/auth/invite — admin-only: create a new user with temp password."""
     db: Database = request.app["db"]
-    config: Config = request.app["config"]
 
     # Must be authenticated as admin
     user = request.get("user")
@@ -6405,8 +6406,8 @@ async def list_agent_bookmarks(request: web.Request) -> web.Response:
                     "color": bm.get("color", "accent"),
                     "created_at": bm.get("created_at", ""),
                 })
-        except Exception:
-            pass
+        except Exception as e:
+            log.error(f"Failed to load bookmarks: {e}")
     return web.json_response({"bookmarks": agent.bookmarks})
 
 
@@ -6557,7 +6558,6 @@ async def fleet_analytics(request: web.Request) -> web.Response:
     avg_health = sum(health_scores) / len(health_scores) if health_scores else 0
 
     # Agent lifespans
-    now_iso = datetime.now(timezone.utc).isoformat()
     lifespans = []
     for a in agents:
         if a.created_at:
@@ -6627,8 +6627,8 @@ async def collaboration_graph(request: web.Request) -> web.Response:
                         if key not in edge_set:
                             edge_set.add(key)
                             edges.append({"from": from_id, "to": to_id, "type": "message", "weight": cnt})
-        except Exception:
-            pass
+        except Exception as e:
+            log.error(f"Failed to query collaboration graph: {e}")
 
     # 2. Shared file edges (agents writing/reading the same files)
     file_agents: dict[str, set[str]] = {}
@@ -8703,8 +8703,8 @@ async def refresh_extensions(request: web.Request) -> web.Response:
                 pdir = p.get("path", "")
                 if pdir:
                     project_dirs.add(pdir)
-        except Exception:
-            pass
+        except Exception as e:
+            log.error(f"Failed to get project paths from DB: {e}")
     manager: AgentManager = request.app["agent_manager"]
     for agent in list(manager.agents.values()):
         if agent.working_dir:
@@ -9468,8 +9468,8 @@ async def output_capture_loop(app: web.Application) -> None:
                 # Health score
                 try:
                     agent.health_score = calculate_health_score(agent, app["config"].memory_limit_mb)
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.warning(f"Health score calculation failed for {agent_id}: {e}")
 
                 # Health-driven events (using configurable thresholds)
                 _crit_thresh = app["config"].health_critical_threshold
@@ -9621,8 +9621,8 @@ async def metrics_loop(app: web.Application) -> None:
                 try:
                     agent.memory_mb = await manager.get_agent_memory(agent_id)
                     agent.cpu_pct = await manager.get_agent_cpu(agent_id)
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.warning(f"Failed to collect metrics for agent {agent_id}: {e}")
 
             await hub.broadcast({"type": "metrics", **metrics.to_dict()})
         except Exception as e:
@@ -9765,8 +9765,8 @@ async def health_check_loop(app: web.Application) -> None:
                         log.warning(f"Agent {agent_id} ({agent.name}) context at {agent.context_pct:.0%} — creating snapshot")
                         try:
                             agent.create_snapshot(trigger="context_warning")
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            log.warning(f"Failed to create context exhaustion snapshot: {e}")
                         await hub.broadcast_event(
                             "agent_context_warning",
                             f"Agent {agent.name} context window at {agent.context_pct:.0%} — approaching limit",
@@ -9889,8 +9889,8 @@ async def health_check_loop(app: web.Application) -> None:
                                 a._pressure_paused = False
                                 await manager.resume(a.id)
                                 await hub.broadcast({"type": "agent_update", "agent": a.to_dict()})
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                log.warning(f"Failed to resume agent after pressure relief: {e}")
         except Exception as e:
             log.debug(f"Fleet pressure check error: {e}")
 
@@ -9938,8 +9938,8 @@ async def health_check_loop(app: web.Application) -> None:
                 if agent:
                     try:
                         await manager.kill(agent_id)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log.warning(f"Failed to kill agent on workflow timeout: {e}")
                 await hub.broadcast_event(
                     "workflow_stage_timeout",
                     f"Workflow '{wf_run.workflow_name}': agent {agent_name} timed out after {int(wf_run.stage_timeout_sec)}s — skipping",
@@ -9999,7 +9999,8 @@ async def memory_watchdog_loop(app: web.Application) -> None:
             try:
                 db: Database = app["db"]
                 if app.get("db_available", True) and db._db:
-                    retention_hours = getattr(config, 'archive_retention_hours', 24) or 24
+                    cfg: Config = app["config"]
+                    retention_hours = getattr(cfg, 'archive_retention_hours', 24) or 24
                     # Delete archive rows older than retention window for agents no longer running
                     active_ids = set(manager.agents.keys())
                     async with db._db.execute(

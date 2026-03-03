@@ -1,0 +1,18 @@
+line-length = 120
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "W"]
+ignore = [
+    "E501",   # line too long (existing code exceeds 120 in many places)
+    "F401",   # unused imports (shim file uses wildcard)
+    "F403",   # wildcard import (shim file)
+    "E722",   # bare except (the ones we kept are intentional)
+    "F541",   # f-string without placeholders (harmless in existing code)
+    "E741",   # ambiguous variable name (existing style)
+    "F811",   # redefined names (duplicate test class names in existing tests)
+]
+
+[lint.per-file-ignores]
+"ashlr_server.py" = ["F401", "F403"]
+"tests/*" = ["E501"]

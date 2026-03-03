@@ -14,6 +14,7 @@ with patch("psutil.cpu_percent", return_value=0.0):
     from ashlr_server import (
         Database, Agent, User, Organization,
         _check_agent_ownership, _make_slug, _extract_session_cookie,
+        _get_rate_tier, _RATE_LIMIT_TIERS, RateLimiter,
     )
 import bcrypt
 
@@ -524,3 +525,50 @@ class TestAuthDegradedMode:
             assert await db.delete_expired_sessions() == 0
             await db.update_user_login("x")  # Should not raise
         run_async(_test())
+
+
+# ─────────────────────────────────────────────
+# Auth rate limiting
+# ─────────────────────────────────────────────
+
+class TestAuthRateLimiting:
+    def test_login_gets_auth_tier(self):
+        assert _get_rate_tier("/api/auth/login", "POST") == "auth"
+
+    def test_register_gets_auth_tier(self):
+        assert _get_rate_tier("/api/auth/register", "POST") == "auth"
+
+    def test_auth_status_gets_auth_tier(self):
+        assert _get_rate_tier("/api/auth/status", "GET") == "auth"
+
+    def test_auth_invite_gets_auth_tier(self):
+        assert _get_rate_tier("/api/auth/invite", "POST") == "auth"
+
+    def test_auth_tier_exists_in_tiers(self):
+        assert "auth" in _RATE_LIMIT_TIERS
+        rate, burst = _RATE_LIMIT_TIERS["auth"]
+        assert rate < 1.0  # Stricter than default
+        assert burst <= 5.0
+
+    def test_non_auth_path_not_auth_tier(self):
+        assert _get_rate_tier("/api/agents", "GET") != "auth"
+        assert _get_rate_tier("/api/projects", "POST") != "auth"
+
+    def test_rate_limiter_allows_within_burst(self):
+        rl = RateLimiter()
+        rate, burst = _RATE_LIMIT_TIERS["auth"]
+        # Should allow up to burst count
+        for _ in range(int(burst)):
+            allowed, _ = rl.check("test-ip:auth", cost=1.0, rate=rate, burst=burst)
+            assert allowed
+
+    def test_rate_limiter_rejects_after_burst(self):
+        rl = RateLimiter()
+        rate, burst = _RATE_LIMIT_TIERS["auth"]
+        # Exhaust burst
+        for _ in range(int(burst)):
+            rl.check("test-ip:auth", cost=1.0, rate=rate, burst=burst)
+        # Next request should be rejected
+        allowed, retry_after = rl.check("test-ip:auth", cost=1.0, rate=rate, burst=burst)
+        assert not allowed
+        assert retry_after > 0

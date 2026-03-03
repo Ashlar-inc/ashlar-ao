@@ -92,7 +92,7 @@ class TestOutputHashDedup:
 
     def test_changed_output_gives_different_hash(self, make_agent):
         """Changed output should produce a different hash."""
-        agent = make_agent()
+        make_agent()
         lines1 = ["line1", "line2"]
         lines2 = ["line1", "line2", "line3 new"]
         hash1 = hash(tuple(lines1[-50:]))
@@ -153,7 +153,7 @@ class TestParseAgentStatusPatterns:
         agent = make_agent(status="working", error_count=0)
         # "failed" without a waiting/error trigger
         lines = ["Build step 1 failed", "Retrying..."]
-        status = parse_agent_status(lines, agent)
+        parse_agent_status(lines, agent)
         # Should stay working (error_mention doesn't change status)
         # but error_count should increment
         assert agent.error_count >= 1
@@ -788,7 +788,7 @@ class TestExtensionScanner:
         settings_file = tmp_path / "settings.json"
         settings_file.write_text(json.dumps(settings))
 
-        scanner = ExtensionScanner()
+        ExtensionScanner()
         # Directly test the parsing logic
         with patch.object(Path, 'home', return_value=tmp_path / "fake"):
             # Since _scan_plugins reads from ~/.claude/settings.json, we test _parse_mcp_dict instead
