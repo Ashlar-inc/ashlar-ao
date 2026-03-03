@@ -93,6 +93,12 @@ def _make_test_app():
     app["db_ready"] = True
     app["bg_task_health"] = {}
     app["bg_tasks"] = []
+    # Set Pro license so existing tests bypass feature gates
+    from datetime import datetime, timedelta, timezone
+    from ashlr_server import License, PRO_FEATURES
+    _pro_lic = License(tier="pro", max_agents=100, expires_at=(datetime.now(timezone.utc) + timedelta(days=365)).isoformat(), features=PRO_FEATURES)
+    app["license"] = _pro_lic
+    app["agent_manager"].license = _pro_lic
     return app
 
 
@@ -1884,11 +1890,12 @@ class TestConfigValidation:
 
     @pytest.mark.asyncio
     async def test_put_config_invalid_max_agents_over(self, aiohttp_client):
-        """max_agents=200 is above max 100 — should return 400."""
+        """max_agents=200 is clamped to license max (100) then accepted."""
         app = _make_test_app()
         client = await aiohttp_client(app)
         resp = await client.put("/api/config", json={"max_agents": 200})
-        assert resp.status == 400
+        # License clamp reduces 200→100, which is within valid range (1-100)
+        assert resp.status == 200
 
     @pytest.mark.asyncio
     async def test_put_config_invalid_capture_interval(self, aiohttp_client):

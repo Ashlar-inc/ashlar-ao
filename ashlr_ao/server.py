@@ -36,6 +36,7 @@ import aiosqlite
 from aiohttp import web
 import aiohttp_cors
 import bcrypt
+import jwt
 import psutil
 import yaml
 
@@ -214,6 +215,7 @@ DEFAULT_CONFIG = {
         "max_output_lines": 30,
         "meta_interval_sec": 30.0,
     },
+    "licensing": {"key": ""},
 }
 
 
@@ -280,6 +282,8 @@ class Config:
     context_auto_pause_threshold: float = 0.95  # Auto-pause agent at this context %
     pathological_error_window_sec: float = 60.0  # If agent errors within this time of restart, mark pathological
     max_pathological_restarts: int = 1  # Max restarts for agents that error rapidly after restart
+    # Licensing
+    license_key: str = ""
     # Pattern alerting — regex patterns that trigger high-priority notifications
     # Archive rotation
     archive_max_rows_per_agent: int = 50000  # Max archived lines per agent
@@ -477,6 +481,10 @@ def load_config(has_claude: bool = True) -> Config:
     # ASHLR_HOST env var overrides config file (use 0.0.0.0 for Docker/deployment)
     host = os.environ.get("ASHLR_HOST", server.get("host", "127.0.0.1"))
 
+    # Licensing key from config (fallback when no org in DB)
+    licensing = raw.get("licensing", {})
+    license_key_val = licensing.get("key", "")
+
     return Config(
         host=host,
         port=port,
@@ -509,6 +517,7 @@ def load_config(has_claude: bool = True) -> Config:
         hung_timeout_minutes=hung_val,
         cost_budget_usd=float(raw.get("cost_budget_usd", 0)),
         cost_budget_auto_pause=bool(raw.get("cost_budget_auto_pause", False)),
+        license_key=license_key_val,
         **({"alert_patterns": alert_patterns_final} if alert_patterns_final else {}),
     )
 
@@ -1013,9 +1022,11 @@ class Organization:
     name: str
     slug: str
     created_at: str = ""
+    license_key: str = ""
+    plan: str = "community"
 
     def to_dict(self) -> dict:
-        return {"id": self.id, "name": self.name, "slug": self.slug, "created_at": self.created_at}
+        return {"id": self.id, "name": self.name, "slug": self.slug, "created_at": self.created_at, "plan": self.plan}
 
 
 @dataclass
@@ -1036,6 +1047,104 @@ class User:
             "role": self.role, "org_id": self.org_id, "created_at": self.created_at,
             "last_login": self.last_login,
         }
+
+
+# ─────────────────────────────────────────────
+# Licensing — Ed25519-signed JWT, offline-first
+# ─────────────────────────────────────────────
+
+PRO_FEATURES: frozenset[str] = frozenset({
+    "multi_user", "intelligence", "workflows", "fleet_presets", "unlimited_agents",
+})
+
+LICENSE_PUBLIC_KEY_PEM = """-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEABZK/hIk2v95CNsJJ1tXRzZHIA7XUinjXqr17PoF8p9A=
+-----END PUBLIC KEY-----"""
+
+
+@dataclass
+class License:
+    """Represents a validated license for an Ashlr instance."""
+    tier: str = "community"
+    max_agents: int = 5
+    max_seats: int = 1
+    features: frozenset[str] = field(default_factory=frozenset)
+    org_id: str = ""
+    issued_at: str = ""
+    expires_at: str = ""
+    raw_key: str = ""
+
+    @property
+    def is_expired(self) -> bool:
+        if not self.expires_at:
+            return self.tier != "community"
+        try:
+            exp = datetime.fromisoformat(self.expires_at)
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=timezone.utc)
+            return datetime.now(timezone.utc) > exp
+        except Exception:
+            return True
+
+    @property
+    def is_pro(self) -> bool:
+        return self.tier == "pro" and not self.is_expired
+
+    def to_dict(self) -> dict:
+        return {
+            "tier": self.tier,
+            "max_agents": self.max_agents,
+            "max_seats": self.max_seats,
+            "features": sorted(self.features),
+            "org_id": self.org_id,
+            "issued_at": self.issued_at,
+            "expires_at": self.expires_at,
+            "is_pro": self.is_pro,
+            "is_expired": self.is_expired,
+        }
+
+
+COMMUNITY_LICENSE = License()
+
+
+def validate_license(key: str) -> License:
+    """Decode and verify an Ed25519-signed JWT license key.
+
+    Returns a License on success; COMMUNITY_LICENSE on any failure.
+    """
+    if not key or not isinstance(key, str):
+        return COMMUNITY_LICENSE
+    key = key.strip()
+    try:
+        payload = jwt.decode(
+            key,
+            LICENSE_PUBLIC_KEY_PEM,
+            algorithms=["EdDSA"],
+            issuer="ashlr-licensing",
+            options={"require": ["exp", "iss", "sub"]},
+        )
+        tier = payload.get("tier", "community")
+        exp_ts = payload.get("exp", 0)
+        iat_ts = payload.get("iat", 0)
+        expires_at = datetime.fromtimestamp(exp_ts, tz=timezone.utc).isoformat() if exp_ts else ""
+        issued_at = datetime.fromtimestamp(iat_ts, tz=timezone.utc).isoformat() if iat_ts else ""
+        features = frozenset(payload.get("features", []))
+        return License(
+            tier=tier,
+            max_agents=int(payload.get("max_agents", 100)),
+            max_seats=int(payload.get("max_seats", 50)),
+            features=features if features else (PRO_FEATURES if tier == "pro" else frozenset()),
+            org_id=payload.get("sub", ""),
+            issued_at=issued_at,
+            expires_at=expires_at,
+            raw_key=key,
+        )
+    except jwt.ExpiredSignatureError:
+        log.warning("License key expired")
+        return COMMUNITY_LICENSE
+    except Exception as e:
+        log.warning(f"License validation failed: {e}")
+        return COMMUNITY_LICENSE
 
 
 @dataclass
@@ -1565,6 +1674,7 @@ class AgentManager:
         self.tmux_prefix = "ashlr"
         self._loop: asyncio.AbstractEventLoop | None = None
         self.db: "Database | None" = None  # Set after creation by create_app()
+        self.license: License = COMMUNITY_LICENSE
         # Rich backend configs
         self.backend_configs: dict[str, BackendConfig] = self._build_backend_configs()
         # Workflow run tracking
@@ -1754,8 +1864,10 @@ class AgentManager:
         resume_session: str | None = None,
     ) -> Agent:
         """Spawn a new agent. Returns the Agent object."""
-        if len(self.agents) >= self.config.max_agents:
-            raise ValueError(f"Maximum agents ({self.config.max_agents}) reached")
+        max_a = min(self.config.max_agents, self.license.max_agents) if self.license.is_pro else min(self.config.max_agents, COMMUNITY_LICENSE.max_agents)
+        if len(self.agents) >= max_a:
+            suffix = " — upgrade to Pro for more" if not self.license.is_pro else ""
+            raise ValueError(f"Maximum agents ({max_a}) reached{suffix}")
 
         # System pressure check — block spawning if system is overloaded
         if self.config.spawn_pressure_block:
@@ -4380,6 +4492,8 @@ class Database:
                 "ALTER TABLE agents_history ADD COLUMN model TEXT DEFAULT ''",
                 "ALTER TABLE agents_history ADD COLUMN tools_allowed TEXT DEFAULT ''",
                 "ALTER TABLE agents_history ADD COLUMN git_branch TEXT DEFAULT ''",
+                "ALTER TABLE organizations ADD COLUMN license_key TEXT DEFAULT ''",
+                "ALTER TABLE organizations ADD COLUMN plan TEXT DEFAULT 'community'",
             ]:
                 try:
                     await self._db.execute(col_sql)
@@ -4456,10 +4570,37 @@ class Database:
             async with self._db.execute("SELECT * FROM organizations WHERE id = ?", (org_id,)) as cur:
                 row = await cur.fetchone()
                 if row:
-                    return Organization(id=row["id"], name=row["name"], slug=row["slug"], created_at=row["created_at"])
+                    return Organization(
+                        id=row["id"], name=row["name"], slug=row["slug"], created_at=row["created_at"],
+                        license_key=row["license_key"] if "license_key" in row.keys() else "",
+                        plan=row["plan"] if "plan" in row.keys() else "community",
+                    )
         except Exception as e:
             log.warning(f"Failed to get org {org_id}: {e}")
         return None
+
+    async def update_org_license(self, org_id: str, key: str, plan: str) -> None:
+        if not self._db:
+            return
+        try:
+            await self._db.execute(
+                "UPDATE organizations SET license_key = ?, plan = ? WHERE id = ?",
+                (key, plan, org_id),
+            )
+            await self._safe_commit()
+        except Exception as e:
+            log.warning(f"Failed to update org license: {e}")
+
+    async def get_org_license_key(self, org_id: str) -> str:
+        if not self._db:
+            return ""
+        try:
+            async with self._db.execute("SELECT license_key FROM organizations WHERE id = ?", (org_id,)) as cur:
+                row = await cur.fetchone()
+                return row["license_key"] if row and "license_key" in row.keys() else ""
+        except Exception as e:
+            log.warning(f"Failed to get org license key: {e}")
+            return ""
 
     # ── Auth: Users ──
 
@@ -5622,6 +5763,7 @@ class WebSocketHub:
                 presets = []
             scanner: ExtensionScanner = request.app.get("extension_scanner")
             extensions_data = scanner.to_dict() if scanner else {"skills": [], "mcp_servers": [], "plugins": [], "scanned_at": ""}
+            lic: License = request.app.get("license", COMMUNITY_LICENSE)
             await ws.send_json({
                 "type": "sync",
                 "agents": [a.to_dict() for a in list(self.agent_manager.agents.values())],
@@ -5634,6 +5776,8 @@ class WebSocketHub:
                 "queue": [t.to_dict() for t in self.agent_manager.task_queue],
                 "db_ready": request.app.get("db_ready", False),
                 "db_available": request.app.get("db_available", True),
+                "license": lic.to_dict(),
+                "effective_max_agents": _effective_max_agents(request.app),
             })
 
             async for msg in ws:
@@ -5881,6 +6025,29 @@ class WebSocketHub:
 
 # ── Auth Middleware ──
 
+def _effective_max_agents(app: web.Application) -> int:
+    """Return the effective max agents, clamped to license limit."""
+    config: Config = app["config"]
+    lic: License = app.get("license", COMMUNITY_LICENSE)
+    if lic.is_pro:
+        return min(config.max_agents, lic.max_agents)
+    return min(config.max_agents, COMMUNITY_LICENSE.max_agents)
+
+
+def _check_feature(request: web.Request, feature: str) -> web.Response | None:
+    """Return a 403 response if the feature is gated on the current plan, else None."""
+    lic: License = request.app.get("license", COMMUNITY_LICENSE)
+    if lic.is_pro:
+        return None  # Pro has all features
+    if feature not in PRO_FEATURES:
+        return None  # Not a gated feature
+    return web.json_response({
+        "error": f"The '{feature}' feature requires a Pro license. Upgrade at https://ashlr.dev/pro",
+        "feature": feature,
+        "current_plan": lic.tier,
+    }, status=403)
+
+
 def _check_agent_ownership(request: web.Request, agent) -> web.Response | None:
     """Check if current user can control this agent. Returns error response or None if allowed."""
     user = request.get("user")
@@ -5900,6 +6067,7 @@ def _check_agent_ownership(request: web.Request, agent) -> web.Response | None:
 _AUTH_PUBLIC_ROUTES = frozenset({
     "/", "/logo.png", "/api/health",
     "/api/auth/login", "/api/auth/register", "/api/auth/verify", "/api/auth/status",
+    "/api/license/status",
 })
 
 
@@ -6128,6 +6296,8 @@ async def auth_me(request: web.Request) -> web.Response:
 
 async def auth_invite(request: web.Request) -> web.Response:
     """POST /api/auth/invite — admin-only: create a new user with temp password."""
+    if r := _check_feature(request, "multi_user"):
+        return r
     db: Database = request.app["db"]
 
     # Must be authenticated as admin
@@ -6167,6 +6337,8 @@ async def auth_invite(request: web.Request) -> web.Response:
 
 async def auth_team(request: web.Request) -> web.Response:
     """GET /api/auth/team — list all users in the current user's org."""
+    if r := _check_feature(request, "multi_user"):
+        return r
     db: Database = request.app["db"]
 
     user = request.get("user")
@@ -7305,10 +7477,23 @@ async def get_config(request: web.Request) -> web.Response:
 async def put_config(request: web.Request) -> web.Response:
     """Update runtime config and save to ashlr.yaml."""
     config: Config = request.app["config"]
+
+    # Admin-only when auth is enabled
+    if config.require_auth:
+        user = request.get("user")
+        if not user or user.role != "admin":
+            return web.json_response({"error": "Admin access required to update config"}, status=403)
+
     try:
         data = await request.json()
     except json.JSONDecodeError:
         return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    # Clamp max_agents to license ceiling
+    lic: License = request.app.get("license", COMMUNITY_LICENSE)
+    lic_max = lic.max_agents if lic.is_pro else COMMUNITY_LICENSE.max_agents
+    if "max_agents" in data and isinstance(data["max_agents"], int):
+        data["max_agents"] = min(data["max_agents"], lic_max)
 
     # Validation rules
     validators = {
@@ -7586,6 +7771,8 @@ def _validate_workflow_specs(agent_specs: list) -> str | None:
 
 
 async def create_workflow(request: web.Request) -> web.Response:
+    if r := _check_feature(request, "workflows"):
+        return r
     db: Database = request.app["db"]
     try:
         data = await request.json()
@@ -7634,15 +7821,20 @@ async def run_workflow(request: web.Request) -> web.Response:
         body = {}
     working_dir = body.get("working_dir")
 
+    # Feature gate: workflows require Pro
+    if r := _check_feature(request, "workflows"):
+        return r
+
     # Capacity pre-check
     config: Config = request.app["config"]
+    max_agents = _effective_max_agents(request.app)
     agents_needed = len(workflow.get("agents", []))
     current_count = len(manager.agents)
-    if current_count + agents_needed > config.max_agents:
+    if current_count + agents_needed > max_agents:
         return web.json_response({
             "error": f"Not enough capacity: need {agents_needed} agents, "
-                     f"but only {config.max_agents - current_count} slots available "
-                     f"({current_count}/{config.max_agents} in use)",
+                     f"but only {max_agents - current_count} slots available "
+                     f"({current_count}/{max_agents} in use)",
         }, status=503)
 
     agent_specs = workflow.get("agents", [])
@@ -7795,6 +7987,8 @@ async def delete_workflow(request: web.Request) -> web.Response:
 
 async def update_workflow(request: web.Request) -> web.Response:
     """PUT /api/workflows/{id} — update an existing workflow."""
+    if r := _check_feature(request, "workflows"):
+        return r
     db: Database = request.app["db"]
     workflow_id = request.match_info["id"]
 
@@ -8153,6 +8347,8 @@ async def create_agent_snapshot(request: web.Request) -> web.Response:
 
 async def get_intelligence_insights(request: web.Request) -> web.Response:
     """GET /api/intelligence/insights — current cross-agent insights."""
+    if r := _check_feature(request, "intelligence"):
+        return r
     insights: list[AgentInsight] = request.app.get("intelligence_insights", [])
     return web.json_response({
         "insights": [i.to_dict() for i in insights if not i.acknowledged],
@@ -8173,6 +8369,8 @@ async def acknowledge_insight(request: web.Request) -> web.Response:
 
 async def intelligence_command(request: web.Request) -> web.Response:
     """POST /api/intelligence/command — parse natural language command via Claude API."""
+    if r := _check_feature(request, "intelligence"):
+        return r
     client: IntelligenceClient | None = request.app.get("intelligence")
     manager: AgentManager = request.app["agent_manager"]
 
@@ -9296,12 +9494,17 @@ async def batch_spawn(request: web.Request) -> web.Response:
     shared_plan_mode = data.get("plan_mode", False)
     shared_dir = data.get("working_dir")
 
+    # Feature gate: fleet_presets requires Pro
+    if r := _check_feature(request, "fleet_presets"):
+        return r
+
     # Check concurrent agent limit before spawning
     current_count = len(manager.agents)
-    max_agents = config.max_agents
+    max_agents = _effective_max_agents(request.app)
     available_slots = max_agents - current_count
     if available_slots <= 0:
-        return web.json_response({"error": f"Agent limit reached ({max_agents}). Kill some agents first."}, status=409)
+        suffix = " Upgrade to Pro for more." if not request.app.get("license", COMMUNITY_LICENSE).is_pro else ""
+        return web.json_response({"error": f"Agent limit reached ({max_agents}).{suffix}"}, status=409)
     if len(agent_specs) > available_slots:
         return web.json_response(
             {"error": f"Only {available_slots} agent slots available, but {len(agent_specs)} requested"},
@@ -10111,8 +10314,9 @@ async def health_check_loop(app: web.Application) -> None:
         # Auto-spawn from task queue when slots are available
         try:
             config: Config = app["config"]
+            queue_max = _effective_max_agents(app)
             active_count = sum(1 for a in list(manager.agents.values()) if a.status not in ("idle", "complete"))
-            while manager.task_queue and active_count < config.max_agents:
+            while manager.task_queue and active_count < queue_max:
                 queued = manager.task_queue.pop(0)
                 try:
                     agent = await manager.spawn(
@@ -10355,6 +10559,28 @@ async def start_background_tasks(app: web.Application) -> None:
             app["db_available"] = False
 
     app["db_ready"] = True
+
+    # Load license from DB (org) or config (YAML)
+    config: Config = app["config"]
+    manager: AgentManager = app["agent_manager"]
+    license_key = config.license_key
+    if app.get("db_available", True):
+        try:
+            # Try to load from first org in DB
+            async with db._db.execute("SELECT license_key FROM organizations WHERE license_key != '' LIMIT 1") as cur:
+                row = await cur.fetchone()
+                if row and row["license_key"]:
+                    license_key = row["license_key"]
+        except Exception:
+            pass
+    if license_key:
+        lic = validate_license(license_key)
+        app["license"] = lic
+        manager.license = lic
+        log.info(f"License loaded: tier={lic.tier}, max_agents={lic.max_agents}, expires={lic.expires_at or 'never'}")
+    else:
+        log.info("No license key found — running in Community mode (5 agents max)")
+
     app["bg_task_health"] = {}
     bg_tasks = [
         asyncio.create_task(_supervised_task("output_capture", output_capture_loop, app)),
@@ -10405,6 +10631,131 @@ async def cleanup_background_tasks(app: web.Application) -> None:
     log.info("Cleanup complete")
 
 
+# ─────────────────────────────────────────────
+# License API Endpoints
+# ─────────────────────────────────────────────
+
+async def license_status(request: web.Request) -> web.Response:
+    """GET /api/license/status — current license info (public)."""
+    lic: License = request.app.get("license", COMMUNITY_LICENSE)
+    gated = {}
+    for feat in sorted(PRO_FEATURES):
+        gated[feat] = lic.is_pro  # True if unlocked
+    return web.json_response({
+        "license": lic.to_dict(),
+        "effective_max_agents": _effective_max_agents(request.app),
+        "gated_features": gated,
+    })
+
+
+async def activate_license(request: web.Request) -> web.Response:
+    """POST /api/license/activate — activate a license key (admin-only when auth enabled)."""
+    config: Config = request.app["config"]
+    if config.require_auth:
+        user = request.get("user")
+        if not user or user.role != "admin":
+            return web.json_response({"error": "Admin access required"}, status=403)
+
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    key = str(data.get("license_key", "")).strip()
+    if not key:
+        return web.json_response({"error": "license_key is required"}, status=400)
+
+    lic = validate_license(key)
+    if not lic.is_pro:
+        return web.json_response({"error": "Invalid or expired license key"}, status=400)
+
+    # Persist to DB (org) if auth is enabled
+    db: Database = request.app["db"]
+    if config.require_auth:
+        user = request.get("user")
+        if user and user.org_id:
+            await db.update_org_license(user.org_id, key, lic.tier)
+
+    # Persist to config YAML
+    try:
+        config_path = ASHLR_DIR / "ashlr.yaml"
+        if config_path.exists():
+            with open(config_path) as f:
+                raw_yaml = yaml.safe_load(f) or {}
+        else:
+            raw_yaml = {}
+        raw_yaml.setdefault("licensing", {})["key"] = key
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=str(config_path.parent), suffix=".yaml.tmp")
+        try:
+            with os.fdopen(tmp_fd, "w") as f:
+                yaml.dump(raw_yaml, f, default_flow_style=False, sort_keys=False)
+            Path(tmp_path).rename(config_path)
+        except Exception:
+            Path(tmp_path).unlink(missing_ok=True)
+            raise
+    except Exception as e:
+        log.warning(f"Failed to persist license key to config: {e}")
+
+    # Update runtime state
+    request.app["license"] = lic
+    manager: AgentManager = request.app["agent_manager"]
+    manager.license = lic
+    config.license_key = key
+    log.info(f"License activated: tier={lic.tier}, max_agents={lic.max_agents}, expires={lic.expires_at}")
+
+    # Broadcast to all WS clients
+    hub: WebSocketHub = request.app["ws_hub"]
+    await hub.broadcast({"type": "license_update", "license": lic.to_dict(), "effective_max_agents": _effective_max_agents(request.app)})
+
+    return web.json_response({"license": lic.to_dict(), "effective_max_agents": _effective_max_agents(request.app)})
+
+
+async def deactivate_license(request: web.Request) -> web.Response:
+    """DELETE /api/license/deactivate — remove license and revert to Community."""
+    config: Config = request.app["config"]
+    if config.require_auth:
+        user = request.get("user")
+        if not user or user.role != "admin":
+            return web.json_response({"error": "Admin access required"}, status=403)
+
+    # Clear from DB
+    db: Database = request.app["db"]
+    if config.require_auth:
+        user = request.get("user")
+        if user and user.org_id:
+            await db.update_org_license(user.org_id, "", "community")
+
+    # Clear from config YAML
+    try:
+        config_path = ASHLR_DIR / "ashlr.yaml"
+        if config_path.exists():
+            with open(config_path) as f:
+                raw_yaml = yaml.safe_load(f) or {}
+            raw_yaml.setdefault("licensing", {})["key"] = ""
+            tmp_fd, tmp_path = tempfile.mkstemp(dir=str(config_path.parent), suffix=".yaml.tmp")
+            try:
+                with os.fdopen(tmp_fd, "w") as f:
+                    yaml.dump(raw_yaml, f, default_flow_style=False, sort_keys=False)
+                Path(tmp_path).rename(config_path)
+            except Exception:
+                Path(tmp_path).unlink(missing_ok=True)
+                raise
+    except Exception as e:
+        log.warning(f"Failed to clear license key from config: {e}")
+
+    # Revert runtime state
+    request.app["license"] = COMMUNITY_LICENSE
+    manager: AgentManager = request.app["agent_manager"]
+    manager.license = COMMUNITY_LICENSE
+    config.license_key = ""
+    log.info("License deactivated — reverted to Community")
+
+    hub: WebSocketHub = request.app["ws_hub"]
+    await hub.broadcast({"type": "license_update", "license": COMMUNITY_LICENSE.to_dict(), "effective_max_agents": _effective_max_agents(request.app)})
+
+    return web.json_response({"license": COMMUNITY_LICENSE.to_dict(), "effective_max_agents": _effective_max_agents(request.app)})
+
+
 def create_app(config: Config) -> web.Application:
     middlewares = [security_headers_middleware, request_logging_middleware, compression_middleware, rate_limit_middleware]
     if config.require_auth:
@@ -10414,6 +10765,7 @@ def create_app(config: Config) -> web.Application:
 
     manager = AgentManager(config)
     app["agent_manager"] = manager
+    app["license"] = COMMUNITY_LICENSE
 
     db = Database()
     app["db"] = db
@@ -10585,6 +10937,11 @@ def create_app(config: Config) -> web.Application:
     # REST API — Extensions
     app.router.add_get("/api/extensions", get_extensions)
     app.router.add_post("/api/extensions/refresh", refresh_extensions)
+
+    # REST API — Licensing
+    app.router.add_get("/api/license/status", license_status)
+    app.router.add_post("/api/license/activate", activate_license)
+    app.router.add_delete("/api/license/deactivate", deactivate_license)
 
     # CORS — restrict origins in production via ASHLR_ALLOWED_ORIGINS env var
     allowed_origin = os.environ.get("ASHLR_ALLOWED_ORIGINS", "*")

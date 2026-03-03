@@ -5041,6 +5041,7 @@ body {
         <img src="/logo.png" alt="Ashlr" onerror="this.onerror=null;this.style.display='none';this.parentElement.insertAdjacentHTML('afterbegin','<svg width=\'26\' height=\'26\' viewBox=\'0 0 32 32\' style=\'flex-shrink:0\'><rect width=\'32\' height=\'32\' rx=\'6\' fill=\'%230D1520\'/><path d=\'M16 6L8 26h4l2-5h4l2 5h4L16 6zm0 8l2.5 6h-5L16 14z\' fill=\'%23F97316\'/></svg>')">
     </div>
     <span class="demo-badge" id="demoBadge">DEMO</span>
+    <span id="planBadge" onclick="openSettings()" title="Click to manage license" style="display:none;font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 8px;border-radius:10px;cursor:pointer;transition:var(--transition);margin-left:4px;vertical-align:middle">Community</span>
     <select class="project-selector" id="projectSelector" onchange="filterByProject(this.value)" aria-label="Filter by project">
         <option value="">All Projects</option>
     </select>
@@ -5766,9 +5767,28 @@ body {
 <div class="settings-overlay" id="settingsOverlay" onclick="if(event.target===this)closeSettings()">
     <div class="settings-panel">
         <h3>Settings</h3>
+        <div class="settings-section" id="licenseSettingsSection">
+            <div class="settings-section-title"><span class="settings-section-icon"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18v3c0 .6.4 1 1 1h4v-3h3v-3h2l1.4-1.4a6.5 6.5 0 1 0-4-4Z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg></span> License</div>
+            <div class="settings-row" style="align-items:center">
+                <span class="settings-label">Current plan</span>
+                <span id="settingsLicenseBadge" style="font-weight:700;font-size:11px;padding:2px 10px;border-radius:10px;background:var(--bg-tertiary);color:var(--text-secondary)">Community</span>
+            </div>
+            <div id="settingsLicenseDetails" style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px"></div>
+            <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:6px">
+                <div style="display:flex;gap:6px;align-items:center">
+                    <input class="settings-input" id="setLicenseKey" type="text" placeholder="Paste license key..." style="flex:1;font-family:var(--font-mono);font-size:11px">
+                    <button class="btn btn-primary btn-sm" onclick="activateLicense()">Activate</button>
+                </div>
+                <div id="licenseError" style="display:none;color:var(--red);font-size:11px"></div>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <button class="btn btn-secondary btn-sm" id="btnDeactivateLicense" onclick="deactivateLicense()" style="display:none">Deactivate</button>
+                    <a id="linkGetPro" href="https://ashlr.dev/pro" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);text-decoration:none">Get Pro</a>
+                </div>
+            </div>
+        </div>
         <div class="settings-section">
             <div class="settings-section-title"><span class="settings-section-icon"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg></span> Agents</div>
-            <div class="settings-row"><span class="settings-label">Max concurrent agents</span><input class="settings-input" id="setMaxAgents" type="number" min="1" max="100"></div>
+            <div class="settings-row"><span class="settings-label">Max concurrent agents</span><input class="settings-input" id="setMaxAgents" type="number" min="1" max="100"><span id="setMaxAgentsNote" style="font-size:10px;color:var(--text-tertiary);margin-left:6px"></span></div>
             <div class="settings-row"><span class="settings-label">Default role</span><select class="settings-select" id="setDefaultRole"></select></div>
             <div class="settings-row"><span class="settings-label">Default working directory</span><input class="settings-input" id="setDefaultDir" type="text" style="width:240px"></div>
             <div class="settings-row"><span class="settings-label">Default backend</span><select class="settings-select" id="setDefaultBackend"></select></div>
@@ -6432,6 +6452,8 @@ const state = {
     currentUser: null, // {id, email, display_name, role, org_id}
     currentOrg: null,  // {id, name, slug}
     authMode: 'login', // 'login' | 'register'
+    license: { tier: 'community', max_agents: 5, is_pro: false, features: [], expires_at: '' },
+    effectiveMaxAgents: 5,
 };
 
 const ROLE_INFO = {
@@ -6485,6 +6507,16 @@ async function apiFetch(url, options = {}) {
         if (resp.status === 401) {
             showAuthLogin();
             throw new Error('Unauthorized');
+        }
+        if (resp.status === 403) {
+            try {
+                const clone = resp.clone();
+                const body = await clone.json();
+                if (body.feature && body.current_plan) {
+                    const feat = body.feature.replace(/_/g, ' ');
+                    showToast(`${feat} requires a Pro license. Upgrade at Settings > License`, 'warning');
+                }
+            } catch (_) { /* not a license gate */ }
         }
         return resp;
     } catch (e) {
@@ -7455,6 +7487,15 @@ class AshlrSocket {
                     }
                     break;
                 }
+                case 'license_update': {
+                    if (data.license) {
+                        state.license = data.license;
+                        state.effectiveMaxAgents = data.effective_max_agents || data.license.max_agents || 5;
+                        updateLicenseBadge();
+                        updateLicenseSettingsUI();
+                    }
+                    break;
+                }
             }
         } catch (e) {
             console.error('WebSocket message handler error:', e, data);
@@ -7477,6 +7518,112 @@ function updateIntelligenceStatus() {
     } else {
         el.style.display = '';
         dot.className = 'intelligence-dot disabled';
+    }
+}
+
+// ── License UI ──
+
+function updateLicenseBadge() {
+    const badge = document.getElementById('planBadge');
+    if (!badge) return;
+    const lic = state.license || {};
+    badge.style.display = '';
+    if (lic.is_pro) {
+        badge.textContent = 'Pro';
+        badge.style.background = 'linear-gradient(135deg, #8B5CF6, #6D28D9)';
+        badge.style.color = '#fff';
+        badge.style.border = 'none';
+    } else {
+        badge.textContent = 'Community';
+        badge.style.background = 'var(--bg-tertiary)';
+        badge.style.color = 'var(--text-tertiary)';
+        badge.style.border = '1px solid var(--border-subtle)';
+    }
+}
+
+function updateLicenseSettingsUI() {
+    const lic = state.license || {};
+    const badge = document.getElementById('settingsLicenseBadge');
+    const details = document.getElementById('settingsLicenseDetails');
+    const deactivateBtn = document.getElementById('btnDeactivateLicense');
+    const getProLink = document.getElementById('linkGetPro');
+    const maxNote = document.getElementById('setMaxAgentsNote');
+    const keyInput = document.getElementById('setLicenseKey');
+    const errEl = document.getElementById('licenseError');
+
+    if (badge) {
+        if (lic.is_pro) {
+            badge.textContent = 'Pro';
+            badge.style.background = 'linear-gradient(135deg, #8B5CF6, #6D28D9)';
+            badge.style.color = '#fff';
+        } else {
+            badge.textContent = 'Community';
+            badge.style.background = 'var(--bg-tertiary)';
+            badge.style.color = 'var(--text-secondary)';
+        }
+    }
+    if (details) {
+        const parts = [];
+        parts.push(`Agent limit: ${state.effectiveMaxAgents}`);
+        if (lic.is_pro && lic.max_seats) parts.push(`Seats: ${lic.max_seats}`);
+        if (lic.is_pro && lic.expires_at) {
+            const exp = new Date(lic.expires_at);
+            const days = Math.ceil((exp - Date.now()) / 86400000);
+            parts.push(days > 0 ? `Expires in ${days} days` : 'Expired');
+        }
+        details.textContent = parts.join('  |  ');
+    }
+    if (deactivateBtn) deactivateBtn.style.display = lic.is_pro ? '' : 'none';
+    if (getProLink) getProLink.style.display = lic.is_pro ? 'none' : '';
+    if (maxNote) maxNote.textContent = lic.is_pro ? '' : `(Community limit: ${COMMUNITY_MAX_AGENTS})`;
+    if (keyInput) keyInput.value = '';
+    if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+}
+
+const COMMUNITY_MAX_AGENTS = 5;
+
+async function activateLicense() {
+    const keyInput = document.getElementById('setLicenseKey');
+    const errEl = document.getElementById('licenseError');
+    const key = (keyInput?.value || '').trim();
+    if (!key) { errEl.textContent = 'Please paste a license key'; errEl.style.display = ''; return; }
+    errEl.style.display = 'none';
+    try {
+        const resp = await apiFetch('/api/license/activate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ license_key: key }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            errEl.textContent = data.error || 'Activation failed';
+            errEl.style.display = '';
+            return;
+        }
+        state.license = data.license;
+        state.effectiveMaxAgents = data.effective_max_agents || data.license.max_agents;
+        updateLicenseBadge();
+        updateLicenseSettingsUI();
+        showToast('License activated! Welcome to Pro.', 'success');
+    } catch (e) {
+        errEl.textContent = e.message || 'Network error';
+        errEl.style.display = '';
+    }
+}
+
+async function deactivateLicense() {
+    if (!confirm('Deactivate your Pro license? You will revert to Community (5 agents max).')) return;
+    try {
+        const resp = await apiFetch('/api/license/deactivate', { method: 'DELETE' });
+        const data = await resp.json();
+        if (!resp.ok) { showToast(data.error || 'Deactivation failed', 'error'); return; }
+        state.license = data.license;
+        state.effectiveMaxAgents = data.effective_max_agents || COMMUNITY_MAX_AGENTS;
+        updateLicenseBadge();
+        updateLicenseSettingsUI();
+        showToast('License deactivated. Reverted to Community plan.', 'info');
+    } catch (e) {
+        showToast(e.message || 'Network error', 'error');
     }
 }
 
@@ -7582,6 +7729,10 @@ async function handleSync(data) {
     state.backends = data.backends || {};
     if (data.extensions) state.extensions = data.extensions;
     state.taskQueue = data.queue || [];
+    if (data.license) {
+        state.license = data.license;
+        state.effectiveMaxAgents = data.effective_max_agents || data.license.max_agents || 5;
+    }
     // Clean stale pinned agents that no longer exist
     let pinsChanged = false;
     state.pinnedAgents.forEach(id => {
@@ -7605,6 +7756,7 @@ async function handleSync(data) {
     updateTabTitle();
     updateAttentionBadge();
     updateIntelligenceStatus();
+    updateLicenseBadge();
     // Fetch active workflow runs
     try {
         const res = await apiFetch('/api/workflow-runs');
@@ -9490,6 +9642,10 @@ function applySuggestion(role, task) {
 async function spawnFleet(presetKey) {
     const preset = FLEET_PRESETS[presetKey];
     if (!preset) return;
+    if (!state.license?.is_pro) {
+        showToast('Fleet presets require a Pro license. Upgrade at Settings > License', 'warning');
+        return;
+    }
     const workingDir = document.getElementById('spawnDir')?.value || state.config?.default_working_dir || '';
     const projectId = document.getElementById('spawnProject')?.value || '';
     const ok = await confirmAction(`Spawn ${preset.label}`, `Spawn ${preset.agents.length} agents: ${preset.description}?`, 'Spawn Fleet', { iconKey: 'rocket', danger: false });
@@ -13984,6 +14140,18 @@ function openSettings() {
         row.className = 'settings-row';
         row.innerHTML = `<span class="settings-label"><span class="backend-dot ${avail ? 'available' : 'unavailable'}"></span>${key}</span><span style="font-size:11px;color:var(--text-tertiary)">${avail ? 'Installed' : 'Not found'}</span>`;
         backendsList.appendChild(row);
+    }
+
+    // License settings
+    updateLicenseSettingsUI();
+
+    // Clamp max_agents input to license limit
+    const maxInput = document.getElementById('setMaxAgents');
+    if (maxInput && !state.license?.is_pro) {
+        maxInput.max = COMMUNITY_MAX_AGENTS;
+        if (parseInt(maxInput.value) > COMMUNITY_MAX_AGENTS) maxInput.value = COMMUNITY_MAX_AGENTS;
+    } else if (maxInput) {
+        maxInput.max = state.license?.max_agents || 100;
     }
 
     // Fetch server health stats

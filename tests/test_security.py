@@ -92,6 +92,12 @@ def _make_test_app():
     app["db_ready"] = True
     app["bg_task_health"] = {}
     app["bg_tasks"] = []
+    # Set Pro license so existing tests bypass feature gates
+    from datetime import datetime, timedelta, timezone
+    from ashlr_server import License, PRO_FEATURES
+    _pro_lic = License(tier="pro", max_agents=100, expires_at=(datetime.now(timezone.utc) + timedelta(days=365)).isoformat(), features=PRO_FEATURES)
+    app["license"] = _pro_lic
+    app["agent_manager"].license = _pro_lic
     return app
 
 

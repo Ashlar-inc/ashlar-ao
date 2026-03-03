@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.0 — 2026-03-03
+
+- Open-core monetization: Community (free, 5 agents) and Pro (paid, 100 agents) tiers
+- Ed25519-signed JWT licensing — fully offline, no phone-home
+- License API: `GET/POST/DELETE /api/license/{status,activate,deactivate}`
+- Feature gating: intelligence, workflows, fleet presets, multi-user behind Pro
+- Dashboard: plan badge in header, license settings section, upgrade prompts on 403
+- Admin-only config updates when auth is enabled, max_agents clamped to license ceiling
+- `generate_license.py` standalone tool for keypair generation and license signing
+- Added PyJWT[crypto] runtime dependency, pytest-aiohttp dev dependency
+- ~40 new licensing tests in `tests/test_licensing.py`
+
 ## 1.3.1 — 2026-03-03
 
 - Docker: run as non-root user, pin Claude CLI to major version

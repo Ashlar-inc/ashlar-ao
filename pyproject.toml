@@ -30,10 +30,11 @@ dependencies = [
     "pyyaml>=6.0",
     "aiosqlite>=0.19.0",
     "bcrypt>=4.0.0",
+    "PyJWT[crypto]>=2.8.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "pytest-asyncio>=0.23.0", "ruff>=0.4.0", "pytest-cov>=4.0"]
+dev = ["pytest>=7.0", "pytest-asyncio>=0.23.0", "pytest-aiohttp>=1.0.0", "ruff>=0.4.0", "pytest-cov>=4.0"]
 
 [project.scripts]
 ashlr = "ashlr_ao.server:main"
