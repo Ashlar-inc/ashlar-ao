@@ -17,6 +17,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
 
 with patch("psutil.cpu_percent", return_value=0.0):
     import ashlr_server
@@ -357,83 +358,13 @@ class TestDatabaseLicenseMethods:
 # HTTP Endpoint Tests
 # ─────────────────────────────────────────────
 
-def _make_mock_db():
-    """Create a mock Database for HTTP tests."""
-    db = MagicMock()
-    db.get_projects = AsyncMock(return_value=[])
-    db.get_workflows = AsyncMock(return_value=[])
-    db.get_presets = AsyncMock(return_value=[])
-    db.save_agent = AsyncMock()
-    db.save_event = AsyncMock()
-    db.log_event = AsyncMock()
-    db.close = AsyncMock()
-    db.init = AsyncMock()
-    db.get_history = AsyncMock(return_value=[])
-    db.get_events = AsyncMock(return_value=[])
-    db.get_events_count = AsyncMock(return_value=0)
-    db.get_agent_history_count = AsyncMock(return_value=0)
-    db.get_historical_analytics = AsyncMock(return_value={})
-    db.get_scratchpad = AsyncMock(return_value=[])
-    db.db_path = Path("/tmp/test-ashlr.db")
-    db.find_similar_tasks = AsyncMock(return_value=[])
-    db.get_resumable_sessions = AsyncMock(return_value=[])
-    db.archive_output = AsyncMock()
-    db.release_file_locks = AsyncMock()
-    db.get_archived_output = AsyncMock(return_value=([], 0))
-    db.get_bookmarks = AsyncMock(return_value=[])
-    db.add_bookmark = AsyncMock(return_value=1)
-    db.save_project = AsyncMock()
-    db.delete_project = AsyncMock(return_value=False)
-    db.save_workflow = AsyncMock()
-    db.save_preset = AsyncMock()
-    db.delete_preset = AsyncMock(return_value=False)
-    db.delete_workflow = AsyncMock(return_value=False)
-    db.save_message = AsyncMock()
-    db.get_messages = AsyncMock(return_value=[])
-    db.get_messages_count = AsyncMock(return_value=0)
-    db.upsert_scratchpad = AsyncMock()
-    db.delete_scratchpad = AsyncMock(return_value=False)
-    db.save_bookmark = AsyncMock(return_value=1)
-    db.get_history_item = AsyncMock(return_value=None)
-    db.get_workflow = AsyncMock(return_value=None)
-    db.get_agent_history_item = AsyncMock(return_value=None)
-    db.get_project = AsyncMock(return_value=None)
-    db.update_project = AsyncMock(return_value=None)
-    db.get_preset = AsyncMock(return_value=None)
-    db.get_agent_history = AsyncMock(return_value=[])
-    db.update_org_license = AsyncMock()
-    db.get_org_license_key = AsyncMock(return_value="")
-    db._db = None
-    return db
-
-
-def _make_test_app(license=None):
-    """Create a test app with optional license override."""
-    config = ashlr_server.Config()
-    config.demo_mode = True
-    config.spawn_pressure_block = False
-
-    app = ashlr_server.create_app(config)
-    mock_db = _make_mock_db()
-    app["db"] = mock_db
-    app["ws_hub"].db = mock_db
-    app["rate_limiter"].check = lambda *a, **kw: (True, 0.0)
-    app.on_startup.clear()
-    app.on_cleanup.clear()
-    app["db_available"] = True
-    app["db_ready"] = True
-    app["bg_task_health"] = {}
-    app["bg_tasks"] = []
-    if license:
-        app["license"] = license
-        app["agent_manager"].license = license
-    return app
+from conftest import make_mock_db as _make_mock_db, make_test_app as _make_test_app
 
 
 class TestLicenseStatusEndpoint:
     @pytest.mark.asyncio
     async def test_license_status_community(self, aiohttp_client):
-        app = _make_test_app()
+        app = _make_test_app(license=COMMUNITY_LICENSE)
         client = await aiohttp_client(app)
         resp = await client.get("/api/license/status")
         assert resp.status == 200
@@ -461,7 +392,7 @@ class TestActivateLicenseEndpoint:
     @pytest.mark.asyncio
     @patch.object(_licensing_mod, "LICENSE_PUBLIC_KEY_PEM", TEST_PUB_PEM)
     async def test_activate_valid_key(self, aiohttp_client, tmp_path):
-        app = _make_test_app()
+        app = _make_test_app(license=COMMUNITY_LICENSE)
         # Patch ASHLR_DIR to avoid writing to real config
         with patch.object(_server_mod, "ASHLR_DIR", tmp_path):
             (tmp_path / "ashlr.yaml").write_text("{}")
@@ -479,14 +410,14 @@ class TestActivateLicenseEndpoint:
 
     @pytest.mark.asyncio
     async def test_activate_empty_key(self, aiohttp_client):
-        app = _make_test_app()
+        app = _make_test_app(license=COMMUNITY_LICENSE)
         client = await aiohttp_client(app)
         resp = await client.post("/api/license/activate", json={"license_key": ""})
         assert resp.status == 400
 
     @pytest.mark.asyncio
     async def test_activate_invalid_key(self, aiohttp_client):
-        app = _make_test_app()
+        app = _make_test_app(license=COMMUNITY_LICENSE)
         client = await aiohttp_client(app)
         resp = await client.post("/api/license/activate", json={"license_key": "garbage"})
         assert resp.status == 400
@@ -496,7 +427,7 @@ class TestActivateLicenseEndpoint:
     @pytest.mark.asyncio
     @patch.object(_licensing_mod, "LICENSE_PUBLIC_KEY_PEM", TEST_PUB_PEM)
     async def test_activate_expired_key(self, aiohttp_client):
-        app = _make_test_app()
+        app = _make_test_app(license=COMMUNITY_LICENSE)
         client = await aiohttp_client(app)
         payload = _make_expired_payload()
         token = _sign_license(payload)
@@ -527,7 +458,7 @@ class TestDeactivateLicenseEndpoint:
 class TestFeatureGatingEndpoints:
     @pytest.mark.asyncio
     async def test_intelligence_command_gated_on_community(self, aiohttp_client):
-        app = _make_test_app()
+        app = _make_test_app(license=COMMUNITY_LICENSE)
         client = await aiohttp_client(app)
         resp = await client.post("/api/intelligence/command",
                                  json={"transcript": "spawn 3 agents"})
@@ -537,14 +468,14 @@ class TestFeatureGatingEndpoints:
 
     @pytest.mark.asyncio
     async def test_intelligence_insights_gated_on_community(self, aiohttp_client):
-        app = _make_test_app()
+        app = _make_test_app(license=COMMUNITY_LICENSE)
         client = await aiohttp_client(app)
         resp = await client.get("/api/intelligence/insights")
         assert resp.status == 403
 
     @pytest.mark.asyncio
     async def test_create_workflow_gated_on_community(self, aiohttp_client):
-        app = _make_test_app()
+        app = _make_test_app(license=COMMUNITY_LICENSE)
         client = await aiohttp_client(app)
         resp = await client.post("/api/workflows",
                                  json={"name": "test", "agents": [{"role": "backend", "task": "x"}]})
@@ -554,7 +485,7 @@ class TestFeatureGatingEndpoints:
 
     @pytest.mark.asyncio
     async def test_batch_spawn_gated_on_community(self, aiohttp_client):
-        app = _make_test_app()
+        app = _make_test_app(license=COMMUNITY_LICENSE)
         client = await aiohttp_client(app)
         resp = await client.post("/api/agents/batch-spawn",
                                  json={"agents": [{"role": "backend", "task": "x"}]})
@@ -587,7 +518,7 @@ class TestAgentLimitEnforcement:
     @pytest.mark.asyncio
     async def test_community_spawn_limit(self, aiohttp_client):
         """Community plan should limit to 5 agents."""
-        app = _make_test_app()
+        app = _make_test_app(license=COMMUNITY_LICENSE)
         manager = app["agent_manager"]
         # Fill up to limit with mock agents
         from collections import deque
@@ -617,7 +548,7 @@ class TestAdminOnlyConfig:
     @pytest.mark.asyncio
     async def test_max_agents_clamped_to_license(self, aiohttp_client):
         """PUT /api/config should clamp max_agents to license ceiling."""
-        app = _make_test_app()  # Community = 5 max, no auth
+        app = _make_test_app(license=COMMUNITY_LICENSE)  # Community = 5 max, no auth
         client = await aiohttp_client(app)
         resp = await client.put("/api/config", json={"max_agents": 50})
         # It should accept but clamp — check the config

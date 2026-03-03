@@ -4,23 +4,32 @@
 
 Ashlr is a **local-first agent orchestration platform**. One developer, many AI coding agents (Claude Code, Codex, etc.), multiple repos, single command center.
 
-**Current state**: Fully functional. Server (~10.2K lines) + dashboard (~19.5K lines) + 1240 tests. All 5 development phases + multi-user auth + deployment infra + production hardening + open-core licensing + v1.5 modularization complete. Installable via `pip install ashlr-ao`. Ready for multi-user deployment.
+**Current state**: Fully functional. 16 Python modules (~11.7K lines) + dashboard (~19.6K lines) + 1281 tests. All 5 development phases + multi-user auth + deployment infra + production hardening + open-core licensing + v1.5 modularization complete. Installable via `pip install ashlr-ao`. Ready for multi-user deployment.
 
 ## Architecture
 
-Modular Python package (`ashlr_ao`) with server core + extracted domain modules. Dashboard is a single HTML file with inline CSS/JS.
+Modular Python package (`ashlr_ao`) with 16 focused modules. Dashboard is a single HTML file with inline CSS/JS.
 
-### Core files
-- `ashlr_ao/server.py` (~10.2K lines) — aiohttp server. AgentManager, Database, WebSocketHub, middleware, route handlers, background tasks.
-- `ashlr_ao/dashboard.html` (~19.5K lines) — Single HTML file served at `/`. All CSS + JS inline. No build step.
+### Core modules
+- `ashlr_ao/server.py` (~3.9K lines) — aiohttp server. REST API route handlers, `create_app()`, `main()`. Re-exports all names from submodules for backward compat.
+- `ashlr_ao/manager.py` (~1.7K lines) — AgentManager class. Agent lifecycle, tmux orchestration, workflows, file conflict detection.
+- `ashlr_ao/database.py` (~1.2K lines) — Database class. Async SQLite persistence for agents, projects, workflows, users, orgs.
+- `ashlr_ao/background.py` (~1.1K lines) — 6 supervised background task loops + startup/shutdown.
+- `ashlr_ao/intelligence.py` (~640 lines) — OutputIntelligenceParser, IntelligenceClient (xAI Grok), health scoring.
+- `ashlr_ao/models.py` (~660 lines) — All dataclasses (Agent, User, Organization, WorkflowRun, etc.).
+- `ashlr_ao/websocket.py` (~400 lines) — WebSocketHub, system metrics collection.
+- `ashlr_ao/auth.py` (~350 lines) — Auth middleware, session management, auth API handlers.
+- `ashlr_ao/status.py` (~370 lines) — Agent status detection, summary extraction, follow-up suggestions.
+- `ashlr_ao/config.py` (~340 lines) — Config dataclass, DEFAULT_CONFIG, YAML load/save, validation.
+- `ashlr_ao/dashboard.html` (~19.6K lines) — Single HTML file served at `/`. All CSS + JS inline. No build step.
 
-### Domain modules (extracted from server.py, re-exported for backward compat)
-- `ashlr_ao/constants.py` — Logging, ANSI patterns, secret detection, banner, dependency checks.
-- `ashlr_ao/config.py` — Config dataclass, DEFAULT_CONFIG, YAML load/save, validation.
-- `ashlr_ao/licensing.py` — License dataclass, Ed25519 JWT validation, feature gating.
-- `ashlr_ao/backends.py` — BackendConfig dataclass, KNOWN_BACKENDS (claude-code, codex, aider, goose).
-- `ashlr_ao/roles.py` — Role dataclass, BUILTIN_ROLES (9 roles).
-- `ashlr_ao/extensions.py` — ExtensionScanner, SkillInfo, MCPServerInfo, PluginInfo.
+### Leaf modules
+- `ashlr_ao/middleware.py` (~230 lines) — RateLimiter, security headers, CORS, compression, request logging.
+- `ashlr_ao/extensions.py` (~250 lines) — ExtensionScanner, SkillInfo, MCPServerInfo, PluginInfo.
+- `ashlr_ao/backends.py` (~160 lines) — BackendConfig dataclass, KNOWN_BACKENDS (claude-code, codex, aider, goose).
+- `ashlr_ao/constants.py` (~160 lines) — Logging, ANSI patterns, secret detection, banner, dependency checks.
+- `ashlr_ao/licensing.py` (~145 lines) — License dataclass, Ed25519 JWT validation, feature gating, enforcement helpers.
+- `ashlr_ao/roles.py` (~80 lines) — Role dataclass, BUILTIN_ROLES (9 roles).
 
 ### Package files
 - `ashlr_ao/logo.png` — Logo served at `/logo.png`.
@@ -329,7 +338,7 @@ display:
 - NEVER crash — try/except with meaningful error handling
 - All dict iterations use `list()` snapshots (prevent RuntimeError during async)
 - Security: working_dir restricted to home/tmp, message size limits, rate limiting, CSP headers, request size limits, ownership enforcement on all mutation endpoints
-- 1252 pytest tests across 17 test files
+- 1281 pytest tests across 17 test files
 
 ## Multi-User Auth
 

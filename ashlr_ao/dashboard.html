@@ -6423,6 +6423,7 @@ const state = {
     interactionAgentId: null,
     view: 'grid', // grid | deep | spawn | palette | cheatsheet | history
     connected: false,
+    synced: false,
     selectedRole: 'general',
     paletteIndex: 0,
     cpuHistory: [],
@@ -7341,6 +7342,7 @@ class AshlrSocket {
 
         this.ws.onopen = () => {
             state.connected = true;
+            state.synced = false;
             this.reconnectDelay = 1000;
             this.reconnectAttempts = 0;
             const banner = document.getElementById('connectionBanner');
@@ -7361,6 +7363,7 @@ class AshlrSocket {
 
         this.ws.onclose = () => {
             state.connected = false;
+            state.synced = false;
             this.reconnectAttempts++;
             const banner = document.getElementById('connectionBanner');
             if (banner) {
@@ -7715,6 +7718,7 @@ async function acknowledgeInsight(insightId) {
 // ── Message Handlers ──
 
 async function handleSync(data) {
+    state.synced = true;
     const prevAgents = new Map(state.agents);
     state.agents.clear();
     (data.agents || []).forEach(a => {
@@ -8282,6 +8286,10 @@ function renderAgentGrid() {
             emptyState.innerHTML = '<div style="text-align:center;padding:80px 20px">' +
                 '<div style="font-size:32px;animation:skeleton-pulse 1.5s infinite">▣</div>' +
                 '<p style="color:var(--text-tertiary);margin-top:16px;font-size:14px">Connecting to Ashlr...</p></div>';
+        } else if (!state.synced) {
+            emptyState.innerHTML = '<div style="text-align:center;padding:80px 20px">' +
+                '<div style="font-size:32px;animation:skeleton-pulse 1.5s infinite">▣</div>' +
+                '<p style="color:var(--text-tertiary);margin-top:16px;font-size:14px">Syncing fleet state...</p></div>';
         } else if (!emptyState.querySelector('.empty-illustration')) {
             emptyState.innerHTML = EMPTY_STATE_HTML;
         }
@@ -10214,21 +10222,27 @@ function updateDeepViewHeader(agent) {
         testEl.title = '';
     }
 
-    // Character and word count
+    // Character and word count (cached by buffer length)
     const charEl = document.getElementById('deepCharCount');
     const wordEl = document.getElementById('deepWordCount');
     if (charEl && wordEl) {
         const lines = agent._outputBuffer || agent.output_lines || [];
-        const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
-        let totalChars = 0, totalWords = 0;
-        for (const l of lines) {
-            const clean = l.replace(ansiRe, '');
-            totalChars += clean.length;
-            const words = clean.trim().split(/\s+/).filter(w => w);
-            totalWords += words.length;
+        if (agent._charWordLen !== lines.length) {
+            const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+            let totalChars = 0, totalWords = 0;
+            for (const l of lines) {
+                const clean = l.replace(ansiRe, '');
+                totalChars += clean.length;
+                const words = clean.trim().split(/\s+/).filter(w => w);
+                totalWords += words.length;
+            }
+            agent._charWordLen = lines.length;
+            agent._cachedChars = totalChars;
+            agent._cachedWords = totalWords;
         }
-        charEl.textContent = totalChars > 1000000 ? `${(totalChars / 1000000).toFixed(1)}M` : totalChars > 1000 ? `${(totalChars / 1000).toFixed(1)}K` : `${totalChars}`;
-        wordEl.textContent = totalWords > 1000000 ? `${(totalWords / 1000000).toFixed(1)}M` : totalWords > 1000 ? `${(totalWords / 1000).toFixed(1)}K` : `${totalWords}`;
+        const tc = agent._cachedChars || 0, tw = agent._cachedWords || 0;
+        charEl.textContent = tc > 1000000 ? `${(tc / 1000000).toFixed(1)}M` : tc > 1000 ? `${(tc / 1000).toFixed(1)}K` : `${tc}`;
+        wordEl.textContent = tw > 1000000 ? `${(tw / 1000000).toFixed(1)}M` : tw > 1000 ? `${(tw / 1000).toFixed(1)}K` : `${tw}`;
     }
 
     // Output rate sparkline
