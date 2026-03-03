@@ -1,6 +1,9 @@
-"""Tests for _supervised_task, output_capture_loop, and start_background_tasks."""
+"""Tests for background task loops: _supervised_task, output_capture_loop,
+health_check_loop, metrics_loop, memory_watchdog_loop, archive_cleanup_loop,
+and start/cleanup helpers."""
 
 import asyncio
+import os
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -16,6 +19,10 @@ with patch("psutil.cpu_percent", return_value=0.0):
     from ashlr_server import (
         _supervised_task,
         output_capture_loop,
+        health_check_loop,
+        metrics_loop,
+        memory_watchdog_loop,
+        archive_cleanup_loop,
         start_background_tasks,
         cleanup_background_tasks,
         Config,
@@ -856,3 +863,635 @@ class TestCleanupBackgroundTasks:
 
         db.save_agent.assert_awaited_once_with(agent)
         db.close.assert_awaited_once()
+
+
+# ═══════════════════════════════════════════════
+# health_check_loop tests
+# ═══════════════════════════════════════════════
+
+
+class TestHealthCheckLoop:
+    """Tests for health_check_loop: auto-restart, pathological detection,
+    tmux liveness, idle reaping, context exhaustion."""
+
+    def _make_health_app(self):
+        """Build app for health_check_loop with short sleep interval."""
+        app = _make_mock_app()
+        hub = app["ws_hub"]
+        hub.broadcast = AsyncMock()
+        hub.broadcast_event = AsyncMock()
+        app["config"].pathological_error_window_sec = 30
+        app["config"].max_pathological_restarts = 1
+        app["config"].idle_agent_ttl = 0  # disabled by default
+        app["config"].cost_budget_usd = 0  # disabled
+        app["config"].cost_budget_auto_pause = False
+        app["config"].stall_timeout_minutes = 60
+        app["config"].hung_timeout_minutes = 60
+        app["config"].context_auto_pause_threshold = 0.97
+        manager = app["agent_manager"]
+        manager._tmux_session_exists = AsyncMock(return_value=True)
+        manager.restart = AsyncMock(return_value=True)
+        manager.kill = AsyncMock()
+        manager.pause = AsyncMock()
+        manager.resume = AsyncMock()
+        manager.task_queue = []
+        manager.check_system_pressure = MagicMock(return_value={})
+        manager.check_stage_timeouts = MagicMock(return_value=[])
+        return app
+
+    async def test_auto_restart_error_agent(self):
+        """Agent in error state for >10s with restarts remaining gets restarted."""
+        app = self._make_health_app()
+        manager = app["agent_manager"]
+        hub = app["ws_hub"]
+
+        agent = _make_mock_agent(
+            status="error", name="error-agent",
+            restart_count=0, max_restarts=3,
+            _error_entered_at=time.monotonic() - 15,  # >10s ago
+            last_restart_time=0, _pathological=False,
+            workflow_run_id=None, context_pct=0.0,
+            _context_exhaustion_warned=False,
+            _context_auto_paused=False, pid=0,
+            tmux_session="ashlr-test",
+        )
+
+        # After restart, return the agent with updated state
+        restarted = _make_mock_agent(
+            status="working", name="error-agent",
+            restart_count=1, max_restarts=3,
+        )
+        manager.agents = {"a1": agent}
+
+        def mock_restart(aid):
+            manager.agents["a1"] = restarted
+            return True
+
+        manager.restart = AsyncMock(side_effect=mock_restart)
+
+        task = asyncio.create_task(health_check_loop(app))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        manager.restart.assert_awaited_once_with("a1")
+        # Should broadcast agent_restarted event
+        restart_events = [
+            c for c in hub.broadcast_event.call_args_list
+            if c[0][0] == "agent_restarted"
+        ]
+        assert len(restart_events) > 0
+
+    async def test_pathological_detection(self):
+        """Agent that errors quickly after restart gets flagged pathological."""
+        app = self._make_health_app()
+        manager = app["agent_manager"]
+        hub = app["ws_hub"]
+
+        now = time.monotonic()
+        agent = _make_mock_agent(
+            status="error", name="pathological-agent",
+            restart_count=1, max_restarts=5,
+            _error_entered_at=now - 15,
+            last_restart_time=now - 20,  # errored 5s after restart (< 30s window)
+            _pathological=False,
+            workflow_run_id=None, context_pct=0.0,
+            _context_exhaustion_warned=False,
+            _context_auto_paused=False, pid=0,
+            tmux_session="ashlr-test",
+        )
+        manager.agents = {"p1": agent}
+
+        task = asyncio.create_task(health_check_loop(app))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        assert agent._pathological is True
+        assert agent.max_restarts == 1  # clamped to max_pathological_restarts
+        patho_events = [
+            c for c in hub.broadcast_event.call_args_list
+            if c[0][0] == "agent_pathological"
+        ]
+        assert len(patho_events) > 0
+
+    async def test_max_restarts_exhausted_notification(self):
+        """Agent that exhausted restarts sends notification once."""
+        app = self._make_health_app()
+        manager = app["agent_manager"]
+        hub = app["ws_hub"]
+
+        agent = _make_mock_agent(
+            status="error", name="exhausted-agent",
+            restart_count=3, max_restarts=3,
+            _error_entered_at=time.monotonic() - 15,
+            last_restart_time=0, _pathological=False,
+            workflow_run_id=None, context_pct=0.0,
+            _context_exhaustion_warned=False,
+            _context_auto_paused=False, pid=0,
+            tmux_session="ashlr-test",
+        )
+        manager.agents = {"e1": agent}
+
+        task = asyncio.create_task(health_check_loop(app))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        # Should broadcast exhausted event
+        exhausted_events = [
+            c for c in hub.broadcast_event.call_args_list
+            if c[0][0] == "agent_restart_exhausted"
+        ]
+        assert len(exhausted_events) > 0
+        # _error_entered_at set to 0 so notification doesn't repeat
+        assert agent._error_entered_at == 0
+
+    async def test_tmux_death_detection(self):
+        """Agent whose tmux session died gets marked as error."""
+        app = self._make_health_app()
+        manager = app["agent_manager"]
+        hub = app["ws_hub"]
+
+        agent = _make_mock_agent(
+            status="working", name="dead-tmux",
+            restart_count=0, max_restarts=3,
+            _error_entered_at=0, last_restart_time=0,
+            _pathological=False,
+            workflow_run_id=None, context_pct=0.0,
+            _context_exhaustion_warned=False,
+            _context_auto_paused=False, pid=0,
+            tmux_session="ashlr-dead",
+        )
+        manager.agents = {"d1": agent}
+        manager._tmux_session_exists = AsyncMock(return_value=False)
+
+        task = asyncio.create_task(health_check_loop(app))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        agent.set_status.assert_called_with("error")
+        assert "tmux session terminated" in agent.error_message
+
+    async def test_idle_reaping(self):
+        """Idle agent past TTL gets killed and archived."""
+        app = self._make_health_app()
+        app["config"].idle_agent_ttl = 300  # 5 minutes
+        manager = app["agent_manager"]
+        hub = app["ws_hub"]
+
+        agent = _make_mock_agent(
+            status="idle", name="idle-agent",
+            restart_count=0, max_restarts=3,
+            _error_entered_at=0, last_restart_time=0,
+            _pathological=False,
+            last_output_time=time.monotonic() - 400,  # idle > 300s
+            workflow_run_id=None, context_pct=0.0,
+            _context_exhaustion_warned=False,
+            _context_auto_paused=False, pid=0,
+            tmux_session="ashlr-idle",
+        )
+        manager.agents = {"i1": agent}
+
+        task = asyncio.create_task(health_check_loop(app))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        manager.kill.assert_awaited_once_with("i1")
+        reap_events = [
+            c for c in hub.broadcast_event.call_args_list
+            if c[0][0] == "agent_reaped"
+        ]
+        assert len(reap_events) > 0
+
+    async def test_context_exhaustion_warning(self):
+        """Agent at >= 92% context triggers snapshot and warning."""
+        app = self._make_health_app()
+        manager = app["agent_manager"]
+        hub = app["ws_hub"]
+
+        agent = _make_mock_agent(
+            status="working", name="ctx-warn",
+            restart_count=0, max_restarts=3,
+            _error_entered_at=0, last_restart_time=0,
+            _pathological=False,
+            workflow_run_id=None, context_pct=0.95,
+            _context_exhaustion_warned=False,
+            _context_auto_paused=False, pid=0,
+            tmux_session="ashlr-ctx",
+        )
+        manager.agents = {"c1": agent}
+
+        task = asyncio.create_task(health_check_loop(app))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        agent.create_snapshot.assert_called_with(trigger="context_warning")
+        assert agent._context_exhaustion_warned is True
+        ctx_events = [
+            c for c in hub.broadcast_event.call_args_list
+            if c[0][0] == "agent_context_warning"
+        ]
+        assert len(ctx_events) > 0
+
+    async def test_no_agents_loop_continues(self):
+        """Health check loop continues with zero agents."""
+        app = self._make_health_app()
+        app["agent_manager"].agents = {}
+
+        task = asyncio.create_task(health_check_loop(app))
+        await asyncio.sleep(0.1)
+        assert not task.done()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    async def test_fleet_budget_auto_pause(self):
+        """Working agents get paused when fleet cost exceeds budget."""
+        app = self._make_health_app()
+        app["config"].cost_budget_usd = 10.0
+        app["config"].cost_budget_auto_pause = True
+        manager = app["agent_manager"]
+        hub = app["ws_hub"]
+
+        agent = _make_mock_agent(
+            status="working", name="costly",
+            restart_count=0, max_restarts=3,
+            _error_entered_at=0, last_restart_time=0,
+            _pathological=False,
+            estimated_cost_usd=15.0,  # over budget
+            workflow_run_id=None, context_pct=0.0,
+            _context_exhaustion_warned=False,
+            _context_auto_paused=False, pid=0,
+            tmux_session="ashlr-cost",
+        )
+        agent.id = "c1"
+        manager.agents = {"c1": agent}
+
+        task = asyncio.create_task(health_check_loop(app))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        manager.pause.assert_awaited()
+        budget_events = [
+            c for c in hub.broadcast_event.call_args_list
+            if c[0][0] == "fleet_budget_exceeded"
+        ]
+        assert len(budget_events) > 0
+
+
+# ═══════════════════════════════════════════════
+# metrics_loop tests
+# ═══════════════════════════════════════════════
+
+
+class TestMetricsLoop:
+    """Tests for metrics_loop: system metric collection and broadcast."""
+
+    def _make_metrics_app(self):
+        """Build app for metrics_loop testing."""
+        app = _make_mock_app()
+        hub = app["ws_hub"]
+        hub.broadcast = AsyncMock()
+        manager = app["agent_manager"]
+        manager.get_agent_memory = AsyncMock(return_value=128.5)
+        manager.get_agent_cpu = AsyncMock(return_value=12.3)
+        return app
+
+    async def test_collects_and_broadcasts_metrics(self):
+        """metrics_loop calls collect_system_metrics and broadcasts result."""
+        app = self._make_metrics_app()
+        hub = app["ws_hub"]
+        manager = app["agent_manager"]
+        manager.agents = {}
+
+        task = asyncio.create_task(metrics_loop(app))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        # Should have broadcast at least once
+        assert hub.broadcast.await_count > 0
+        msg = hub.broadcast.call_args[0][0]
+        assert msg["type"] == "metrics"
+
+    async def test_updates_per_agent_memory_and_cpu(self):
+        """metrics_loop updates memory_mb and cpu_pct for each agent."""
+        app = self._make_metrics_app()
+        manager = app["agent_manager"]
+
+        agent = _make_mock_agent(name="metric-agent", memory_mb=0.0, cpu_pct=0.0)
+        manager.agents = {"m1": agent}
+
+        task = asyncio.create_task(metrics_loop(app))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        manager.get_agent_memory.assert_awaited_with("m1")
+        manager.get_agent_cpu.assert_awaited_with("m1")
+        assert agent.memory_mb == 128.5
+        assert agent.cpu_pct == 12.3
+
+    async def test_handles_per_agent_metric_failure(self):
+        """Failure to get metrics for one agent doesn't crash the loop."""
+        app = self._make_metrics_app()
+        manager = app["agent_manager"]
+        manager.get_agent_memory = AsyncMock(side_effect=Exception("proc gone"))
+
+        agent = _make_mock_agent(name="gone-agent")
+        manager.agents = {"g1": agent}
+
+        task = asyncio.create_task(metrics_loop(app))
+        await asyncio.sleep(0.1)
+        assert not task.done()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    async def test_loop_continues_on_broadcast_error(self):
+        """Broadcast failure doesn't crash the loop."""
+        app = self._make_metrics_app()
+        hub = app["ws_hub"]
+        hub.broadcast = AsyncMock(side_effect=Exception("ws disconnected"))
+        app["agent_manager"].agents = {}
+
+        task = asyncio.create_task(metrics_loop(app))
+        await asyncio.sleep(0.1)
+        assert not task.done()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+# ═══════════════════════════════════════════════
+# memory_watchdog_loop tests
+# ═══════════════════════════════════════════════
+
+
+class TestMemoryWatchdogLoop:
+    """Tests for memory_watchdog_loop: kill over-limit, pause at threshold, warn."""
+
+    def _make_watchdog_app(self):
+        """Build app for memory_watchdog_loop testing."""
+        app = _make_mock_app()
+        app["config"].memory_limit_mb = 2048
+        app["config"].agent_memory_pause_pct = 0.90
+        hub = app["ws_hub"]
+        hub.broadcast = AsyncMock()
+        hub.broadcast_event = AsyncMock()
+        manager = app["agent_manager"]
+        manager.kill = AsyncMock()
+        manager.pause = AsyncMock()
+        return app
+
+    async def test_kills_agent_over_memory_limit(self):
+        """Agent exceeding memory_limit_mb gets killed."""
+        app = self._make_watchdog_app()
+        manager = app["agent_manager"]
+        hub = app["ws_hub"]
+
+        agent = _make_mock_agent(
+            name="mem-hog", memory_mb=2200.0,
+            _memory_pause_warned=False,
+        )
+        manager.agents = {"m1": agent}
+
+        task = asyncio.create_task(memory_watchdog_loop(app))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        manager.kill.assert_awaited_once_with("m1")
+        kill_events = [
+            c for c in hub.broadcast_event.call_args_list
+            if c[0][0] == "agent_killed"
+        ]
+        assert len(kill_events) > 0
+
+    async def test_pauses_agent_at_pause_threshold(self):
+        """Agent at 90% of limit gets auto-paused."""
+        app = self._make_watchdog_app()
+        manager = app["agent_manager"]
+        hub = app["ws_hub"]
+        # 90% of 2048 = 1843.2
+        agent = _make_mock_agent(
+            name="mem-warn", memory_mb=1900.0, status="working",
+            _memory_pause_warned=False,
+        )
+        manager.agents = {"m2": agent}
+
+        task = asyncio.create_task(memory_watchdog_loop(app))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        manager.pause.assert_awaited_once_with("m2")
+        assert agent._memory_pause_warned is True
+        pause_events = [
+            c for c in hub.broadcast_event.call_args_list
+            if c[0][0] == "agent_memory_paused"
+        ]
+        assert len(pause_events) > 0
+
+    async def test_warns_at_75_percent(self, caplog):
+        """Agent at 75% of limit triggers a warning log."""
+        app = self._make_watchdog_app()
+        manager = app["agent_manager"]
+        # 75% of 2048 = 1536, need > 1536 but < pause threshold (1843.2)
+        agent = _make_mock_agent(
+            name="mem-mid", memory_mb=1600.0,
+            _memory_pause_warned=False,
+        )
+        manager.agents = {"m3": agent}
+
+        import logging
+        with caplog.at_level(logging.WARNING, logger="ashlr"):
+            task = asyncio.create_task(memory_watchdog_loop(app))
+            await asyncio.sleep(0.1)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        assert any("memory warning" in r.message.lower() for r in caplog.records)
+
+    async def test_under_threshold_no_action(self):
+        """Agent under 75% limit gets no warnings or kills."""
+        app = self._make_watchdog_app()
+        manager = app["agent_manager"]
+        hub = app["ws_hub"]
+
+        agent = _make_mock_agent(
+            name="mem-ok", memory_mb=500.0,
+            _memory_pause_warned=False,
+        )
+        manager.agents = {"m4": agent}
+
+        task = asyncio.create_task(memory_watchdog_loop(app))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        manager.kill.assert_not_awaited()
+        manager.pause.assert_not_awaited()
+
+    async def test_no_agents_loop_continues(self):
+        """Watchdog loop continues with zero agents."""
+        app = self._make_watchdog_app()
+        app["agent_manager"].agents = {}
+
+        task = asyncio.create_task(memory_watchdog_loop(app))
+        await asyncio.sleep(0.1)
+        assert not task.done()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+# ═══════════════════════════════════════════════
+# archive_cleanup_loop tests
+# ═══════════════════════════════════════════════
+
+
+class TestArchiveCleanupLoop:
+    """Tests for archive_cleanup_loop: hourly cleanup of old records."""
+
+    async def test_calls_cleanup_old_archives(self):
+        """archive_cleanup_loop calls db.cleanup_old_archives with 48hr retention."""
+        app = _make_mock_app()
+        app["db"].cleanup_old_archives = AsyncMock(return_value=5)
+
+        # Patch sleep to make it run instantly, then cancel after first iteration
+        call_count = 0
+
+        async def mock_sleep(duration):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise asyncio.CancelledError()
+
+        with patch("asyncio.sleep", side_effect=mock_sleep):
+            try:
+                await archive_cleanup_loop(app)
+            except asyncio.CancelledError:
+                pass
+
+        app["db"].cleanup_old_archives.assert_awaited_once_with(retention_hours=48)
+
+    async def test_skips_when_db_unavailable(self):
+        """archive_cleanup_loop skips cleanup when DB is unavailable."""
+        app = _make_mock_app()
+        app["db_available"] = False
+        app["db"].cleanup_old_archives = AsyncMock(return_value=0)
+
+        call_count = 0
+
+        async def mock_sleep(duration):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise asyncio.CancelledError()
+
+        with patch("asyncio.sleep", side_effect=mock_sleep):
+            try:
+                await archive_cleanup_loop(app)
+            except asyncio.CancelledError:
+                pass
+
+        app["db"].cleanup_old_archives.assert_not_awaited()
+
+    async def test_handles_db_error_gracefully(self):
+        """archive_cleanup_loop doesn't crash on DB errors."""
+        app = _make_mock_app()
+        app["db"].cleanup_old_archives = AsyncMock(side_effect=Exception("DB error"))
+
+        call_count = 0
+
+        async def mock_sleep(duration):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise asyncio.CancelledError()
+
+        with patch("asyncio.sleep", side_effect=mock_sleep):
+            try:
+                await archive_cleanup_loop(app)
+            except asyncio.CancelledError:
+                pass
+
+        # Should have been called (and failed gracefully)
+        app["db"].cleanup_old_archives.assert_awaited_once()
+
+    async def test_zero_deleted_no_log(self, caplog):
+        """When no records are deleted, no info log is emitted."""
+        app = _make_mock_app()
+        app["db"].cleanup_old_archives = AsyncMock(return_value=0)
+
+        call_count = 0
+
+        async def mock_sleep(duration):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise asyncio.CancelledError()
+
+        import logging
+        with caplog.at_level(logging.INFO, logger="ashlr"):
+            with patch("asyncio.sleep", side_effect=mock_sleep):
+                try:
+                    await archive_cleanup_loop(app)
+                except asyncio.CancelledError:
+                    pass
+
+        cleanup_logs = [r for r in caplog.records if "archive cleanup" in r.message.lower() and "removed" in r.message.lower()]
+        assert len(cleanup_logs) == 0

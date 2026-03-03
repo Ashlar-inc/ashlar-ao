@@ -796,3 +796,90 @@ class TestWorkflowEndpoints:
         resp = await client.post("/api/workflows", data="bad",
                                  headers={"Content-Type": "application/json"})
         assert resp.status == 400
+
+
+# ── Tests moved from test_lifecycle.py ──
+
+class TestListAgentsFilter:
+    """Tests for GET /api/agents with query filters (branch, project_id, status)."""
+
+    async def _spawn_agent(self, app, name="filter-test", **kwargs):
+        manager = app["agent_manager"]
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_proc = MagicMock()
+            mock_proc.pid = 99001
+            mock_proc.returncode = None
+            mock_exec.return_value = mock_proc
+            agent = await manager.spawn(
+                role=kwargs.get("role", "general"),
+                name=name,
+                task=kwargs.get("task", "test"),
+                working_dir=TEST_WORKING_DIR,
+            )
+            if "git_branch" in kwargs:
+                agent.git_branch = kwargs["git_branch"]
+            if "project_id" in kwargs:
+                agent.project_id = kwargs["project_id"]
+            if "status" in kwargs:
+                agent.set_status(kwargs["status"])
+            return agent
+
+    @pytest.mark.asyncio
+    async def test_list_agents_no_filter(self, aiohttp_client):
+        """GET /api/agents returns all agents."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        await self._spawn_agent(app, name="agent-a")
+        await self._spawn_agent(app, name="agent-b")
+        resp = await client.get("/api/agents")
+        assert resp.status == 200
+        data = await resp.json()
+        assert len(data) == 2
+
+    @pytest.mark.asyncio
+    async def test_list_agents_filter_by_branch(self, aiohttp_client):
+        """GET /api/agents?branch=main filters correctly."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        await self._spawn_agent(app, name="main-agent", git_branch="main")
+        await self._spawn_agent(app, name="feat-agent", git_branch="feature-x")
+        await self._spawn_agent(app, name="no-branch-agent")
+        resp = await client.get("/api/agents?branch=main")
+        assert resp.status == 200
+        data = await resp.json()
+        assert len(data) == 1
+        assert data[0]["name"] == "main-agent"
+        assert data[0]["git_branch"] == "main"
+
+    @pytest.mark.asyncio
+    async def test_list_agents_filter_by_project(self, aiohttp_client):
+        """GET /api/agents?project_id=xxx filters correctly."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        await self._spawn_agent(app, name="proj-a", project_id="proj-001")
+        await self._spawn_agent(app, name="proj-b", project_id="proj-002")
+        resp = await client.get("/api/agents?project_id=proj-001")
+        assert resp.status == 200
+        data = await resp.json()
+        assert len(data) == 1
+        assert data[0]["name"] == "proj-a"
+
+    @pytest.mark.asyncio
+    async def test_list_agents_filter_by_status(self, aiohttp_client):
+        """GET /api/agents?status=working filters correctly."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        await self._spawn_agent(app, name="working-agent", status="working")
+        await self._spawn_agent(app, name="paused-agent", status="paused")
+        resp = await client.get("/api/agents?status=working")
+        assert resp.status == 200
+        data = await resp.json()
+        assert len(data) >= 1
+        assert all(a["status"] == "working" for a in data)
+
+
+# ─────────────────────────────────────────────
+# Spawn Error Path Tests
+# ─────────────────────────────────────────────
+
+

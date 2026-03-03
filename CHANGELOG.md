@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.0 — 2026-03-03
+
+- **Server modularization**: Split 10.8K-line `server.py` into 16 focused modules (`models.py`, `config.py`, `database.py`, `manager.py`, `websocket.py`, `background.py`, `middleware.py`, `intelligence.py`, `auth.py`, `handlers/`, etc.) — `server.py` now ~3.9K lines as re-export hub
+- **Security fixes**: WebSocket ownership bypass, config import RCE allowlist, dashboard XSS via innerHTML, clone agent license bypass, bearer token timing attack (hmac.compare_digest), missing ownership check on inter-agent messages
+- **Bug fixes**: Agent `cpu_pct` serialization, `_safe_eval_condition` operator detection, path traversal boundary check, WebSocket sync_request missing fields, `_safe_commit` in background tasks, dashboard card double-handler, undefined CSS variable, native `confirm()` replaced with custom modal, dead code cleanup
+- **Performance**: bcrypt moved to thread pool, global search to thread pool, synchronous file writes to thread pool, collaboration graph O(N²) → O(1) edge updates, dashboard visibility-change pause for intervals
+- **Infrastructure**: Replaced abandoned `aiohttp-cors` with native middleware, `.dockerignore` added, `asyncio_mode = "auto"` in pytest config, `bcrypt` and `PyJWT[crypto]` in requirements.txt
+- **Test improvements**: Split `test_lifecycle.py` (2322 → 1552 lines), created `test_intelligence.py`, new tests for health_check_loop, metrics_loop, memory_watchdog_loop, archive_cleanup_loop, IntelligenceClient HTTP interaction
+- **Backward compatibility**: `ashlr_server.py` shim fully preserved — all existing imports and test patches continue to work
+- 1319 tests across 19 test files
+
 ## 1.4.0 — 2026-03-03
 
 - Open-core monetization: Community (free, 5 agents) and Pro (paid, 100 agents) tiers

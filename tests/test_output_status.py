@@ -1381,3 +1381,135 @@ class TestFloodDetection:
         assert agent._flood_ticks == 4
 
 
+
+
+# ── Tests moved from test_lifecycle.py ──
+
+class TestExtendedSecretRedaction:
+    def test_redact_secrets_exists(self):
+        """redact_secrets function should exist."""
+        assert hasattr(ashlr_server, 'redact_secrets')
+        assert callable(ashlr_server.redact_secrets)
+
+    def test_redact_openai_key(self):
+        """Should redact OpenAI/Anthropic sk- keys."""
+        text = "Using key sk-abcdefghijklmnopqrstuvwx in the config"
+        result = ashlr_server.redact_secrets(text)
+        assert "sk-" not in result
+        assert "REDACTED" in result
+
+    def test_redact_github_pat_classic(self):
+        """Should redact classic GitHub PATs (ghp_)."""
+        text = "Token: ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZaBcDeFgHiJkLm"
+        result = ashlr_server.redact_secrets(text)
+        assert "ghp_" not in result
+        assert "REDACTED" in result
+
+    def test_redact_github_pat_fine_grained(self):
+        """Should redact fine-grained GitHub PATs (github_pat_)."""
+        text = "Token: github_pat_aBcDeFgHiJkLmNoPqRsTuVw"
+        result = ashlr_server.redact_secrets(text)
+        assert "github_pat_" not in result
+        assert "REDACTED" in result
+
+    def test_redact_aws_access_key(self):
+        """Should redact AWS access keys (AKIA...)."""
+        text = "aws_access_key_id = AKIAIOSFODNN7EXAMPLE"
+        result = ashlr_server.redact_secrets(text)
+        assert "AKIAIOSFODNN7EXAMPLE" not in result
+        assert "REDACTED" in result
+
+    def test_redact_slack_bot_token(self):
+        """Should redact Slack bot tokens (xoxb-)."""
+        text = "SLACK_TOKEN=xoxb-12345678901-12345678901-abcdef"
+        result = ashlr_server.redact_secrets(text)
+        assert "xoxb-" not in result
+        assert "REDACTED" in result
+
+    def test_redact_sendgrid_key(self):
+        """Should redact SendGrid API keys (SG.xxxxx.xxxxx)."""
+        text = "key: SG.aBcDeFgHiJkLmNoPqRsTuVw.xYzAbCdEfGhIjKlMnOpQrSt"
+        result = ashlr_server.redact_secrets(text)
+        assert "SG." not in result
+        assert "REDACTED" in result
+
+    def test_redact_password_field(self):
+        """Should redact password= fields."""
+        text = "password=MyS3cretP@ss"
+        result = ashlr_server.redact_secrets(text)
+        assert "MyS3cretP@ss" not in result
+        assert "REDACTED" in result
+
+    def test_redact_jwt_token(self):
+        """Should redact JWT tokens (eyJ...)."""
+        text = "auth: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0"
+        result = ashlr_server.redact_secrets(text)
+        assert "eyJhbGciOiJIUzI1NiJ9" not in result
+        assert "REDACTED" in result
+
+    def test_redact_mongodb_connection_string(self):
+        """Should redact MongoDB connection strings."""
+        text = "DB_URL=mongodb+srv://user:pass@cluster.mongodb.net/db"
+        result = ashlr_server.redact_secrets(text)
+        assert "mongodb+srv://" not in result
+        assert "REDACTED" in result
+
+    def test_redact_postgres_connection_string(self):
+        """Should redact PostgreSQL connection strings."""
+        text = "DATABASE_URL=postgresql://user:pass@host:5432/mydb"
+        result = ashlr_server.redact_secrets(text)
+        assert "postgresql://" not in result
+        assert "REDACTED" in result
+
+    def test_redact_redis_connection_string(self):
+        """Should redact Redis connection strings."""
+        text = "REDIS_URL=redis://default:pass@redis-host:6379"
+        result = ashlr_server.redact_secrets(text)
+        assert "redis://" not in result
+        assert "REDACTED" in result
+
+    def test_no_false_positive_on_normal_text(self):
+        """Should not redact normal text without secrets."""
+        text = "Hello world, this is a normal log line with no secrets"
+        result = ashlr_server.redact_secrets(text)
+        assert result == text
+
+    def test_pattern_count(self):
+        """Should have at least 20 secret patterns (expanded from original 7)."""
+        assert len(ashlr_server._SECRET_PATTERNS) >= 20
+
+    def test_redact_xai_key(self):
+        """Should redact xAI API keys."""
+        text = "XAI_KEY=xai-aBcDeFgHiJkLmNoPqRsTuVw"
+        result = ashlr_server.redact_secrets(text)
+        assert "xai-" not in result
+        assert "REDACTED" in result
+
+    def test_redact_npm_token(self):
+        """Should redact npm tokens."""
+        text = "NPM_TOKEN=np_aBcDeFgHiJkLmNoPqRsTuVw"
+        result = ashlr_server.redact_secrets(text)
+        assert "np_" not in result
+        assert "REDACTED" in result
+
+    def test_redact_bearer_token(self):
+        """Should redact Bearer tokens."""
+        text = "Authorization: Bearer eyAbCdEfGhIjKlMnOpQr"
+        result = ashlr_server.redact_secrets(text)
+        assert "Bearer eyAbCdEfGhIjKlMnOpQr" not in result
+        assert "REDACTED" in result
+
+    def test_redact_api_key_field(self):
+        """Should redact api_key= fields."""
+        text = "api_key=abc123def456ghi789jkl012"
+        result = ashlr_server.redact_secrets(text)
+        assert "abc123def456ghi789jkl012" not in result
+        assert "REDACTED" in result
+
+
+# ─────────────────────────────────────────────
+# WebSocket Message Validation (#255)
+# ─────────────────────────────────────────────
+
+
+

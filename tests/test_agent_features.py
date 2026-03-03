@@ -874,3 +874,351 @@ class TestCostBurnRateExtended:
 # ─────────────────────────────────────────────
 
 
+
+
+# ── Tests moved from test_lifecycle.py ──
+
+class TestHealthWarningFlags:
+    def test_health_flags_exist_on_agent(self, make_agent):
+        """Agent should have health warning flag attributes."""
+        agent = make_agent()
+        # These are set dynamically, so check with getattr
+        agent._health_low_warned = True
+        agent._health_critical_warned = True
+        assert agent._health_low_warned is True
+        assert agent._health_critical_warned is True
+
+    def test_health_flags_can_be_reset(self, make_agent):
+        """Health warning flags should be resettable."""
+        agent = make_agent()
+        agent._health_low_warned = True
+        agent._health_critical_warned = True
+        # Simulate reset (as done in status change to error)
+        agent._health_low_warned = False
+        agent._health_critical_warned = False
+        assert agent._health_low_warned is False
+        assert agent._health_critical_warned is False
+
+
+# ─────────────────────────────────────────────
+# Tmux capture return type tests
+# ─────────────────────────────────────────────
+
+
+
+class TestProjectAutoAssignment:
+    """Tests for project auto-assignment based on working directory."""
+
+    def test_path_match(self):
+        """Agent working_dir matching project path assigns project."""
+        projects = [
+            {"id": "proj1", "path": "/home/user/projects/app"},
+            {"id": "proj2", "path": "/home/user/projects/lib"},
+        ]
+        agent_dir = "/home/user/projects/app/src"
+        best = None
+        best_len = 0
+        for proj in projects:
+            proj_path = proj["path"]
+            if agent_dir.startswith(proj_path) and len(proj_path) > best_len:
+                best = proj
+                best_len = len(proj_path)
+        assert best is not None
+        assert best["id"] == "proj1"
+
+    def test_no_match(self):
+        """Agent in unrelated dir gets no project."""
+        projects = [
+            {"id": "proj1", "path": "/home/user/projects/app"},
+        ]
+        agent_dir = "/tmp/sandbox"
+        best = None
+        for proj in projects:
+            if agent_dir.startswith(proj["path"]):
+                best = proj
+        assert best is None
+
+    def test_longest_match_wins(self):
+        """Most specific project path wins when nested."""
+        projects = [
+            {"id": "parent", "path": "/home/user/projects"},
+            {"id": "child", "path": "/home/user/projects/app"},
+        ]
+        agent_dir = "/home/user/projects/app/src/components"
+        best = None
+        best_len = 0
+        for proj in projects:
+            if agent_dir.startswith(proj["path"]) and len(proj["path"]) > best_len:
+                best = proj
+                best_len = len(proj["path"])
+        assert best["id"] == "child"
+
+
+# ─────────────────────────────────────────────
+# T18: File conflict detection
+# ─────────────────────────────────────────────
+
+
+
+class TestHealthCheckPathological:
+    """Tests for pathological error loop detection in health_check_loop."""
+
+    def _make_agent(self, restart_count=1, error_time=None, restart_time=None):
+        from ashlr_server import Agent
+        agent = Agent(
+            id="p001", name="patho-test", role="general", status="error",
+            backend="claude-code", task="test", working_dir="/tmp",
+        )
+        agent.status = "error"
+        agent.restart_count = restart_count
+        if error_time is not None:
+            agent._error_entered_at = error_time
+        if restart_time is not None:
+            agent.last_restart_time = restart_time
+        return agent
+
+    def test_pathological_detected_when_error_within_window(self):
+        now = time.monotonic()
+        # Error occurred 5s after restart (window is 10s)
+        agent = self._make_agent(
+            restart_count=1, error_time=now - 5, restart_time=now - 10,
+        )
+        window = 10.0
+        time_working = agent._error_entered_at - agent.last_restart_time
+        if time_working < window and not agent._pathological:
+            agent._pathological = True
+            agent.max_restarts = min(agent.max_restarts, 2)
+        assert agent._pathological is True
+        assert agent.max_restarts == 2
+
+    def test_not_pathological_if_worked_long_enough(self):
+        now = time.monotonic()
+        # Error occurred 30s after restart (outside 10s window)
+        agent = self._make_agent(
+            restart_count=1, error_time=now - 5, restart_time=now - 35,
+        )
+        window = 10.0
+        time_working = agent._error_entered_at - agent.last_restart_time
+        if time_working < window and not agent._pathological:
+            agent._pathological = True
+        assert agent._pathological is False
+
+    def test_not_pathological_on_first_error(self):
+        now = time.monotonic()
+        agent = self._make_agent(restart_count=0, error_time=now)
+        # Pathological check requires restart_count > 0
+        if agent.restart_count > 0 and agent._error_entered_at > 0 and agent.last_restart_time > 0:
+            agent._pathological = True
+        assert agent._pathological is False
+
+
+
+class TestExponentialBackoff:
+    """Tests for auto-restart exponential backoff calculation."""
+
+    def test_backoff_values(self):
+        assert 5.0 * (2 ** 0) == 5.0   # First restart: 5s
+        assert 5.0 * (2 ** 1) == 10.0  # Second restart: 10s
+        assert 5.0 * (2 ** 2) == 20.0  # Third restart: 20s
+        assert 5.0 * (2 ** 3) == 40.0  # Fourth restart: 40s
+
+    def test_restart_allowed_after_backoff(self):
+        from ashlr_server import Agent
+        agent = Agent(id="b001", name="backoff", role="general", status="error", backend="claude-code", task="t", working_dir="/tmp")
+        agent.status = "error"
+        agent._error_entered_at = time.monotonic() - 15  # Error 15s ago
+        agent.restart_count = 1
+        agent.last_restart_time = time.monotonic() - 12  # Last restart 12s ago
+        backoff = 5.0 * (2 ** agent.restart_count)  # 10s
+        time_since = time.monotonic() - agent.last_restart_time
+        assert time_since >= backoff  # Should be allowed
+
+    def test_restart_blocked_during_backoff(self):
+        from ashlr_server import Agent
+        agent = Agent(id="b002", name="backoff2", role="general", status="error", backend="claude-code", task="t", working_dir="/tmp")
+        agent.status = "error"
+        agent._error_entered_at = time.monotonic() - 3  # Error 3s ago
+        agent.restart_count = 2
+        agent.last_restart_time = time.monotonic() - 5  # Last restart 5s ago
+        backoff = 5.0 * (2 ** agent.restart_count)  # 20s
+        time_since = time.monotonic() - agent.last_restart_time
+        assert time_since < backoff  # Should be blocked
+
+
+
+class TestGitBranchTracking:
+    """Tests for git_branch field on Agent and parse_incremental detection."""
+
+    def test_agent_has_git_branch_field(self, make_agent):
+        """Agent dataclass has git_branch=None by default."""
+        agent = make_agent()
+        assert agent.git_branch is None
+
+    def test_agent_to_dict_includes_git_branch(self, make_agent):
+        """to_dict() includes git_branch key."""
+        agent = make_agent()
+        d = agent.to_dict()
+        assert "git_branch" in d
+        assert d["git_branch"] is None
+
+    def test_git_checkout_sets_branch(self, make_agent):
+        """parse_incremental detects 'git checkout main' and sets agent.git_branch."""
+        import collections
+        agent = make_agent()
+        agent.output_lines = collections.deque(["git checkout main"])
+        agent._total_lines_added = 1
+        agent._last_parse_index = 0
+        parser = OutputIntelligenceParser()
+        parser.parse_incremental(agent)
+        assert agent.git_branch == "main"
+
+    def test_git_switch_sets_branch(self, make_agent):
+        """parse_incremental detects 'git switch feature-x' and sets agent.git_branch."""
+        import collections
+        agent = make_agent()
+        agent.output_lines = collections.deque(["git switch feature-x"])
+        agent._total_lines_added = 1
+        agent._last_parse_index = 0
+        parser = OutputIntelligenceParser()
+        parser.parse_incremental(agent)
+        assert agent.git_branch == "feature-x"
+
+    def test_checkout_file_ignored(self, make_agent):
+        """'git checkout -- file.txt' does NOT set git_branch (detail starts with '-')."""
+        import collections
+        agent = make_agent()
+        agent.output_lines = collections.deque(["git checkout -- file.txt"])
+        agent._total_lines_added = 1
+        agent._last_parse_index = 0
+        parser = OutputIntelligenceParser()
+        parser.parse_incremental(agent)
+        # The regex captures "--" as the first \S+ match, which starts with "-"
+        # so git_branch should not be set
+        assert agent.git_branch is None
+
+    def test_git_switched_output(self, make_agent):
+        """The 'Switched to branch ...' output regex sets git_branch."""
+        import collections
+        agent = make_agent()
+        agent.output_lines = collections.deque(["Switched to branch 'foo'"])
+        agent._total_lines_added = 1
+        agent._last_parse_index = 0
+        parser = OutputIntelligenceParser()
+        parser.parse_incremental(agent)
+        assert agent.git_branch == "foo"
+
+    def test_agent_to_dict_with_branch(self, make_agent):
+        """Agent with git_branch='main' has it in to_dict()."""
+        agent = make_agent()
+        agent.git_branch = "main"
+        d = agent.to_dict()
+        assert d["git_branch"] == "main"
+
+
+# ─────────────────────────────────────────────
+# T-NEW: Session resume
+# ─────────────────────────────────────────────
+
+
+
+class TestServerStats:
+    """Verify server-side stats tracking counters."""
+
+    def test_initial_stats_are_zero(self):
+        """New AgentManager should have zero stats."""
+        config = ashlr_server.Config()
+        mgr = ashlr_server.AgentManager(config)
+        assert mgr._total_spawned == 0
+        assert mgr._total_killed == 0
+        assert mgr._total_messages_sent == 0
+
+    def test_start_time_set(self):
+        """AgentManager should record start time."""
+        config = ashlr_server.Config()
+        mgr = ashlr_server.AgentManager(config)
+        assert mgr._start_time > 0
+        assert time.monotonic() - mgr._start_time < 2  # should be very recent
+
+
+
+class TestServerStatsExtended:
+    def test_handler_exists(self):
+        """get_server_stats handler should exist."""
+        assert hasattr(ashlr_server, 'get_server_stats')
+        assert callable(ashlr_server.get_server_stats)
+
+    def test_route_registered(self):
+        """Route /api/stats should be registered."""
+        src = inspect.getsource(ashlr_server.create_app)
+        assert "/api/stats" in src
+        assert "get_server_stats" in src
+
+    def test_returns_uptime(self):
+        """Stats endpoint should return uptime fields."""
+        src = inspect.getsource(ashlr_server.get_server_stats)
+        assert "uptime_sec" in src
+        assert "uptime_human" in src
+
+    def test_returns_agent_stats(self):
+        """Stats endpoint should return agent statistics."""
+        src = inspect.getsource(ashlr_server.get_server_stats)
+        assert "total_spawned" in src
+        assert "total_killed" in src
+        assert "total_messages_sent" in src
+
+    def test_returns_db_size(self):
+        """Stats endpoint should return database size info."""
+        src = inspect.getsource(ashlr_server.get_server_stats)
+        assert "db_size_mb" in src
+
+    def test_returns_request_count(self):
+        """Stats endpoint should return request count."""
+        src = inspect.getsource(ashlr_server.get_server_stats)
+        assert "request_count" in src
+
+    def test_manager_has_api_request_counter(self):
+        """AgentManager should have _total_api_requests counter."""
+        config = ashlr_server.Config()
+        config.demo_mode = True
+        manager = ashlr_server.AgentManager(config)
+        assert hasattr(manager, '_total_api_requests')
+        assert manager._total_api_requests == 0
+
+    def test_middleware_increments_manager_counter(self):
+        """Request logging middleware should increment manager._total_api_requests."""
+        src = inspect.getsource(ashlr_server.request_logging_middleware)
+        assert "_total_api_requests" in src
+
+    def test_stats_returns_archive_config(self):
+        """Stats endpoint should include archive configuration."""
+        src = inspect.getsource(ashlr_server.get_server_stats)
+        assert "archive_max_rows_per_agent" in src
+        assert "archive_retention_hours" in src
+
+
+# ─────────────────────────────────────────────
+# Extended Secret Redaction (#254)
+# ─────────────────────────────────────────────
+
+
+
+class TestHistoricalAnalytics:
+    """Tests for historical analytics database method."""
+
+    async def test_historical_analytics_no_db(self):
+        """With no DB, should return empty structure."""
+        db = ashlr_server.Database.__new__(ashlr_server.Database)
+        db._db = None
+        result = await db.get_historical_analytics()
+        assert result["total_historical"] == 0
+
+    async def test_historical_analytics_returns_dict(self):
+        """Return value should be a dict with expected keys."""
+        db = ashlr_server.Database.__new__(ashlr_server.Database)
+        db._db = None
+        result = await db.get_historical_analytics()
+        assert isinstance(result, dict)
+        assert "total_historical" in result
+
+
+
