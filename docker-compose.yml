@@ -9,10 +9,12 @@ services:
     environment:
       - ASHLR_HOST=0.0.0.0
       - ASHLR_PORT=5111
+      - ASHLR_REQUIRE_AUTH=true
+      - ASHLR_ALLOWED_ORIGINS=https://${ASHLR_DOMAIN:-localhost}
       - XAI_API_KEY=${XAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     volumes:
-      - ashlr_data:/root/.ashlr
+      - ashlr_data:/home/ashlr/.ashlr
     networks:
       - ashlr-net
     # Not exposed directly — Caddy handles public traffic

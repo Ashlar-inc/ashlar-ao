@@ -14,8 +14,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Claude Code CLI
-RUN npm install -g @anthropic-ai/claude-code
+# Install Claude Code CLI (pinned to major version)
+RUN npm install -g @anthropic-ai/claude-code@1
 
 # App directory
 WORKDIR /app
@@ -25,8 +25,12 @@ COPY pyproject.toml README.md ./
 COPY ashlr_ao/ ashlr_ao/
 RUN pip install --no-cache-dir .
 
-# Data directory
-RUN mkdir -p /root/.ashlr
+# Non-root user
+RUN useradd --create-home --shell /bin/bash ashlr \
+    && mkdir -p /home/ashlr/.ashlr \
+    && chown -R ashlr:ashlr /home/ashlr/.ashlr
+
+USER ashlr
 
 # Expose port
 EXPOSE 5111

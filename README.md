@@ -85,7 +85,7 @@ Data is persisted in SQLite at `~/.ashlr/ashlr.db`.
 ## Development
 
 ```bash
-git clone https://github.com/masonwyatt/ashlar-ao.git
+git clone https://github.com/Ashlar-inc/ashlar-ao.git
 cd ashlar-ao
 pip install -e ".[dev]"
 pytest

@@ -434,14 +434,16 @@ def load_config(has_claude: bool = True) -> Config:
     if os.environ.get("ANTHROPIC_API_KEY") and not os.environ.get("XAI_API_KEY"):
         log.warning("ANTHROPIC_API_KEY is deprecated for intelligence features. Set XAI_API_KEY instead (xAI Grok via OpenAI-compatible API).")
 
-    # Auth config
+    # Auth config — ASHLR_REQUIRE_AUTH env var overrides config file
     require_auth = server.get("require_auth", False)
+    if os.environ.get("ASHLR_REQUIRE_AUTH", "").lower() in ("true", "1", "yes"):
+        require_auth = True
     auth_token = server.get("auth_token", "")
     if require_auth and not auth_token:
         # Auto-generate a 24-char token
         import secrets as _secrets
         auth_token = _secrets.token_urlsafe(18)
-        log.info(f"Auto-generated auth token: {auth_token}")
+        log.info(f"Auto-generated auth token: {auth_token[:8]}...{auth_token[-4:]}")
         # Save it back to config
         try:
             if config_path.exists():
@@ -10586,9 +10588,11 @@ def create_app(config: Config) -> web.Application:
 
     # CORS — restrict origins in production via ASHLR_ALLOWED_ORIGINS env var
     allowed_origin = os.environ.get("ASHLR_ALLOWED_ORIGINS", "*")
+    # Browsers reject Access-Control-Allow-Origin: * with credentials; be explicit
+    allow_creds = allowed_origin != "*"
     cors = aiohttp_cors.setup(app, defaults={
         allowed_origin: aiohttp_cors.ResourceOptions(
-            allow_credentials=True,
+            allow_credentials=allow_creds,
             expose_headers="*",
             allow_headers="*",
         )
