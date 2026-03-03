@@ -261,7 +261,6 @@ class TestSupervisedTaskCrashRecovery:
         app.get = MagicMock(return_value=None)
 
         sleep_values = []
-        original_sleep = asyncio.sleep
 
         async def mock_sleep(duration):
             sleep_values.append(duration)
@@ -658,7 +657,6 @@ class TestOutputCaptureLoop:
         """Agents stuck in 'spawning' for >30s should be marked as error."""
         app = self._make_capture_app()
         manager = app["agent_manager"]
-        hub = app["ws_hub"]
 
         agent = _make_mock_agent(
             status="spawning", name="stuck-spawn",
@@ -687,7 +685,6 @@ class TestOutputCaptureLoop:
         """3 consecutive capture failures should mark agent as error."""
         app = self._make_capture_app()
         manager = app["agent_manager"]
-        hub = app["ws_hub"]
 
         agent = _make_mock_agent(
             name="failing-agent",
@@ -732,7 +729,6 @@ class TestOutputCaptureLoop:
         """Agents with no output for >15 minutes should be flagged as error."""
         app = self._make_capture_app()
         manager = app["agent_manager"]
-        hub = app["ws_hub"]
 
         agent = _make_mock_agent(
             name="stale-agent",
