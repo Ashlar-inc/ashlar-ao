@@ -10,7 +10,7 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
 authors = [{ name = "Mason Wyatt" }]
-keywords = ["ai", "agents", "orchestration", "claude", "codex", "tmux"]
+keywords = ["ai", "agents", "orchestration", "claude", "codex", "tmux", "multi-agent", "workflow", "dashboard", "local-first"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Web Environment",
@@ -41,6 +41,8 @@ ashlr = "ashlr_ao.server:main"
 [project.urls]
 Homepage = "https://github.com/Ashlar-inc/ashlar-ao"
 Repository = "https://github.com/Ashlar-inc/ashlar-ao"
+Issues = "https://github.com/Ashlar-inc/ashlar-ao/issues"
+Changelog = "https://github.com/Ashlar-inc/ashlar-ao/blob/main/CHANGELOG.md"
 
 [tool.setuptools.dynamic]
 version = { attr = "ashlr_ao.__version__" }

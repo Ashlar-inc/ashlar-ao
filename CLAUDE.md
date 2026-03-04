@@ -4,7 +4,7 @@
 
 Ashlr is a **local-first agent orchestration platform**. One developer, many AI coding agents (Claude Code, Codex, etc.), multiple repos, single command center.
 
-**Current state**: Fully functional. 16 Python modules (~11.7K lines) + dashboard (~19.6K lines) + 1356 tests across 19 test files (70.6% coverage). All 5 development phases + multi-user auth + deployment infra + production hardening + open-core licensing + v1.5 modularization complete. Installable via `pip install ashlr-ao`. Ready for multi-user deployment.
+**Current state**: Fully functional. 16 Python modules (~13K lines) + dashboard (~21K lines) + 1559 tests across 23 test files. All 5 development phases + multi-repo workflow (5 waves) + multi-user auth + deployment infra + production hardening + open-core licensing + v1.5 modularization + v1.6 public release complete. Installable via `pip install ashlr-ao`. Ready for multi-user deployment.
 
 ## Architecture
 
@@ -21,7 +21,7 @@ Modular Python package (`ashlr_ao`) with 16 focused modules. Dashboard is a sing
 - `ashlr_ao/auth.py` (~350 lines) — Auth middleware, session management, auth API handlers.
 - `ashlr_ao/status.py` (~370 lines) — Agent status detection, summary extraction, follow-up suggestions.
 - `ashlr_ao/config.py` (~340 lines) — Config dataclass, DEFAULT_CONFIG, YAML load/save, validation.
-- `ashlr_ao/dashboard.html` (~19.6K lines) — Single HTML file served at `/`. All CSS + JS inline. No build step.
+- `ashlr_ao/dashboard.html` (~21K lines) — Single HTML file served at `/`. All CSS + JS inline. No build step.
 
 ### Leaf modules
 - `ashlr_ao/middleware.py` (~230 lines) — RateLimiter, security headers, CORS, compression, request logging.
@@ -147,7 +147,21 @@ PUT    /api/config              Update config (validates, saves to YAML + runtim
 GET    /api/roles               Available roles
 GET    /api/backends            Available backends with capabilities
 GET    /api/costs               Cost estimates (active + historical)
-POST   /api/agents/{id}/summarize   Trigger LLM summary
+POST   /api/agents/{id}/summarize       Trigger LLM summary
+POST   /api/agents/{id}/configure-handoff  Set next_agent_config for auto-handoff
+
+# Fleet Templates
+GET    /api/fleet-templates         List templates
+POST   /api/fleet-templates         Create template
+PUT    /api/fleet-templates/{id}    Update template
+DELETE /api/fleet-templates/{id}    Delete template
+POST   /api/fleet-templates/{id}/deploy  Deploy template to project
+
+# Project Context
+GET    /api/projects/{id}/context   Project context (agents, branches, recent tasks)
+GET    /api/projects/{id}/scratchpad  Project-level scratchpad
+POST   /api/projects/{id}/scratchpad  Update project scratchpad
+GET    /api/projects/{id}/events    Project event feed
 ```
 
 ## WebSocket Protocol (`/ws`)
@@ -222,6 +236,8 @@ POST   /api/agents/{id}/summarize   Trigger LLM summary
 | Cmd+, | Settings |
 | Cmd+Shift+S | Toggle bulk select |
 | Cmd+Shift+A | Attention queue (waiting agents) |
+| Cmd+Shift+F | Focus mode (single project) |
+| Cmd+/ | Global search |
 | 1-9 | Focus agent / select role |
 | Escape | Close overlay / back to grid |
 | Space (hold) | Push-to-talk |
@@ -304,6 +320,12 @@ voice:
   ptt_key: "Space"
 licensing:
   key: ""                      # JWT license key (set via API or YAML)
+auto_pilot:
+  auto_restart_on_stall: false
+  auto_approve_enabled: false
+  auto_approve_patterns: []       # regex patterns to auto-approve
+  auto_pause_on_critical_health: false
+  file_lock_enforcement: false    # prevent concurrent edits to same file
 display:
   theme: "dark"
   cards_per_row: 4
@@ -338,7 +360,7 @@ display:
 - NEVER crash — try/except with meaningful error handling
 - All dict iterations use `list()` snapshots (prevent RuntimeError during async)
 - Security: working_dir restricted to home/tmp, message size limits, rate limiting, CSP headers, request size limits, ownership enforcement on all mutation endpoints
-- 1319 pytest tests across 14 test files
+- 1559 pytest tests across 23 test files
 
 ## Multi-User Auth
 

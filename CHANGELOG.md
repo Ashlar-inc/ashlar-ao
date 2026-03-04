@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.6.0 — 2026-03-03
+
+### Multi-Repo Workflow (Waves 1-5)
+
+- **Wave 1 — Project foundation**: Project dataclass with git auto-detection, per-project defaults (backend, model, role), DB schema migrations, project-aware agent spawning, quick-switch (`Cmd+1-9`), project dashboard header
+- **Wave 2 — Monitoring & focus**: Focus mode (`Cmd+Shift+F`), saved filter views, enhanced global search (`Cmd+/`), filter persistence, agent grouping by project
+- **Wave 3 — Auto-pilot**: Auto-restart on stall, auto-approve with hardcoded blocklist (rm -rf, force push, DROP TABLE, etc.), rate-limited 5/min/agent, browser notifications with per-event preferences, health-based auto-pause
+- **Wave 4 — Fleet templates**: DB-backed fleet templates with CRUD API, parameterized task variables (`{branch}`, `{project_name}`, `{date}`), one-click deploy to project
+- **Wave 5 — Cross-agent intelligence**: Scratchpad WebSocket broadcast, auto-handoff (agent spawns successor with `{prev_summary}` context), project events feed, `file_lock_enforcement` config
+
+### Audit & Hardening
+
+- Full codebase audit (quality, security, coverage) — no critical bugs found
+- Security: tool name validation, `system_prompt_extra` 5K cap, path `os.sep` boundary check, symlink traversal fix, XSS fixes
+- Robustness: defensive agent deletion, auth fetch error handling, license log clarity
+- 203 new tests across 6 new test files and existing file updates
+
+### Stats
+
+- 1559 tests across 23 test files
+- 16 Python modules (~13K lines) + dashboard (~21K lines)
+- Installable via `pip install ashlr-ao`
+
 ## 1.5.2 — 2026-03-03
 
 - **Security**: Tool name validation (alphanumeric/hyphen/underscore only), `system_prompt_extra` capped at 5000 chars, project path boundary check hardened with `os.sep` (prevents prefix-match attacks)
