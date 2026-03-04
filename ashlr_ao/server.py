@@ -314,9 +314,17 @@ async def spawn_agent(request: web.Request) -> web.Response:
     tools_sel = data.get("tools")
     if tools_sel is not None and not isinstance(tools_sel, list):
         return web.json_response({"error": "tools must be a list of strings"}, status=400)
+    if tools_sel:
+        import re as _re
+        _TOOL_NAME_RE = _re.compile(r'^[a-zA-Z0-9_-]+$')
+        for t in tools_sel:
+            if not isinstance(t, str) or not _TOOL_NAME_RE.match(t):
+                return web.json_response({"error": f"Invalid tool name: {t!r}. Tool names must be alphanumeric, hyphens, or underscores."}, status=400)
     system_prompt_extra = data.get("system_prompt_extra")
     if system_prompt_extra is not None and not isinstance(system_prompt_extra, str):
         return web.json_response({"error": "system_prompt_extra must be a string"}, status=400)
+    if system_prompt_extra is not None and len(system_prompt_extra) > 5000:
+        return web.json_response({"error": "system_prompt_extra exceeds 5000 character limit"}, status=400)
     resume_session = data.get("resume_session")
 
     plan_mode = data.get("plan_mode", False)
@@ -1495,7 +1503,8 @@ async def create_project(request: web.Request) -> web.Response:
     if not os.path.isdir(resolved_path):
         return web.json_response({"error": f"Path is not a valid directory: {resolved_path}"}, status=400)
     home = str(Path.home())
-    if not (resolved_path.startswith(home) or resolved_path.startswith("/tmp") or resolved_path.startswith("/private/tmp")):
+    allowed_prefixes = [home, "/tmp", "/private/tmp"]
+    if not any(resolved_path == p or resolved_path.startswith(p + os.sep) for p in allowed_prefixes):
         return web.json_response({"error": "Project path must be under home directory or /tmp"}, status=400)
 
     project = {

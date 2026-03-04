@@ -14,6 +14,7 @@ from ashlr_ao.server import (  # noqa: F401
     _effective_max_agents,
     _make_slug,
     _extract_session_cookie,
+    _set_session_cookie,
     _suggest_followup,
     _keyword_parse_command,
     _extract_question,

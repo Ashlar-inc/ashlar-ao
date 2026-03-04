@@ -4,7 +4,7 @@
 
 Ashlr is a **local-first agent orchestration platform**. One developer, many AI coding agents (Claude Code, Codex, etc.), multiple repos, single command center.
 
-**Current state**: Fully functional. 16 Python modules (~11.7K lines) + dashboard (~19.6K lines) + 1319 tests across 19 test files. All 5 development phases + multi-user auth + deployment infra + production hardening + open-core licensing + v1.5 modularization complete. Installable via `pip install ashlr-ao`. Ready for multi-user deployment.
+**Current state**: Fully functional. 16 Python modules (~11.7K lines) + dashboard (~19.6K lines) + 1356 tests across 19 test files (70.6% coverage). All 5 development phases + multi-user auth + deployment infra + production hardening + open-core licensing + v1.5 modularization complete. Installable via `pip install ashlr-ao`. Ready for multi-user deployment.
 
 ## Architecture
 

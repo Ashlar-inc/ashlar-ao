@@ -2890,3 +2890,264 @@ class TestWSConnection:
         assert msg.get("type") == "error"
         assert "rate limit" in msg.get("message", "").lower()
         await ws.close()
+
+
+# ── Spawn Input Validation (Security Hardening) ──────────
+
+class TestSpawnInputValidation:
+    """Tests for tool name validation and system_prompt_extra length cap."""
+
+    @pytest.mark.asyncio
+    async def test_spawn_rejects_invalid_tool_names(self, aiohttp_client):
+        """Tool names with special characters should be rejected."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/agents", json={
+            "role": "general", "task": "test",
+            "working_dir": TEST_WORKING_DIR,
+            "tools": ["Bash", "'; rm -rf /; echo '"],
+        })
+        assert resp.status == 400
+        body = await resp.json()
+        assert "Invalid tool name" in body["error"]
+
+    @pytest.mark.asyncio
+    async def test_spawn_accepts_valid_tool_names(self, aiohttp_client):
+        """Valid alphanumeric tool names with hyphens/underscores should pass."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/agents", json={
+            "role": "general", "task": "test",
+            "working_dir": TEST_WORKING_DIR,
+            "tools": ["Bash", "Read", "Write", "my-custom_tool"],
+        })
+        # Should pass validation (may fail on spawn itself in demo mode, but not 400 for tools)
+        assert resp.status != 400 or "tool" not in (await resp.json()).get("error", "").lower()
+
+    @pytest.mark.asyncio
+    async def test_spawn_rejects_oversized_system_prompt(self, aiohttp_client):
+        """system_prompt_extra over 5000 chars should be rejected."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/agents", json={
+            "role": "general", "task": "test",
+            "working_dir": TEST_WORKING_DIR,
+            "system_prompt_extra": "x" * 5001,
+        })
+        assert resp.status == 400
+        body = await resp.json()
+        assert "5000" in body["error"]
+
+    @pytest.mark.asyncio
+    async def test_spawn_accepts_valid_system_prompt(self, aiohttp_client):
+        """system_prompt_extra under 5000 chars should pass validation."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/agents", json={
+            "role": "general", "task": "test",
+            "working_dir": TEST_WORKING_DIR,
+            "system_prompt_extra": "x" * 4999,
+        })
+        # Should pass validation (may fail later in spawn, but not 400 for prompt length)
+        assert resp.status != 400 or "5000" not in (await resp.json()).get("error", "")
+
+
+# ── Project Path Validation (Security Hardening) ──────────
+
+class TestProjectPathValidation:
+    """Test project path boundary checks use os.sep for safe prefix matching."""
+
+    @pytest.mark.asyncio
+    async def test_project_path_exact_home_accepted(self, aiohttp_client):
+        """Home directory itself should be accepted."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/projects", json={
+            "name": "Home", "path": str(Path.home()),
+        })
+        assert resp.status in (200, 201)
+
+    @pytest.mark.asyncio
+    async def test_project_path_under_home_subdir_accepted(self, aiohttp_client):
+        """Path under home directory should be accepted."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/projects", json={
+            "name": "Home Sub", "path": TEST_WORKING_DIR,
+        })
+        assert resp.status in (200, 201)
+
+    @pytest.mark.asyncio
+    async def test_project_path_outside_home_rejected(self, aiohttp_client):
+        """Path outside home and /tmp should be rejected."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/projects", json={
+            "name": "Evil", "path": "/usr/local",
+        })
+        assert resp.status == 400
+        body = await resp.json()
+        assert "home directory" in body["error"].lower() or "must be" in body["error"].lower()
+
+
+# ── Verify Auth Endpoint Tests ─────────────────────────
+
+class TestVerifyAuth:
+    """Tests for POST /api/auth/verify backward-compat token endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_verify_auth_no_auth_required(self, aiohttp_client):
+        """When auth not required, verify returns valid=True."""
+        app = _make_test_app()
+        app["config"].require_auth = False
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/auth/verify", json={})
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["valid"] is True
+        assert body["auth_required"] is False
+
+    @pytest.mark.asyncio
+    async def test_verify_auth_correct_token(self, aiohttp_client):
+        """Correct token should return valid=True."""
+        app = _make_test_app()
+        app["config"].require_auth = True
+        app["config"].auth_token = "my-secret-token"
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/auth/verify", json={"token": "my-secret-token"})
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["valid"] is True
+
+    @pytest.mark.asyncio
+    async def test_verify_auth_wrong_token(self, aiohttp_client):
+        """Wrong token should return valid=False."""
+        app = _make_test_app()
+        app["config"].require_auth = True
+        app["config"].auth_token = "my-secret-token"
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/auth/verify", json={"token": "wrong-token"})
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["valid"] is False
+
+    @pytest.mark.asyncio
+    async def test_verify_auth_bearer_header(self, aiohttp_client):
+        """Token from Authorization header should work."""
+        app = _make_test_app()
+        app["config"].require_auth = True
+        app["config"].auth_token = "header-token"
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/auth/verify", json={},
+                                 headers={"Authorization": "Bearer header-token"})
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["valid"] is True
+
+
+# ── Session Cookie Tests ─────────────────────────
+
+class TestSetSessionCookie:
+    """Tests for _set_session_cookie helper."""
+
+    def test_sets_httponly_samesite(self):
+        """Cookie should be HttpOnly with SameSite=Strict."""
+        from ashlr_server import _set_session_cookie
+        response = MagicMock()
+        _set_session_cookie(response, "test-session-id")
+        response.set_cookie.assert_called_once()
+        kwargs = response.set_cookie.call_args[1]
+        assert kwargs["httponly"] is True
+        assert kwargs["samesite"] == "Strict"
+        assert kwargs["max_age"] == 86400
+        assert kwargs["path"] == "/"
+
+    def test_secure_flag_behind_https_proxy(self):
+        """Secure flag should be set when X-Forwarded-Proto is https."""
+        from ashlr_server import _set_session_cookie
+        response = MagicMock()
+        request = MagicMock()
+        request.headers = {"X-Forwarded-Proto": "https"}
+        _set_session_cookie(response, "test-session-id", request)
+        kwargs = response.set_cookie.call_args[1]
+        assert kwargs.get("secure") is True
+
+    def test_no_secure_flag_without_https(self):
+        """Secure flag should NOT be set when not behind HTTPS proxy."""
+        from ashlr_server import _set_session_cookie
+        response = MagicMock()
+        request = MagicMock()
+        request.headers = {}
+        _set_session_cookie(response, "test-session-id", request)
+        kwargs = response.set_cookie.call_args[1]
+        assert "secure" not in kwargs
+
+
+# ── Intelligence Insight Tests ─────────────────────────
+
+class TestAcknowledgeInsight:
+    """Tests for POST /api/intelligence/insights/{id}/ack."""
+
+    @pytest.mark.asyncio
+    async def test_acknowledge_existing_insight(self, aiohttp_client):
+        """Acknowledging an existing insight should set acknowledged=True."""
+        app = _make_test_app()
+        insight = ashlr_server.AgentInsight(
+            id="ins-001", insight_type="conflict", severity="warning",
+            message="File conflict", agent_ids=["a1", "a2"],
+        )
+        app["intelligence_insights"] = [insight]
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/intelligence/insights/ins-001/ack")
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["status"] == "acknowledged"
+        assert insight.acknowledged is True
+
+    @pytest.mark.asyncio
+    async def test_acknowledge_missing_insight_returns_404(self, aiohttp_client):
+        """Acknowledging a non-existent insight should return 404."""
+        app = _make_test_app()
+        app["intelligence_insights"] = []
+        client = await aiohttp_client(app)
+        resp = await client.post("/api/intelligence/insights/nonexistent/ack")
+        assert resp.status == 404
+
+
+# ── Agent Suggestions Tests ─────────────────────────
+
+class TestAgentSuggestions:
+    """Tests for GET /api/agents/suggestions?task=..."""
+
+    @pytest.mark.asyncio
+    async def test_suggestions_short_query(self, aiohttp_client):
+        """Queries < 5 chars should return empty suggestions with message."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.get("/api/agents/suggestions?task=hi")
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["suggestions"] == []
+        assert "5 characters" in body.get("message", "")
+
+    @pytest.mark.asyncio
+    async def test_suggestions_empty_db(self, aiohttp_client):
+        """Valid query with no matching tasks should return empty list."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        resp = await client.get("/api/agents/suggestions?task=build+a+rest+api")
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["suggestions"] == []
+
+    @pytest.mark.asyncio
+    async def test_suggestions_db_error_handled(self, aiohttp_client):
+        """DB errors should return empty suggestions, not 500."""
+        app = _make_test_app()
+        app["db"].find_similar_tasks = AsyncMock(side_effect=Exception("DB offline"))
+        client = await aiohttp_client(app)
+        resp = await client.get("/api/agents/suggestions?task=build+api+endpoint")
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["suggestions"] == []
+        assert "error" in body

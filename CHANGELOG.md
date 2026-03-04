@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.2 — 2026-03-03
+
+- **Security**: Tool name validation (alphanumeric/hyphen/underscore only), `system_prompt_extra` capped at 5000 chars, project path boundary check hardened with `os.sep` (prevents prefix-match attacks)
+- **Tests**: 19 new tests — spawn input validation (4), project path validation (3), `verify_auth` endpoint (4), `_set_session_cookie` security flags (3), `acknowledge_insight` (2), `agent_suggestions` (3)
+- **Infrastructure**: `_set_session_cookie` added to backward-compat shim exports
+- 1356 tests across 19 test files (70.6% coverage)
+
 ## 1.5.1 — 2026-03-03
 
 - **Security**: Symlink path traversal fix in working_dir validation (`os.path.abspath` → `os.path.realpath`), XSS fix in intelligence insight dismiss buttons (inline `onclick` → event delegation)
