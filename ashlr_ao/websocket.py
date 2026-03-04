@@ -88,6 +88,10 @@ class WebSocketHub:
         self._webhook_cache: list[dict] | None = None
         self._webhook_cache_time: float = 0.0
         self._webhook_cache_ttl: float = 10.0  # seconds
+        # Per-client send queues for backpressure (max 500 pending messages)
+        self._client_queues: dict[web.WebSocketResponse, asyncio.Queue] = {}
+        self._client_drain_tasks: dict[web.WebSocketResponse, asyncio.Task] = {}
+        self._max_client_queue: int = 500
 
     async def handle_ws(self, request: web.Request) -> web.WebSocketResponse:
         ws = web.WebSocketResponse(heartbeat=30.0, max_msg_size=1 * 1024 * 1024)
@@ -157,9 +161,8 @@ class WebSocketHub:
         except Exception as e:
             log.error(f"WebSocket handler error: {e}")
         finally:
-            self.clients.discard(ws)
+            self._remove_client(ws)
             self._last_sync_time.pop(ws, None)
-            self.client_meta.pop(ws, None)
             # Clean up any per-client rate limiter state
             rl: RateLimiter | None = request.app.get("rate_limiter")
             if rl:
@@ -372,23 +375,58 @@ class WebSocketHub:
             case _:
                 await ws.send_json({"type": "error", "message": f"Unknown message type: {msg_type}"})
 
+    def _ensure_client_queue(self, ws: web.WebSocketResponse) -> asyncio.Queue:
+        """Get or create a send queue + drain task for a client."""
+        if ws not in self._client_queues:
+            q: asyncio.Queue = asyncio.Queue(maxsize=self._max_client_queue)
+            self._client_queues[ws] = q
+            task = asyncio.create_task(self._drain_client(ws, q))
+            self._client_drain_tasks[ws] = task
+        return self._client_queues[ws]
+
+    async def _drain_client(self, ws: web.WebSocketResponse, q: asyncio.Queue) -> None:
+        """Drain send queue for a single client. Runs as a long-lived task."""
+        try:
+            while True:
+                msg = await q.get()
+                if msg is None:
+                    break  # Shutdown signal
+                try:
+                    await asyncio.wait_for(ws.send_json(msg), timeout=5.0)
+                except (ConnectionError, RuntimeError, ConnectionResetError,
+                        asyncio.TimeoutError, asyncio.CancelledError):
+                    self._remove_client(ws)
+                    break
+        except asyncio.CancelledError:
+            pass
+
+    def _remove_client(self, ws: web.WebSocketResponse) -> None:
+        """Clean up a disconnected client."""
+        self.clients.discard(ws)
+        self.client_meta.pop(ws, None)
+        self._client_queues.pop(ws, None)
+        task = self._client_drain_tasks.pop(ws, None)
+        if task and not task.done():
+            task.cancel()
+
     async def broadcast(self, message: dict) -> None:
         if not self.clients:
             return
-        # Snapshot to prevent "set changed size during iteration" if clients connect/disconnect mid-broadcast
-        clients_snapshot = set(self.clients)
         dead: set[web.WebSocketResponse] = set()
-
-        async def _send(ws: web.WebSocketResponse) -> None:
+        for ws in set(self.clients):
             try:
-                await asyncio.wait_for(ws.send_json(message), timeout=2.0)
-            except (ConnectionError, RuntimeError, ConnectionResetError, asyncio.TimeoutError, asyncio.CancelledError):
+                q = self._ensure_client_queue(ws)
+                if q.full():
+                    # Backpressure: drop oldest message for slow client
+                    try:
+                        q.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                q.put_nowait(message)
+            except (RuntimeError, ConnectionError):
                 dead.add(ws)
-
-        await asyncio.gather(*[_send(ws) for ws in clients_snapshot], return_exceptions=True)
-        self.clients -= dead
         for d in dead:
-            self.client_meta.pop(d, None)
+            self._remove_client(d)
 
     async def _get_cached_webhooks(self) -> list[dict]:
         """Get active webhooks with TTL caching to avoid DB query on every event."""

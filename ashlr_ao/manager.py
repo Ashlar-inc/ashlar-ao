@@ -1223,24 +1223,28 @@ class AgentManager:
         re.compile(r"context\s+window.*?(\d+)", re.IGNORECASE),
     ]
 
+    # Pre-compiled patterns for token ratio detection (used in _detect_context_from_output)
+    _RE_TOKEN_RATIO = re.compile(r"(\d+)[Kk]\s*(?:of|/)\s*(\d+)[Kk]")
+
     def _detect_context_from_output(self, lines: list[str], backend: str) -> float | None:
         """Parse output lines for context window indicators.
         Returns a float 0.0-1.0 if detected, None if no indicator found."""
         if backend != "claude-code":
             return None
+        pats = self._CONTEXT_PATTERNS
         for line in lines:
             # Check for compaction first (near-full context)
-            if re.search(r"compacting\s+conversation", line, re.IGNORECASE):
+            if pats[3].search(line):
                 return 0.95
             # Percentage pattern: "context 73%" or "73% context"
-            m = re.search(r"context.*?(\d+(?:\.\d+)?)\s*%", line, re.IGNORECASE)
+            m = pats[0].search(line)
             if m:
                 return min(1.0, float(m.group(1)) / 100.0)
-            m = re.search(r"(\d+(?:\.\d+)?)%\s*(?:of\s+)?context", line, re.IGNORECASE)
+            m = pats[1].search(line)
             if m:
                 return min(1.0, float(m.group(1)) / 100.0)
             # Token ratio: "142K of 200K tokens" or "142K/200K"
-            m = re.search(r"(\d+)[Kk]\s*(?:of|/)\s*(\d+)[Kk]", line)
+            m = self._RE_TOKEN_RATIO.search(line)
             if m:
                 used = float(m.group(1))
                 total = float(m.group(2))

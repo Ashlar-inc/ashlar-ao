@@ -51,6 +51,26 @@ class TestConfigToDict:
         for name, backend in d["backends"].items():
             assert "available" in backend
 
+    def test_no_dead_claude_command_fields(self, config):
+        """Config should not have legacy claude_command/claude_args fields."""
+        assert not hasattr(config, "claude_command")
+        assert not hasattr(config, "claude_args")
+
+    def test_to_dict_excludes_dead_fields(self, config):
+        """to_dict should not expose dead legacy fields."""
+        d = config.to_dict()
+        assert "claude_command" not in d
+        assert "claude_args" not in d
+
+    def test_includes_autopilot_fields(self, config):
+        """to_dict should include all autopilot config fields."""
+        d = config.to_dict()
+        assert "auto_restart_on_stall" in d
+        assert "auto_approve_enabled" in d
+        assert "auto_approve_patterns" in d
+        assert "auto_pause_on_critical_health" in d
+        assert "file_lock_enforcement" in d
+
 
 # ─────────────────────────────────────────────
 # Config validation in load_config

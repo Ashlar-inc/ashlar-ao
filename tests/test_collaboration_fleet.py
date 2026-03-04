@@ -596,8 +596,8 @@ class TestBugFixesAndFleetExport:
         assert "log.warning" in src
 
     def test_broadcast_catches_cancelled_error(self):
-        """WebSocket broadcast should catch asyncio.CancelledError."""
-        src = inspect.getsource(ashlr_server.WebSocketHub.broadcast)
+        """WebSocket drain loop should catch asyncio.CancelledError."""
+        src = inspect.getsource(ashlr_server.WebSocketHub._drain_client)
         assert "CancelledError" in src
 
     def test_alert_throttle_cleanup_in_health_loop(self):

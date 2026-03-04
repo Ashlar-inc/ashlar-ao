@@ -583,11 +583,12 @@ class TestServerAuditFixes:
         assert counts["tools"] == 1
         assert agent._tool_invocations[0].tool == "Agent"
 
-    def test_broadcast_timeout_is_2s(self):
-        """WebSocket broadcast timeout should be 2 seconds (not 5)."""
+    def test_broadcast_uses_queue_backpressure(self):
+        """WebSocket broadcast should use per-client queues, not blocking sends."""
         import inspect
         src = inspect.getsource(ashlr_server.WebSocketHub.broadcast)
-        assert "timeout=2.0" in src
+        assert "put_nowait" in src
+        assert "_ensure_client_queue" in src
 
     def test_batch_spawn_agent_limit(self):
         """Batch spawn should check concurrent agent limit before spawning."""
@@ -973,9 +974,9 @@ class TestWebSocketDisconnectCleanup:
         assert "stale_keys" in src
 
     def test_ws_disconnect_discards_client(self):
-        """Disconnect should remove client from set."""
+        """Disconnect should remove client via _remove_client."""
         src = inspect.getsource(ashlr_server.WebSocketHub.handle_ws)
-        assert "clients.discard(ws)" in src
+        assert "_remove_client(ws)" in src
 
     def test_ws_max_clients_limit(self):
         """WebSocketHub should enforce max_clients connection limit."""
@@ -1118,15 +1119,101 @@ class TestWSBroadcastSafety:
     def test_broadcast_snapshots_clients(self):
         """Broadcast should snapshot clients set before iterating."""
         src = inspect.getsource(ashlr_server.WebSocketHub.broadcast)
-        assert "clients_snapshot" in src
         assert "set(self.clients)" in src
 
     def test_broadcast_iterates_snapshot(self):
-        """Broadcast gather should iterate over snapshot, not live set."""
+        """Broadcast should iterate over snapshot and enqueue, not send directly."""
         src = inspect.getsource(ashlr_server.WebSocketHub.broadcast)
-        assert "clients_snapshot" in src
-        # The gather should use clients_snapshot
-        assert "for ws in clients_snapshot" in src
+        assert "for ws in set(self.clients)" in src
+        assert "put_nowait" in src
+
+
+class TestWSBackpressure:
+    """Tests for per-client queue backpressure in WebSocketHub."""
+
+    def _make_hub(self):
+        return ashlr_server.WebSocketHub(MagicMock(), MagicMock())
+
+    def test_hub_has_client_queues(self):
+        """WebSocketHub should have per-client queue infrastructure."""
+        hub = self._make_hub()
+        assert hasattr(hub, '_client_queues')
+        assert hasattr(hub, '_client_drain_tasks')
+        assert hasattr(hub, '_max_client_queue')
+
+    def test_ensure_client_queue_method_exists(self):
+        """WebSocketHub should have _ensure_client_queue method."""
+        assert hasattr(ashlr_server.WebSocketHub, '_ensure_client_queue')
+        src = inspect.getsource(ashlr_server.WebSocketHub._ensure_client_queue)
+        assert "_client_queues" in src
+        assert "asyncio.Queue" in src
+
+    def test_remove_client_discards_and_cleans(self):
+        """_remove_client should discard from clients and clean up queues."""
+        src = inspect.getsource(ashlr_server.WebSocketHub._remove_client)
+        assert "clients.discard" in src
+        assert "_client_queues" in src
+
+    def test_drain_client_catches_cancelled(self):
+        """_drain_client should handle CancelledError gracefully."""
+        src = inspect.getsource(ashlr_server.WebSocketHub._drain_client)
+        assert "CancelledError" in src
+
+    def test_broadcast_drops_oldest_on_full_queue(self):
+        """Broadcast should drop oldest message when queue is full."""
+        src = inspect.getsource(ashlr_server.WebSocketHub.broadcast)
+        assert "q.full()" in src
+        assert "get_nowait()" in src
+
+
+class TestPreCompiledRegex:
+    """Tests for pre-compiled regex patterns in hot capture paths."""
+
+    def test_context_patterns_are_compiled(self):
+        """AgentManager._CONTEXT_PATTERNS should be pre-compiled regex objects."""
+        import re
+        mgr = ashlr_server.AgentManager
+        assert hasattr(mgr, '_CONTEXT_PATTERNS')
+        for pat in mgr._CONTEXT_PATTERNS:
+            assert isinstance(pat, re.Pattern), f"Expected compiled regex, got {type(pat)}"
+
+    def test_detect_context_uses_compiled(self):
+        """_detect_context_from_output should use compiled patterns, not inline re.search."""
+        src = inspect.getsource(ashlr_server.AgentManager._detect_context_from_output)
+        assert "re.search(" not in src, "Should use pre-compiled patterns, not inline re.search"
+        assert "pats[" in src or "_CONTEXT_PATTERNS" in src
+
+    def test_token_ratio_regex_compiled(self):
+        """_RE_TOKEN_RATIO should be a pre-compiled pattern."""
+        import re
+        assert hasattr(ashlr_server.AgentManager, '_RE_TOKEN_RATIO')
+        assert isinstance(ashlr_server.AgentManager._RE_TOKEN_RATIO, re.Pattern)
+
+
+class TestMockDBCorrectness:
+    """Tests that conftest mock DB matches actual Database methods."""
+
+    def test_no_dead_save_event_mock(self):
+        """conftest make_mock_db should not mock dead 'save_event' method."""
+        from conftest import make_mock_db
+        db = make_mock_db()
+        # log_event is the correct method
+        assert hasattr(db, 'log_event')
+        # save_event should not be explicitly mocked (MagicMock auto-creates it)
+        src = inspect.getsource(make_mock_db)
+        assert "save_event" not in src
+
+    def test_no_dead_get_history_mock(self):
+        """conftest should not mock dead 'get_history' (renamed to get_agent_history)."""
+        from conftest import make_mock_db
+        src = inspect.getsource(make_mock_db)
+        assert "get_history =" not in src or "get_agent_history" in src
+
+    def test_no_dead_save_bookmark_mock(self):
+        """conftest should not mock dead 'save_bookmark' (renamed to add_bookmark)."""
+        from conftest import make_mock_db
+        src = inspect.getsource(make_mock_db)
+        assert "save_bookmark" not in src
 
 
 # ─────────────────────────────────────────────

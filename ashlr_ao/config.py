@@ -67,8 +67,6 @@ class Config:
     output_capture_interval: float = 1.0
     output_max_lines: int = 2000  # Max lines per agent output buffer (deque maxlen)
     memory_limit_mb: int = 2048
-    claude_command: str = "claude"
-    claude_args: list = field(default_factory=lambda: ["--dangerously-skip-permissions"])
     demo_mode: bool = False
     # Auth
     require_auth: bool = False
@@ -212,7 +210,6 @@ def load_config(has_claude: bool = True) -> Config:
     server = raw.get("server", {})
     agents = raw.get("agents", {})
     backends = agents.get("backends", {})
-    claude_backend = backends.get("claude-code", {})
     voice = raw.get("voice", {})
     llm = raw.get("llm", {})
 
@@ -340,8 +337,6 @@ def load_config(has_claude: bool = True) -> Config:
         default_working_dir=default_wd,
         output_capture_interval=output_interval_val,
         memory_limit_mb=memory_limit_val,
-        claude_command=claude_backend.get("command", "claude"),
-        claude_args=claude_backend.get("args", ["--dangerously-skip-permissions"]),
         demo_mode=not has_claude,
         voice_feedback=voice.get("feedback_sounds", True),
         require_auth=require_auth,

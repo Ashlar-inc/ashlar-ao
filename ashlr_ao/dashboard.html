@@ -6946,7 +6946,7 @@ document.getElementById('regOrgName')?.addEventListener('keydown', (e) => { if (
         } else {
             showAuthLogin('login');
         }
-    } catch (e) {}
+    } catch (e) { console.warn('Auth check failed:', e); }
 })();
 
 // ── Confirmation Modal ──
@@ -11469,7 +11469,7 @@ function getReplyTemplates() {
     try {
         const saved = localStorage.getItem('ashlr_reply_templates');
         if (saved) return JSON.parse(saved);
-    } catch (e) {}
+    } catch (e) { console.debug('Reply templates parse failed, using defaults'); }
     return DEFAULT_REPLY_TEMPLATES;
 }
 
@@ -13723,7 +13723,7 @@ async function checkGithubAvailability() {
             _ghAvailable = data.available && data.authenticated;
             return _ghAvailable;
         }
-    } catch (e) {}
+    } catch (e) { console.debug('GitHub status check unavailable:', e.message); }
     _ghAvailable = false;
     return false;
 }
@@ -14154,7 +14154,7 @@ class VoiceInput {
             vs.textContent = ptt ? 'Listening (hold)...' : 'Listening — click to stop';
             vs.classList.add('listening');
             playTone([440], 0.1);
-        } catch (e) {}
+        } catch (e) { console.warn('Voice recognition start failed:', e); }
     }
 
     stop() {
@@ -14411,7 +14411,7 @@ function playTone(freqs, duration) {
             gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
             osc.stop(start + duration);
         });
-    } catch (e) {}
+    } catch (e) { console.debug('Audio playback unavailable'); }
 }
 
 // ── Terminal Toolbar ──
@@ -14581,7 +14581,7 @@ function applyHighlightRules() {
                         node.parentNode.replaceChild(span, node);
                     }
                 }
-            } catch (e) {}
+            } catch (e) { console.debug('Highlight rule error:', rule.pattern, e.message); }
         }
     }
     showToast(`Applied ${_highlightRules.length} highlight rule${_highlightRules.length > 1 ? 's' : ''}`, 'info');
