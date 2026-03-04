@@ -80,6 +80,7 @@ def validate_license(key: str) -> License:
     Returns a License on success; COMMUNITY_LICENSE on any failure.
     """
     if not key or not isinstance(key, str):
+        log.info("No license key configured, using Community plan")
         return COMMUNITY_LICENSE
     key = key.strip()
     try:

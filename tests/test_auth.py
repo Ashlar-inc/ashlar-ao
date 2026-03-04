@@ -849,3 +849,128 @@ class TestAuthHTTPInvite:
         finally:
             await db.close()
             db_path.unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_invite_by_member_returns_403(self, aiohttp_client):
+        """POST /api/auth/invite — a logged-in member (not admin) gets 403."""
+        f = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        db_path = Path(f.name)
+        f.close()
+        app = _make_auth_app()
+        db = Database(db_path)
+        await db.init()
+        app["db"] = db
+        app["ws_hub"].db = db
+        try:
+            client = await aiohttp_client(app)
+            # Register admin first
+            reg_resp = await client.post("/api/auth/register", json={
+                "email": "admin2@test.com", "password": "password123",
+                "display_name": "Admin", "org_name": "Org",
+            })
+            assert reg_resp.status == 200
+            reg_data = await reg_resp.json()
+            org_id = reg_data["org"]["id"]
+            # Create a member user directly in DB
+            pw_hash = bcrypt.hashpw(b"memberpass", bcrypt.gensalt()).decode()
+            member = await db.create_user("member@test.com", "Member", pw_hash, role="member", org_id=org_id)
+            session_id = await db.create_session(member.id)
+            # Use member's session cookie
+            client.session.cookie_jar.update_cookies({"ashlr_session": session_id})
+            resp = await client.post("/api/auth/invite", json={
+                "email": "new@test.com", "display_name": "New",
+            })
+            assert resp.status == 403
+        finally:
+            await db.close()
+            db_path.unlink(missing_ok=True)
+
+
+class TestAuthHTTPLoginEdgeCases:
+    @pytest.mark.asyncio
+    async def test_login_wrong_password_returns_401(self, aiohttp_client):
+        """POST /api/auth/login — correct email, wrong password returns 401."""
+        f = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        db_path = Path(f.name)
+        f.close()
+        app = _make_auth_app()
+        db = Database(db_path)
+        await db.init()
+        app["db"] = db
+        app["ws_hub"].db = db
+        try:
+            client = await aiohttp_client(app)
+            await client.post("/api/auth/register", json={
+                "email": "edge@test.com", "password": "correct_pass_123",
+                "display_name": "Edge User", "org_name": "Org",
+            })
+            resp = await client.post("/api/auth/login", json={
+                "email": "edge@test.com", "password": "wrong_password",
+            })
+            assert resp.status == 401
+            body = await resp.json()
+            assert "error" in body
+        finally:
+            await db.close()
+            db_path.unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_register_duplicate_email_returns_403(self, aiohttp_client):
+        """Second registration after first user is blocked (must be invited)."""
+        f = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        db_path = Path(f.name)
+        f.close()
+        app = _make_auth_app()
+        db = Database(db_path)
+        await db.init()
+        app["db"] = db
+        app["ws_hub"].db = db
+        try:
+            client = await aiohttp_client(app)
+            # Register first user (admin)
+            await client.post("/api/auth/register", json={
+                "email": "first@test.com", "password": "password123",
+                "display_name": "First", "org_name": "Org",
+            })
+            # Second registration should fail — users must be invited
+            resp = await client.post("/api/auth/register", json={
+                "email": "second@test.com", "password": "password123",
+                "display_name": "Second",
+            })
+            assert resp.status == 403
+        finally:
+            await db.close()
+            db_path.unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_expired_session_returns_401(self, aiohttp_client):
+        """GET /api/auth/me with an expired session cookie returns 401."""
+        from datetime import datetime, timezone, timedelta
+        f = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        db_path = Path(f.name)
+        f.close()
+        app = _make_auth_app()
+        db = Database(db_path)
+        await db.init()
+        app["db"] = db
+        app["ws_hub"].db = db
+        try:
+            client = await aiohttp_client(app)
+            # Create a user so auth system is initialized
+            pw_hash = bcrypt.hashpw(b"password123", bcrypt.gensalt()).decode()
+            org = await db.create_org("Org", "org")
+            user = await db.create_user("expiry@test.com", "Expiry User", pw_hash, role="admin", org_id=org.id)
+            # Create an already-expired session manually
+            expired_time = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
+            expired_session = "a" * 64  # valid length session id
+            await db._db.execute(
+                "INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+                (expired_session, user.id, expired_time, expired_time),
+            )
+            await db._safe_commit()
+            # Use raw request with expired cookie (no prior valid session)
+            resp = await client.get("/api/auth/me", cookies={"ashlr_session": expired_session})
+            assert resp.status == 401
+        finally:
+            await db.close()
+            db_path.unlink(missing_ok=True)

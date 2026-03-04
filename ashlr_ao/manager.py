@@ -336,7 +336,7 @@ class AgentManager:
 
         # Validate working_dir
         if working_dir:
-            working_dir = os.path.abspath(os.path.expanduser(working_dir))
+            working_dir = os.path.realpath(os.path.expanduser(working_dir))
             home_dir = str(Path.home())
             config_dirs = [str(ASHLR_DIR)]
             allowed_prefixes = [home_dir, "/tmp"] + config_dirs
@@ -834,9 +834,8 @@ class AgentManager:
         except Exception as e:
             log.warning(f"Failed to release DB file locks for agent {agent_id}: {e}")
 
-        # Guard deletion — agent may have been removed by concurrent operation
-        if agent_id in self.agents:
-            del self.agents[agent_id]
+        # Guard deletion — agent may have been removed by concurrent coroutine
+        self.agents.pop(agent_id, None)
         self._total_killed += 1
         return True
 

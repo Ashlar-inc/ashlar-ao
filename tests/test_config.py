@@ -1,5 +1,6 @@
 """Tests for config loading, validation, and serialization."""
 
+import logging
 import sys
 import os
 import tempfile
@@ -195,3 +196,120 @@ class TestBuiltinRoles:
     def test_expected_roles_present(self):
         expected = {"frontend", "backend", "devops", "tester", "reviewer", "security", "architect", "docs", "general"}
         assert expected.issubset(set(BUILTIN_ROLES.keys()))
+
+
+# ─────────────────────────────────────────────
+# load_config
+# ─────────────────────────────────────────────
+
+class TestLoadConfig:
+    """Tests for the load_config() function — YAML loading, validation, and defaults."""
+
+    def test_load_from_valid_yaml(self, tmp_path):
+        """load_config reads values from a YAML file and returns a Config."""
+        config_dir = tmp_path / ".ashlr"
+        config_dir.mkdir()
+        config_path = config_dir / "ashlr.yaml"
+        config_path.write_text(yaml.dump({
+            "server": {"host": "0.0.0.0", "port": 8080},
+            "agents": {"max_concurrent": 10, "output_capture_interval_sec": 2.5},
+        }))
+        with patch("ashlr_ao.config.ASHLR_DIR", config_dir):
+            cfg = load_config(has_claude=False)
+        assert cfg.host == "0.0.0.0"
+        assert cfg.port == 8080
+        assert cfg.max_agents == 10
+        assert cfg.output_capture_interval == 2.5
+
+    def test_load_missing_file_uses_defaults(self, tmp_path):
+        """When no YAML exists, load_config creates one and uses DEFAULT_CONFIG values."""
+        config_dir = tmp_path / ".ashlr"
+        config_dir.mkdir()
+        with patch("ashlr_ao.config.ASHLR_DIR", config_dir):
+            cfg = load_config(has_claude=False)
+        assert cfg.max_agents == 16
+        assert cfg.port == 5111
+        # Default config YAML should have been created
+        assert (config_dir / "ashlr.yaml").exists()
+
+    def test_load_malformed_yaml_falls_back(self, tmp_path, caplog):
+        """Malformed YAML logs a warning and uses defaults."""
+        config_dir = tmp_path / ".ashlr"
+        config_dir.mkdir()
+        (config_dir / "ashlr.yaml").write_text(": : : bad yaml {{{")
+        with caplog.at_level(logging.WARNING, logger="ashlr"):
+            with patch("ashlr_ao.config.ASHLR_DIR", config_dir):
+                cfg = load_config(has_claude=False)
+        assert cfg.max_agents == 16  # default
+        warning_msgs = [r.message for r in caplog.records if "Failed to load config" in r.message]
+        assert len(warning_msgs) >= 1
+
+    def test_validates_max_concurrent_range(self, tmp_path, caplog):
+        """Out-of-range max_concurrent gets clamped to default with a warning."""
+        config_dir = tmp_path / ".ashlr"
+        config_dir.mkdir()
+        (config_dir / "ashlr.yaml").write_text(yaml.dump({
+            "agents": {"max_concurrent": 999},
+        }))
+        with caplog.at_level(logging.WARNING, logger="ashlr"):
+            with patch("ashlr_ao.config.ASHLR_DIR", config_dir):
+                cfg = load_config(has_claude=False)
+        assert cfg.max_agents == 16  # default, since 999 > 100
+        assert any("max_concurrent" in r.message for r in caplog.records)
+
+    def test_validates_output_interval_range(self, tmp_path, caplog):
+        """Out-of-range output_capture_interval_sec gets clamped to default."""
+        config_dir = tmp_path / ".ashlr"
+        config_dir.mkdir()
+        (config_dir / "ashlr.yaml").write_text(yaml.dump({
+            "agents": {"output_capture_interval_sec": 0.01},
+        }))
+        with caplog.at_level(logging.WARNING, logger="ashlr"):
+            with patch("ashlr_ao.config.ASHLR_DIR", config_dir):
+                cfg = load_config(has_claude=False)
+        assert cfg.output_capture_interval == 1.0  # default, since 0.01 < 0.5
+
+    def test_validates_memory_limit_range(self, tmp_path, caplog):
+        """Out-of-range memory_limit_mb gets clamped to default."""
+        config_dir = tmp_path / ".ashlr"
+        config_dir.mkdir()
+        (config_dir / "ashlr.yaml").write_text(yaml.dump({
+            "agents": {"memory_limit_mb": 10},
+        }))
+        with caplog.at_level(logging.WARNING, logger="ashlr"):
+            with patch("ashlr_ao.config.ASHLR_DIR", config_dir):
+                cfg = load_config(has_claude=False)
+        assert cfg.memory_limit_mb == 2048  # default, since 10 < 256
+
+    def test_validates_alert_pattern_regex(self, tmp_path, caplog):
+        """Invalid regex in alert patterns is rejected with a warning."""
+        config_dir = tmp_path / ".ashlr"
+        config_dir.mkdir()
+        (config_dir / "ashlr.yaml").write_text(yaml.dump({
+            "alerts": {"patterns": [{"pattern": "[invalid(regex", "severity": "warning", "label": "Bad"}]},
+        }))
+        with caplog.at_level(logging.WARNING, logger="ashlr"):
+            with patch("ashlr_ao.config.ASHLR_DIR", config_dir):
+                cfg = load_config(has_claude=False)
+        assert any("Invalid alert pattern regex" in r.message for r in caplog.records)
+
+    def test_env_var_overrides_port(self, tmp_path):
+        """ASHLR_PORT env var overrides YAML port."""
+        config_dir = tmp_path / ".ashlr"
+        config_dir.mkdir()
+        (config_dir / "ashlr.yaml").write_text(yaml.dump({
+            "server": {"port": 5111},
+        }))
+        with patch("ashlr_ao.config.ASHLR_DIR", config_dir), \
+             patch.dict(os.environ, {"ASHLR_PORT": "9999"}):
+            cfg = load_config(has_claude=False)
+        assert cfg.port == 9999
+
+    def test_deep_merge_nested(self):
+        """deep_merge correctly merges nested dicts without overwriting siblings."""
+        base = {"server": {"host": "127.0.0.1", "port": 5111}, "agents": {"max_concurrent": 16}}
+        override = {"server": {"port": 8080}}
+        result = deep_merge(base, override)
+        assert result["server"]["host"] == "127.0.0.1"  # preserved
+        assert result["server"]["port"] == 8080  # overridden
+        assert result["agents"]["max_concurrent"] == 16  # untouched

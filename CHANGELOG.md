@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.1 — 2026-03-03
+
+- **Security**: Symlink path traversal fix in working_dir validation (`os.path.abspath` → `os.path.realpath`), XSS fix in intelligence insight dismiss buttons (inline `onclick` → event delegation)
+- **Robustness**: Defensive agent deletion (`dict.pop` instead of `del`), auth fetch calls use `apiFetch()` for timeout/error handling, license validation log clarity (distinguish empty key from invalid key), removed duplicate import in backward-compat shim
+- **Tests**: 18 new tests — `load_config` YAML loading/validation (9), `_supervised_task` crash recovery (3), `meta_agent_loop` edge cases (2), auth edge cases (4)
+- **CI**: Coverage threshold bumped from 60% to 65%
+- 1337 tests across 19 test files
+
 ## 1.5.0 — 2026-03-03
 
 - **Server modularization**: Split 10.8K-line `server.py` into 16 focused modules (`models.py`, `config.py`, `database.py`, `manager.py`, `websocket.py`, `background.py`, `middleware.py`, `intelligence.py`, `auth.py`, `handlers/`, etc.) — `server.py` now ~3.9K lines as re-export hub

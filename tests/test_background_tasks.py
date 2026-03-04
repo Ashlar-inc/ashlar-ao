@@ -1495,3 +1495,140 @@ class TestArchiveCleanupLoop:
 
         cleanup_logs = [r for r in caplog.records if "archive cleanup" in r.message.lower() and "removed" in r.message.lower()]
         assert len(cleanup_logs) == 0
+
+
+# ═══════════════════════════════════════════════
+# _supervised_task error recovery tests
+# ═══════════════════════════════════════════════
+
+
+class TestSupervisedTaskErrorRecovery:
+    """Tests for _supervised_task crash handling and backoff."""
+
+    async def test_restarts_crashed_loop_with_backoff(self):
+        """_supervised_task restarts a crashing coro and applies increasing backoff."""
+        crash_count = 0
+        sleep_durations = []
+
+        async def crashing_coro(app):
+            nonlocal crash_count
+            crash_count += 1
+            raise RuntimeError(f"crash #{crash_count}")
+
+        original_sleep = asyncio.sleep
+
+        async def tracking_sleep(duration):
+            sleep_durations.append(duration)
+            if len(sleep_durations) >= 3:
+                raise asyncio.CancelledError()
+            # Don't actually sleep
+
+        app = _make_mock_app()
+        with patch("asyncio.sleep", side_effect=tracking_sleep):
+            try:
+                await _supervised_task("test-task", crashing_coro, app)
+            except asyncio.CancelledError:
+                pass
+
+        assert crash_count >= 3
+        # Backoff should increase: min(5*1, 30), min(5*2, 30), min(5*3, 30)
+        assert sleep_durations[0] == 5
+        assert sleep_durations[1] == 10
+        assert sleep_durations[2] == 15
+
+    async def test_tracks_health_on_crash(self):
+        """_supervised_task records crash info in bg_task_health."""
+        async def crashing_once(app):
+            raise ValueError("test error message")
+
+        sleep_count = 0
+
+        async def mock_sleep(duration):
+            nonlocal sleep_count
+            sleep_count += 1
+            if sleep_count >= 1:
+                raise asyncio.CancelledError()
+
+        app = _make_mock_app()
+        with patch("asyncio.sleep", side_effect=mock_sleep):
+            try:
+                await _supervised_task("my-task", crashing_once, app)
+            except asyncio.CancelledError:
+                pass
+
+        health = app.get("bg_task_health", {})
+        assert "my-task" in health
+        assert health["my-task"]["restarts"] == 1
+        assert "test error message" in health["my-task"]["last_error"]
+
+    async def test_cancelled_error_propagates(self):
+        """CancelledError should propagate without restart."""
+        async def cancelling_coro(app):
+            raise asyncio.CancelledError()
+
+        app = _make_mock_app()
+        with pytest.raises(asyncio.CancelledError):
+            await _supervised_task("cancel-task", cancelling_coro, app)
+
+
+# ═══════════════════════════════════════════════
+# meta_agent_loop tests
+# ═══════════════════════════════════════════════
+
+
+class TestMetaAgentLoop:
+    """Tests for meta_agent_loop behavior."""
+
+    async def test_skips_when_no_intelligence_client(self):
+        """meta_agent_loop does nothing when intelligence client is absent."""
+        from ashlr_server import meta_agent_loop
+
+        app = _make_mock_app()
+        app["intelligence"] = None
+        app["config"].llm_meta_interval = 1.0
+
+        call_count = 0
+
+        async def mock_sleep(duration):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise asyncio.CancelledError()
+
+        with patch("asyncio.sleep", side_effect=mock_sleep):
+            try:
+                await meta_agent_loop(app)
+            except asyncio.CancelledError:
+                pass
+
+        # Should have slept but done no analysis
+        assert call_count >= 1
+
+    async def test_skips_with_fewer_than_two_agents(self):
+        """meta_agent_loop skips analysis when fewer than 2 agents exist."""
+        from ashlr_server import meta_agent_loop
+
+        app = _make_mock_app()
+        mock_client = MagicMock()
+        mock_client.available = True
+        mock_client.analyze_fleet = AsyncMock(return_value=[])
+        app["intelligence"] = mock_client
+        app["config"].llm_meta_interval = 1.0
+        # Only 1 agent
+        app["agent_manager"].agents = {"a1": _make_mock_agent()}
+
+        call_count = 0
+
+        async def mock_sleep(duration):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise asyncio.CancelledError()
+
+        with patch("asyncio.sleep", side_effect=mock_sleep):
+            try:
+                await meta_agent_loop(app)
+            except asyncio.CancelledError:
+                pass
+
+        mock_client.analyze_fleet.assert_not_awaited()

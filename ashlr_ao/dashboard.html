@@ -6582,7 +6582,7 @@ document.addEventListener('click', (e) => {
 });
 
 async function doLogout() {
-    try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) { showToast('Logout failed: ' + e.message, 'error'); }
+    try { await apiFetch('/api/auth/logout', { method: 'POST' }); } catch (e) { showToast('Logout failed: ' + e.message, 'error'); }
     state.currentUser = null;
     state.currentOrg = null;
     setCurrentUser(null, null);
@@ -6596,7 +6596,7 @@ async function submitLogin() {
     errEl.style.display = 'none';
     if (!email || !password) { errEl.textContent = 'Email and password required'; errEl.style.display = ''; return; }
     try {
-        const resp = await fetch('/api/auth/login', {
+        const resp = await apiFetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password }),
@@ -6629,7 +6629,7 @@ async function submitRegister() {
     if (!email || !email.includes('@')) { errEl.textContent = 'Valid email required'; errEl.style.display = ''; return; }
     if (password.length < 8) { errEl.textContent = 'Password must be 8+ characters'; errEl.style.display = ''; return; }
     try {
-        const resp = await fetch('/api/auth/register', {
+        const resp = await apiFetch('/api/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password, display_name: name, org_name: orgName }),
@@ -6673,7 +6673,7 @@ document.getElementById('regOrgName')?.addEventListener('keydown', (e) => { if (
 // Check auth on startup
 (async () => {
     try {
-        const resp = await fetch('/api/auth/status');
+        const resp = await apiFetch('/api/auth/status');
         if (!resp.ok) return;
         const data = await resp.json();
         if (!data.auth_required) return; // No auth needed
@@ -7691,13 +7691,16 @@ function renderInsightsPanel() {
             ${agentNames ? `<div class="insight-agents">Agents: ${escapeHtml(agentNames)}</div>` : ''}
             <div class="insight-action">
                 ${i.suggested_action ? `<button class="btn-suggest" data-suggest="${escapeHtml(i.suggested_action)}">${escapeHtml(i.suggested_action.slice(0, 30))}</button>` : ''}
-                ${!i.acknowledged ? `<button class="btn-dismiss" onclick="acknowledgeInsight('${i.id}')">Dismiss</button>` : ''}
+                ${!i.acknowledged ? `<button class="btn-dismiss" data-insight-id="${escapeHtml(i.id)}">Dismiss</button>` : ''}
             </div>
         </div>`;
     }).join('');
-    // Wire suggest buttons via event delegation (avoid inline onclick XSS)
+    // Wire suggest + dismiss buttons via event delegation (avoid inline onclick XSS)
     body.querySelectorAll('[data-suggest]').forEach(btn => {
         btn.addEventListener('click', () => showToast(btn.dataset.suggest, 'info'));
+    });
+    body.querySelectorAll('[data-insight-id]').forEach(btn => {
+        btn.addEventListener('click', () => acknowledgeInsight(btn.dataset.insightId));
     });
 }
 
