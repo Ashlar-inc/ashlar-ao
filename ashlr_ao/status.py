@@ -66,7 +66,8 @@ STATUS_PATTERNS = {
         re.compile(r"(?i)(deploying|pushing to|releasing)"),
     ],
     "waiting": [
-        re.compile(r"(?i)(do you want|shall I|should I|would you like)"),
+        # "Do you want me to..." is Claude narrating, not asking — exclude with negative lookahead
+        re.compile(r"(?i)(do you want|shall I|should I|would you like)(?! me to\b)"),
         re.compile(r"(?i)(yes/no|y/n|\[Y/n\]|\[y/N\])"),
         re.compile(r"(?i)proceed\?"),
         re.compile(r"(?i)\bapprove\b"),
@@ -98,12 +99,13 @@ STATUS_PATTERNS = {
 }
 
 WAITING_LINE_PATTERNS = [
-    re.compile(r"(?i)(do you want|shall I|should I|would you like)"),
+    # "Do you want me to..." is Claude narrating, not asking — exclude
+    re.compile(r"(?i)(do you want|shall I|should I|would you like)(?! me to\b)"),
     re.compile(r"(?i)(yes/no|y/n|\[Y/n\]|\[y/N\])"),
     re.compile(r"(?i)proceed\?"),
-    # Only match trailing ? if the line looks like a direct question to the user
-    # (contains "you", "I", or starts with a question word)
-    re.compile(r"(?i)^(do|can|will|should|shall|would|may|is|are|does|did|have|has)\b.+\?\s*$"),
+    # Only match trailing ? if line starts with a question word — but exclude
+    # Claude narration like "Do you want me to...", "Would you like me to..."
+    re.compile(r"(?i)^(do|can|will|should|shall|would|may|is|are|does|did|have|has)\b(?!.+\bme to\b).+\?\s*$"),
 ]
 
 

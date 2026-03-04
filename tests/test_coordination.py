@@ -315,7 +315,7 @@ class TestAutoHandoff:
         async def mock_spawn(**kwargs):
             spawned.append(kwargs)
             manager.agents["s1"] = successor
-            return "s1"
+            return successor
 
         manager.spawn = mock_spawn
 
@@ -379,7 +379,7 @@ class TestAutoHandoff:
 
         async def mock_spawn(**kwargs):
             manager.agents["s1"] = successor
-            return "s1"
+            return successor
 
         manager.spawn = mock_spawn
 
@@ -554,7 +554,7 @@ class TestCoordinationFeed:
 
         async def mock_spawn(**kwargs):
             manager.agents["s1"] = successor
-            return "s1"
+            return successor
 
         manager.spawn = mock_spawn
 
@@ -689,3 +689,121 @@ class TestUpdateProjectAutoApproveValidation:
                 # Check that the update was called with truncated response
                 call_data = db.update_project.call_args[0][1]
                 assert len(call_data["auto_approve_patterns"][0]["response"]) <= 200
+
+
+# ═══════════════════════════════════════════════
+# Project Scratchpad POST + Project Events Tests
+# ═══════════════════════════════════════════════
+
+
+@pytest.mark.asyncio
+class TestProjectScratchpadPost:
+    """Tests for POST /api/projects/{id}/scratchpad."""
+
+    async def test_upsert_project_scratchpad(self):
+        from aiohttp.test_utils import TestClient, TestServer
+        app = make_test_app()
+        db = app["db"]
+        db.upsert_scratchpad = AsyncMock()
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post("/api/projects/proj1/scratchpad", json={
+                "key": "findings", "value": "Important result", "set_by": "agent-1",
+            })
+            assert resp.status == 200
+            data = await resp.json()
+            assert data["status"] == "ok"
+            db.upsert_scratchpad.assert_called_once()
+            args = db.upsert_scratchpad.call_args[0]
+            assert args[0] == "proj1"
+            assert args[1] == "findings"
+            assert args[2] == "Important result"
+
+    async def test_upsert_project_scratchpad_missing_key(self):
+        from aiohttp.test_utils import TestClient, TestServer
+        app = make_test_app()
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post("/api/projects/proj1/scratchpad", json={
+                "value": "no key"
+            })
+            assert resp.status == 400
+
+    async def test_upsert_project_scratchpad_missing_value(self):
+        from aiohttp.test_utils import TestClient, TestServer
+        app = make_test_app()
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post("/api/projects/proj1/scratchpad", json={
+                "key": "test"
+            })
+            assert resp.status == 400
+
+    async def test_upsert_project_scratchpad_invalid_json(self):
+        from aiohttp.test_utils import TestClient, TestServer
+        app = make_test_app()
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post(
+                "/api/projects/proj1/scratchpad",
+                data=b"not json",
+                headers={"Content-Type": "application/json"},
+            )
+            assert resp.status == 400
+
+    async def test_upsert_project_scratchpad_truncation(self):
+        from aiohttp.test_utils import TestClient, TestServer
+        app = make_test_app()
+        db = app["db"]
+        db.upsert_scratchpad = AsyncMock()
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post("/api/projects/proj1/scratchpad", json={
+                "key": "k" * 500, "value": "v" * 20000,
+            })
+            assert resp.status == 200
+            args = db.upsert_scratchpad.call_args[0]
+            assert len(args[1]) <= 200   # key truncated
+            assert len(args[2]) <= 10000  # value truncated
+
+
+@pytest.mark.asyncio
+class TestProjectEvents:
+    """Tests for GET /api/projects/{id}/events."""
+
+    async def test_get_project_events(self):
+        from aiohttp.test_utils import TestClient, TestServer
+        app = make_test_app()
+        manager = app["agent_manager"]
+        db = app["db"]
+
+        # Create agents in this project
+        agent = MagicMock()
+        agent.project_id = "proj1"
+        manager.agents["a1"] = agent
+
+        db.get_events = AsyncMock(return_value=[
+            {"id": 1, "event_type": "agent_spawned", "agent_id": "a1", "created_at": "2026-01-01T00:00:01Z"},
+        ])
+
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.get("/api/projects/proj1/events")
+            assert resp.status == 200
+            data = await resp.json()
+            assert len(data) == 1
+            assert data[0]["agent_id"] == "a1"
+
+    async def test_get_project_events_empty(self):
+        from aiohttp.test_utils import TestClient, TestServer
+        app = make_test_app()
+        db = app["db"]
+        db.get_events = AsyncMock(return_value=[])
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.get("/api/projects/proj1/events")
+            assert resp.status == 200
+            data = await resp.json()
+            assert data == []
+
+    async def test_get_project_events_with_limit(self):
+        from aiohttp.test_utils import TestClient, TestServer
+        app = make_test_app()
+        db = app["db"]
+        db.get_events = AsyncMock(return_value=[])
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.get("/api/projects/proj1/events?limit=10")
+            assert resp.status == 200

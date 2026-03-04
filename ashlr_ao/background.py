@@ -538,17 +538,18 @@ async def output_capture_loop(app: web.Application) -> None:
                                     task_text = task_text.replace("{date}", now_dt.strftime("%Y-%m-%d"))
                                     task_text = task_text.replace("{time}", now_dt.strftime("%H:%M"))
 
-                                    next_id = await manager.spawn(
+                                    next_agent = await manager.spawn(
                                         role=next_cfg.get("role", "general"),
                                         task=task_text,
                                         name=next_cfg.get("name", ""),
                                         working_dir=next_cfg.get("working_dir", agent.working_dir),
                                         backend=next_cfg.get("backend", agent.backend),
                                         model=next_cfg.get("model", ""),
-                                        project_id=agent.project_id,
                                     )
-                                    next_agent = manager.agents.get(next_id)
+                                    next_id = next_agent.id
                                     if next_agent:
+                                        # Inherit project from parent agent
+                                        next_agent.project_id = agent.project_id
                                         # Don't inherit next_agent_config (no recursive handoffs)
                                         next_agent.next_agent_config = None
                                         await hub.broadcast({"type": "agent_update", "agent": next_agent.to_dict()})
@@ -1166,7 +1167,10 @@ async def start_background_tasks(app: web.Application) -> None:
             log.error(f"Database init failed on retry: {e2} — running in degraded mode (no persistence)")
             app["db_available"] = False
 
-    app["db_ready"] = True
+    if app.get("db_available", True):
+        app["db_ready"] = True
+    else:
+        app["db_ready"] = False
 
     # Load license from DB (org) or config (YAML)
     config: Config = app["config"]

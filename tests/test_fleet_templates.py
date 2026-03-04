@@ -292,16 +292,17 @@ class TestFleetTemplateDeploy:
         }
         app["db"].get_fleet_template = AsyncMock(return_value=template)
 
-        mock_agent = MagicMock()
-        mock_agent.to_dict = MagicMock(return_value={"id": "spawned1", "status": "spawning"})
         spawn_count = 0
 
         async def mock_spawn(**kwargs):
             nonlocal spawn_count
             spawn_count += 1
             aid = f"spawned{spawn_count}"
+            mock_agent = MagicMock()
+            mock_agent.id = aid
+            mock_agent.to_dict = MagicMock(return_value={"id": aid, "status": "spawning"})
             manager.agents[aid] = mock_agent
-            return aid
+            return mock_agent
 
         manager.spawn = mock_spawn
 
@@ -333,12 +334,13 @@ class TestFleetTemplateDeploy:
 
         spawned_tasks = []
         mock_agent = MagicMock()
+        mock_agent.id = "s1"
         mock_agent.to_dict = MagicMock(return_value={"id": "s1", "status": "spawning"})
 
         async def mock_spawn(**kwargs):
             spawned_tasks.append(kwargs.get("task", ""))
             manager.agents["s1"] = mock_agent
-            return "s1"
+            return mock_agent
 
         manager.spawn = mock_spawn
 
@@ -364,12 +366,13 @@ class TestFleetTemplateDeploy:
 
         spawned_tasks = []
         mock_agent = MagicMock()
+        mock_agent.id = "s1"
         mock_agent.to_dict = MagicMock(return_value={"id": "s1", "status": "spawning"})
 
         async def mock_spawn(**kwargs):
             spawned_tasks.append(kwargs.get("task", ""))
             manager.agents["s1"] = mock_agent
-            return "s1"
+            return mock_agent
 
         manager.spawn = mock_spawn
 

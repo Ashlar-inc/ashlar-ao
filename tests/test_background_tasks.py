@@ -503,6 +503,7 @@ class TestStartBackgroundTasks:
 
         assert db.init.await_count == 2
         assert app["db_available"] is False
+        assert app["db_ready"] is False, "db_ready must be False when DB init fails"
 
         # Clean up
         for t in app["bg_tasks"]:

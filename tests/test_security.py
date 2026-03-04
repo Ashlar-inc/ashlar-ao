@@ -483,3 +483,27 @@ class TestWebSocketRateCheck:
 
         result = hub._ws_rate_check(mock_ws, "spawn")
         assert result is True
+
+
+# ═══════════════════════════════════════════════
+# macOS /private/tmp Path Tests
+# ═══════════════════════════════════════════════
+
+
+@pytest.mark.asyncio
+class TestPrivateTmpPath:
+    """Test that /private/tmp is accepted as a working directory (macOS realpath fix)."""
+
+    async def test_private_tmp_accepted(self):
+        """On macOS, os.path.realpath('/tmp') resolves to /private/tmp — must be allowed."""
+        import inspect
+        from ashlr_ao.manager import AgentManager
+        src = inspect.getsource(AgentManager.spawn)
+        assert "/private/tmp" in src, "spawn() must allow /private/tmp as prefix"
+
+    async def test_bulk_action_checks_ownership(self):
+        """bulk_agent_action must call _check_agent_ownership."""
+        import inspect
+        from ashlr_ao.server import bulk_agent_action
+        src = inspect.getsource(bulk_agent_action)
+        assert "_check_agent_ownership" in src, "bulk action must check ownership"

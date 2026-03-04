@@ -20,6 +20,8 @@
     --bg-surface: #0E1525;
     --bg-elevated: #131B2E;
     --bg-overlay: #182038;
+    --bg-tertiary: #1C2540;
+    --bg-surface-elevated: #1A2238;
     --bg-input: #0C1220;
 
     /* Text — 4-level hierarchy */
@@ -27,6 +29,7 @@
     --text-secondary: #8B919E;
     --text-tertiary: #5C6370;
     --text-disabled: #3A3F4B;
+    --text-muted: #5C6370;
 
     /* Borders — 3 levels */
     --border-subtle: rgba(255,255,255,0.06);
@@ -51,6 +54,9 @@
     --orange-subtle: rgba(249,115,22,0.12);
     --purple: #A855F7;
     --cyan: #06B6D4;
+    --red: #EF4444;
+    --yellow: #EAB308;
+    --green: #22C55E;
 
     /* Status colors */
     --status-working: #6366F1;
@@ -117,11 +123,14 @@
     --bg-surface: #FFFFFF;
     --bg-elevated: #F0F2F5;
     --bg-overlay: #E8EBF0;
+    --bg-tertiary: #E2E5EB;
+    --bg-surface-elevated: #DDE1EA;
     --bg-input: #F0F2F5;
     --text-primary: #1A1D23;
     --text-secondary: #5A6070;
     --text-tertiary: #8B919E;
     --text-disabled: #BCC1CC;
+    --text-muted: #7A8494;
     --border-subtle: rgba(0,0,0,0.06);
     --border-default: rgba(0,0,0,0.12);
     --border-strong: rgba(0,0,0,0.20);
@@ -132,6 +141,9 @@
     --warning-subtle: rgba(234,179,8,0.08);
     --danger-subtle: rgba(239,68,68,0.08);
     --orange-subtle: rgba(249,115,22,0.08);
+    --red: #DC2626;
+    --yellow: #CA8A04;
+    --green: #16A34A;
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.05), 0 1px 3px rgba(0,0,0,0.04);
     --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
     --shadow-lg: 0 12px 32px rgba(0,0,0,0.10), 0 4px 12px rgba(0,0,0,0.06);
@@ -285,18 +297,39 @@ body {
 .fleet-health-value.fair { color: var(--warning); }
 .fleet-health-value.poor { color: var(--danger); }
 
-.intelligence-status { cursor: pointer; }
-.intelligence-status:hover { opacity: 0.8; }
-.intelligence-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; vertical-align: middle; }
-.intelligence-dot.connected { background: var(--success); }
+.intelligence-status {
+    cursor: pointer; position: relative;
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 8px;
+    transition: all 0.15s ease;
+}
+.intelligence-status:hover { background: var(--bg-elevated); }
+.intelligence-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.intelligence-dot.connected { background: var(--success); box-shadow: 0 0 6px rgba(34,197,94,0.5); }
 .intelligence-dot.disabled { background: var(--text-tertiary); }
-.intelligence-dot.error { background: var(--danger); }
+.intelligence-dot.error { background: var(--danger); box-shadow: 0 0 6px rgba(239,68,68,0.5); }
+.intelligence-dot.connected { animation: ai-pulse 2s ease-in-out infinite; }
+@keyframes ai-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.intelligence-label { font-size: 10px; font-weight: 700; font-family: var(--font-mono); letter-spacing: 0.5px; color: var(--text-secondary); }
+.intelligence-status.connected .intelligence-label { color: var(--success); }
 .intelligence-count {
     font-size: 9px; font-weight: 700; font-family: var(--font-mono);
     background: var(--accent); color: white; border-radius: 8px;
     padding: 0 5px; min-width: 16px; text-align: center; line-height: 16px;
-    margin-left: 2px;
 }
+.intelligence-mini-panel {
+    position: absolute; top: 100%; right: 0; margin-top: 8px;
+    width: 280px; background: var(--bg-surface); border: 1px solid var(--border-default);
+    border-radius: 12px; padding: 14px; box-shadow: var(--shadow-lg);
+    display: none; z-index: 300; font-family: var(--font-sans);
+}
+.intelligence-status:hover .intelligence-mini-panel { display: block; }
+.ai-mini-header { font-size: 11px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.ai-mini-status { font-size: 10px; color: var(--text-secondary); margin-bottom: 10px; line-height: 1.4; }
+.ai-mini-insight { font-size: 11px; color: var(--text-secondary); padding: 6px 8px; background: var(--bg-elevated); border-radius: 6px; margin-bottom: 4px; line-height: 1.4; }
+.ai-mini-insight:last-child { margin-bottom: 0; }
+.ai-mini-cta { font-size: 10px; color: var(--accent); font-weight: 600; margin-top: 8px; cursor: pointer; }
+.ai-mini-cta:hover { text-decoration: underline; }
 .insights-panel {
     position: fixed; top: 52px; right: 0; width: 380px; bottom: 0;
     background: var(--bg-surface); border-left: 1px solid var(--border-subtle);
@@ -592,11 +625,15 @@ body {
     will-change: transform;
     contain: layout style;
 }
-.agent-card:hover {
+.agent-card:hover, .agent-card:focus-visible {
     border-color: var(--border-default);
     background: var(--bg-elevated);
     box-shadow: var(--shadow-md);
     transform: translateY(-2px);
+}
+.agent-card:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }
 
 .agent-card[data-status="working"] { animation: fadeUp 0.4s ease-out backwards; box-shadow: inset 2px 0 8px -4px var(--accent); }
@@ -1549,6 +1586,16 @@ body {
     white-space: pre-wrap;
     word-wrap: break-word;
     color: rgba(255,255,255,0.85);
+}
+/* xterm.js overrides when active */
+.deep-terminal.xterm-active {
+    padding: 0; overflow: hidden;
+}
+.deep-terminal.xterm-active .xterm {
+    height: 100%; width: 100%;
+}
+.deep-terminal.xterm-active .xterm-viewport {
+    overflow-y: auto !important;
 }
 
 .deep-search-bar {
@@ -2776,6 +2823,27 @@ body {
     border-color: var(--accent);
     background: rgba(99,102,241,0.05);
 }
+.gh-item {
+    display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px;
+    background: var(--bg-surface); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm); margin-bottom: 6px; cursor: pointer;
+    transition: all 0.15s ease; text-decoration: none; color: inherit;
+}
+.gh-item:hover { border-color: var(--accent); background: rgba(99,102,241,0.05); }
+.gh-item-num { font-size: 11px; font-weight: 700; font-family: var(--font-mono); color: var(--text-tertiary); min-width: 32px; }
+.gh-item-title { font-size: 12px; color: var(--text-primary); line-height: 1.3; flex: 1; }
+.gh-item-meta { font-size: 10px; color: var(--text-tertiary); margin-top: 2px; }
+.gh-badge { font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
+.gh-badge-open { background: rgba(34,197,94,0.15); color: var(--green); }
+.gh-badge-pr { background: rgba(139,92,246,0.15); color: #8B5CF6; }
+.gh-section-label { font-size: 11px; font-weight: 700; color: var(--text-tertiary); margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.gh-section-label:first-child { margin-top: 0; }
+.gh-repo-info { display: flex; gap: 12px; margin-bottom: 12px; font-size: 11px; color: var(--text-secondary); }
+.gh-repo-stat { display: flex; align-items: center; gap: 4px; }
+.gh-branch-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.gh-branch-tag { font-size: 10px; padding: 2px 8px; background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 10px; color: var(--text-secondary); font-family: var(--font-mono); }
+.gh-actions { display: flex; gap: 6px; margin-top: 10px; }
+.gh-actions .btn { font-size: 11px; padding: 4px 10px; }
 .project-agent-status {
     width: 8px;
     height: 8px;
@@ -3622,8 +3690,9 @@ body {
 /* Empty state cubes — more dramatic float */
 .empty-cube {
     box-shadow: 0 4px 20px -4px rgba(99,102,241,0.15);
+    animation-name: empty-float-alt;
 }
-@keyframes empty-float {
+@keyframes empty-float-alt {
     0%, 100% { transform: translateY(0) rotate(0deg); }
     50% { transform: translateY(-12px) rotate(2deg); }
 }
@@ -3920,10 +3989,10 @@ body {
 .collab-legend-item { display: flex; align-items: center; gap: 4px; }
 .collab-legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 /* ── Clipboard Watcher Toast ── */
-.clipboard-toast { position: fixed; bottom: 80px; right: 20px; background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 12px 16px; display: flex; align-items: center; gap: 10px; z-index: 1100; box-shadow: var(--shadow-lg); animation: slideInRight 0.3s var(--ease-out); max-width: 400px; }
+.clipboard-toast { position: fixed; bottom: 80px; right: 20px; background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 12px 16px; display: flex; align-items: center; gap: 10px; z-index: 1100; box-shadow: var(--shadow-lg); animation: clipboardSlideIn 0.3s var(--ease-out); max-width: 400px; }
 .clipboard-toast-text { font-size: 12px; color: var(--text-secondary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
 .clipboard-toast-actions { display: flex; gap: 6px; flex-shrink: 0; }
-@keyframes slideInRight { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes clipboardSlideIn { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 /* ── Preset Manager ── */
 .preset-list { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
 .preset-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--bg-page); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); font-size: 12px; }
@@ -4976,12 +5045,13 @@ body {
 
 /* ── Card Last Command Tooltip ── */
 .card-cmd-tooltip {
-    display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+    position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
     margin-bottom: 6px; background: var(--bg-elevated); border: 1px solid var(--border-default);
     border-radius: var(--radius-md); padding: 8px 10px; z-index: 100;
     box-shadow: var(--shadow-lg); min-width: 220px; max-width: 320px;
+    opacity: 0; visibility: hidden; transition: opacity 0.15s ease, visibility 0.15s ease;
 }
-.card-cmd-tooltip.active { display: block; }
+.card-cmd-tooltip.active { opacity: 1; visibility: visible; }
 .cmd-tooltip-row {
     display: flex; gap: 6px; padding: 2px 0; font-size: 10px;
     font-family: var(--font-mono); color: var(--text-secondary);
@@ -5003,7 +5073,86 @@ body {
     font-size: 9px; font-family: var(--font-mono); color: var(--accent);
     margin-top: 2px;
 }
+
+/* ── Custom Tooltip System ── */
+.ao-tip {
+    position: fixed; z-index: 9999; pointer-events: none;
+    max-width: 280px; padding: 6px 10px;
+    background: var(--bg-elevated); color: var(--text-primary);
+    border: 1px solid var(--border-default); border-radius: 8px;
+    font: 12px/1.4 var(--font-mono); box-shadow: var(--shadow-lg);
+    opacity: 0; transition: opacity 0.15s ease;
+}
+.ao-tip.visible { opacity: 1; }
+.ao-tip-key {
+    display: inline-block; padding: 1px 5px; margin-left: 6px;
+    background: var(--bg-tertiary); border-radius: 4px;
+    font-size: 11px; color: var(--text-secondary);
+}
+
+/* ── Hover & Micro-Interaction Polish ── */
+.btn-new-agent:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+.btn-new-agent:active { transform: scale(0.97); }
+.deep-tab:hover { background: var(--bg-elevated); }
+.status-chip:hover { transform: translateY(-1px); }
+.terminal-toolbar-btn:active, .deep-action-btn:active, .card-hover-btn:active { transform: scale(0.95); }
+
+/* ── Tour Overlay ── */
+.tour-overlay {
+    position: fixed; inset: 0; z-index: 10000; pointer-events: auto;
+    transition: opacity 0.25s ease;
+}
+.tour-overlay svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.tour-card {
+    position: fixed; z-index: 10001; max-width: 400px; width: 92vw;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-top: 3px solid var(--accent);
+    border-radius: 14px; padding: 24px 24px 20px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.05);
+    animation: tourCardIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes tourCardIn { from { opacity: 0; transform: translateY(12px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.tour-card-step {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--accent); margin-bottom: 8px; font-family: var(--font-mono);
+}
+.tour-card-title { font-size: 18px; font-weight: 800; color: var(--text-primary); margin-bottom: 10px; font-family: var(--font-sans); line-height: 1.2; }
+.tour-card-body { font-size: 13px; color: var(--text-secondary); line-height: 1.65; margin-bottom: 20px; font-family: var(--font-sans); }
+.tour-progress { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.tour-progress-bar { flex: 1; height: 3px; background: var(--bg-tertiary); border-radius: 2px; overflow: hidden; }
+.tour-progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.tour-progress-text { font-size: 10px; color: var(--text-tertiary); font-family: var(--font-mono); font-weight: 600; white-space: nowrap; }
+.tour-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+.tour-btn { padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s ease; font-family: var(--font-sans); }
+.tour-btn:active { transform: scale(0.96); }
+.tour-btn-skip { background: none; color: var(--text-tertiary); padding: 8px 10px; margin-right: auto; }
+.tour-btn-skip:hover { color: var(--text-secondary); }
+.tour-btn-back { background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-subtle); }
+.tour-btn-back:hover { background: var(--bg-tertiary); }
+.tour-btn-next { background: var(--accent); color: white; padding: 8px 20px; }
+.tour-btn-next:hover { filter: brightness(1.1); box-shadow: 0 4px 12px rgba(99,102,241,0.3); }
+.tour-arrow {
+    position: fixed; z-index: 10001; width: 14px; height: 14px;
+    background: var(--bg-surface); border: 1px solid var(--border-default);
+    transform: rotate(45deg); pointer-events: none;
+}
+.tour-arrow.arrow-up { border-bottom: none; border-right: none; border-top: 3px solid var(--accent); }
+.tour-arrow.arrow-down { border-top: none; border-left: none; }
+.tour-arrow.arrow-left { border-bottom: none; border-right: none; }
+.tour-arrow.arrow-right { border-top: none; border-left: none; }
+
+/* ── Extensions Rich Empty States ── */
+.ext-empty-rich { padding: 32px 24px; text-align: center; }
+.ext-empty-rich-icon { margin-bottom: 12px; color: var(--text-tertiary); }
+.ext-empty-rich h4 { font-size: 14px; font-weight: 700; color: var(--text-primary); margin: 0 0 8px; font-family: var(--font-sans); }
+.ext-empty-rich p { font-size: 12px; color: var(--text-secondary); margin: 0 0 12px; line-height: 1.5; }
+.ext-empty-rich code { font-size: 11px; background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px; font-family: var(--font-mono); color: var(--accent); }
+.ext-empty-rich a { color: var(--accent); text-decoration: none; font-size: 12px; }
+.ext-empty-rich a:hover { text-decoration: underline; }
+.ext-empty-rich .btn { margin-top: 8px; }
 </style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0/css/xterm.min.css" crossorigin="anonymous">
 </head>
 <body>
 
@@ -5041,19 +5190,19 @@ body {
         <img src="/logo.png" alt="Ashlr" onerror="this.onerror=null;this.style.display='none';this.parentElement.insertAdjacentHTML('afterbegin','<svg width=\'26\' height=\'26\' viewBox=\'0 0 32 32\' style=\'flex-shrink:0\'><rect width=\'32\' height=\'32\' rx=\'6\' fill=\'%230D1520\'/><path d=\'M16 6L8 26h4l2-5h4l2 5h4L16 6zm0 8l2.5 6h-5L16 14z\' fill=\'%23F97316\'/></svg>')">
     </div>
     <span class="demo-badge" id="demoBadge">DEMO</span>
-    <span id="planBadge" onclick="openSettings()" title="Click to manage license" style="display:none;font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 8px;border-radius:10px;cursor:pointer;transition:var(--transition);margin-left:4px;vertical-align:middle">Community</span>
+    <span id="planBadge" onclick="openSettings()" data-tip="Click to manage your license" style="display:none;font-size:10px;font-weight:700;letter-spacing:0.5px;padding:2px 8px;border-radius:10px;cursor:pointer;transition:var(--transition);margin-left:4px;vertical-align:middle">Community</span>
     <select class="project-selector" id="projectSelector" onchange="filterByProject(this.value)" aria-label="Filter by project">
         <option value="">All Projects</option>
     </select>
-    <button class="btn-add-project" onclick="openNewProjectDialog()" title="New Project" aria-label="New Project" style="background:none;border:1px solid var(--border-subtle);color:var(--text-secondary);border-radius:var(--radius-xs);padding:2px 6px;font-size:12px;cursor:pointer;margin-left:4px;transition:var(--transition);font-family:var(--font-mono)" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border-subtle)';this.style.color='var(--text-secondary)'">+</button>
+    <button class="btn-add-project" onclick="openNewProjectDialog()" data-tip="Add a new project" aria-label="New Project" style="background:none;border:1px solid var(--border-subtle);color:var(--text-secondary);border-radius:var(--radius-xs);padding:2px 6px;font-size:12px;cursor:pointer;margin-left:4px;transition:var(--transition);font-family:var(--font-mono)" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border-subtle)';this.style.color='var(--text-secondary)'">+</button>
     <select class="project-selector" id="branchSelector" onchange="filterByBranch(this.value)" aria-label="Filter by branch" style="display:none;margin-left:4px">
         <option value="">All Branches</option>
     </select>
-    <span class="project-metrics-badge" id="projectMetricsBadge" style="display:none;cursor:pointer" onclick="if(state.selectedProjectId)openProjectDetail(state.selectedProjectId)" title="Click to view project details"></span>
-    <button id="focusModeBtn" onclick="toggleFocusMode()" title="Focus Mode (Cmd+Shift+O)" style="background:none;border:1px solid var(--border-subtle);color:var(--text-secondary);border-radius:var(--radius-xs);padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font-sans);transition:var(--transition);margin-left:4px" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="if(!state.focusMode)this.style.borderColor='var(--border-subtle)'">Focus</button>
-    <button onclick="saveCurrentView()" title="Save current filter view" style="background:none;border:1px solid var(--border-subtle);color:var(--text-secondary);border-radius:var(--radius-xs);padding:2px 6px;font-size:10px;cursor:pointer;font-family:var(--font-sans);transition:var(--transition);margin-left:2px" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border-subtle)'">Save View</button>
+    <span class="project-metrics-badge" id="projectMetricsBadge" style="display:none;cursor:pointer" onclick="if(state.selectedProjectId)openProjectDetail(state.selectedProjectId)" data-tip="Click to view project details"></span>
+    <button id="focusModeBtn" onclick="toggleFocusMode()" data-tip="Focus on one project" data-tip-key="⌘⇧F" style="background:none;border:1px solid var(--border-subtle);color:var(--text-secondary);border-radius:var(--radius-xs);padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font-sans);transition:var(--transition);margin-left:4px" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="if(!state.focusMode)this.style.borderColor='var(--border-subtle)'">Focus</button>
+    <button onclick="saveCurrentView()" data-tip="Save current filters as a named view" style="background:none;border:1px solid var(--border-subtle);color:var(--text-secondary);border-radius:var(--radius-xs);padding:2px 6px;font-size:10px;cursor:pointer;font-family:var(--font-sans);transition:var(--transition);margin-left:2px" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border-subtle)'">Save View</button>
     <div class="top-spacer"></div>
-    <div class="metrics-bar" id="metricsBar" style="cursor:pointer" onclick="toggleMetricsDropdown()">
+    <div class="metrics-bar" id="metricsBar" style="cursor:pointer" onclick="toggleMetricsDropdown()" tabindex="0" role="button" aria-label="System metrics — click to expand">
         <div class="metric">
             <span class="metric-label">CPU</span>
             <canvas class="cpu-sparkline" id="cpuSparkline" width="120" height="44"></canvas>
@@ -5067,26 +5216,32 @@ body {
             <span class="metric-label">Agents</span>
             <span class="metric-value" id="metricAgents">0/0</span>
         </div>
-        <div class="metric" title="Estimated cost across all active agents">
+        <div class="metric" data-tip="Estimated cost across all active agents">
             <span class="metric-label">Cost</span>
             <span class="metric-value" id="metricCost">$0.00</span>
         </div>
-        <div class="metric" id="metricFleetHealth" title="Fleet health score — click for details" style="display:none">
+        <div class="metric" id="metricFleetHealth" data-tip="Fleet health score — click for details" style="display:none">
             <span class="metric-label">Health</span>
             <span class="metric-value fleet-health-value" id="metricHealthScore">--</span>
         </div>
-        <div class="metric" id="metricFleetStatus" title="Fleet status summary" style="display:none">
+        <div class="metric" id="metricFleetStatus" data-tip="Fleet status summary" style="display:none">
             <span class="metric-label">Fleet</span>
             <span class="metric-value" id="metricFleetText" style="font-size:10px;letter-spacing:0;color:var(--text-secondary)"></span>
         </div>
-        <div class="metric intelligence-status" id="intelligenceStatus" style="display:none" onclick="toggleInsightsPanel()" role="button" tabindex="0" title="Intelligence status — click for insights">
+        <div class="intelligence-status" id="intelligenceStatus" style="display:none" onclick="toggleInsightsPanel()" role="button" tabindex="0" aria-label="AI Intelligence — click for insights">
             <span class="intelligence-dot"></span>
-            <span class="metric-label">AI</span>
+            <span class="intelligence-label">AI</span>
             <span class="intelligence-count" id="insightCount" style="display:none">0</span>
+            <div class="intelligence-mini-panel" id="aiMiniPanel">
+                <div class="ai-mini-header"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg> Intelligence</div>
+                <div class="ai-mini-status" id="aiMiniStatus">Checking status...</div>
+                <div id="aiMiniInsights"></div>
+                <div class="ai-mini-cta" onclick="event.stopPropagation(); toggleInsightsPanel()">View all insights →</div>
+            </div>
         </div>
     </div>
     <div class="attention-badge" id="attentionBadge" onclick="focusFirstWaiting()" role="button" tabindex="0" aria-label="Agents needing attention" onkeydown="if(event.key==='Enter')focusFirstWaiting()">0</div>
-    <span class="queue-badge" id="queueBadge" style="display:none;cursor:pointer;font-size:10px;font-weight:700;font-family:var(--font-mono);background:var(--accent);color:white;border-radius:10px;padding:2px 6px;margin-left:4px" onclick="openQueuePanel()" title="Tasks queued for auto-spawn">0</span>
+    <span class="queue-badge" id="queueBadge" style="display:none;cursor:pointer;font-size:10px;font-weight:700;font-family:var(--font-mono);background:var(--accent);color:white;border-radius:10px;padding:2px 6px;margin-left:4px" onclick="openQueuePanel()" data-tip="Tasks queued for auto-spawn">0</span>
     <div style="position:relative">
         <button class="notification-bell" id="notifBell" onclick="toggleNotifications(event)" aria-label="Notifications">
             <svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span class="unread-dot" id="unreadDot"></span>
@@ -5108,10 +5263,10 @@ body {
             <div id="notifList"></div>
         </div>
     </div>
-    <button class="btn-extensions" onclick="toggleExtensionsPanel()" title="Extensions (⌘E)" aria-label="Extensions"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.39 4.39a2.12 2.12 0 0 1 3 3l-1.64 1.64"/><path d="M13.5 7.5 6.75 14.25a2.12 2.12 0 0 0 3 3l6.75-6.75"/><path d="M10 15.5a5 5 0 0 1-7-7l2-2"/><path d="M14 8.5a5 5 0 0 1 7 7l-2 2"/></svg></button>
-    <button class="btn-extensions" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme" id="themeToggleBtn"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg></button>
+    <button class="btn-extensions" onclick="toggleExtensionsPanel()" data-tip="Skills, MCP servers, and plugins" data-tip-key="⌘E" aria-label="Extensions"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.39 4.39a2.12 2.12 0 0 1 3 3l-1.64 1.64"/><path d="M13.5 7.5 6.75 14.25a2.12 2.12 0 0 0 3 3l6.75-6.75"/><path d="M10 15.5a5 5 0 0 1-7-7l2-2"/><path d="M14 8.5a5 5 0 0 1 7 7l-2 2"/></svg></button>
+    <button class="btn-extensions" onclick="toggleTheme()" data-tip="Switch light/dark theme" aria-label="Toggle theme" id="themeToggleBtn"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg></button>
     <div class="user-menu" id="userMenu" style="display:none">
-        <button class="user-menu-btn" id="userMenuBtn" onclick="toggleUserMenu()" title="Account menu">
+        <button class="user-menu-btn" id="userMenuBtn" onclick="toggleUserMenu()" data-tip="Account menu">
             <span class="user-avatar" id="userAvatar"></span>
             <span class="user-name" id="userName"></span>
         </button>
@@ -5121,7 +5276,7 @@ body {
             <div class="user-dropdown-item" onclick="doLogout()">Sign Out</div>
         </div>
     </div>
-    <button class="btn-new-agent" onclick="openSpawnDialog()">
+    <button class="btn-new-agent" onclick="openSpawnDialog()" data-tip="Spawn a new AI agent" data-tip-key="⌘N">
         <span>+</span> New Agent
     </button>
     <div class="metrics-dropdown" id="metricsDropdown"></div>
@@ -5139,7 +5294,7 @@ body {
 </div>
 
 <!-- ── Connection Banner ── -->
-<div class="connection-banner" id="connectionBanner">Disconnected — reconnecting... <button onclick="connectWebSocket()" style="margin-left:12px;padding:2px 10px;border:1px solid rgba(255,255,255,0.4);border-radius:4px;background:transparent;color:inherit;cursor:pointer;font-size:12px">Retry Now</button></div>
+<div class="connection-banner" id="connectionBanner"><span id="connectionBannerMsg">Disconnected — reconnecting...</span> <button onclick="socket.connect()" style="margin-left:12px;padding:2px 10px;border:1px solid rgba(255,255,255,0.4);border-radius:4px;background:transparent;color:inherit;cursor:pointer;font-size:12px">Retry Now</button></div>
 
 <!-- ── Main Content ── -->
 <div class="main-content" id="mainContent">
@@ -5155,8 +5310,8 @@ body {
             <button class="status-chip" data-status="idle" onclick="setStatusFilter('idle')">Idle <span class="status-chip-count" id="chipCountIdle">0</span></button>
         </div>
         <div class="role-filter-chips" id="roleFilterChips"></div>
-        <button class="bulk-select-btn" id="bulkSelectBtn" onclick="toggleBulkMode()" title="Select agents (⌘⇧S)"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> Select</button>
-        <select class="eventlog-filter-select" id="cardSortSelect" onchange="setCardSort(this.value)" title="Sort cards" style="font-size:11px;padding:3px 6px">
+        <button class="bulk-select-btn" id="bulkSelectBtn" onclick="toggleBulkMode()" data-tip="Select multiple agents for bulk actions" data-tip-key="⌘⇧S" aria-label="Select agents"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> Select</button>
+        <select class="eventlog-filter-select" id="cardSortSelect" onchange="setCardSort(this.value)" data-tip="Change agent card sort order" style="font-size:11px;padding:3px 6px">
             <option value="priority">Priority</option>
             <option value="name">Name</option>
             <option value="status">Status</option>
@@ -5168,21 +5323,21 @@ body {
             <option value="manual">Manual</option>
         </select>
         <div class="view-toggle">
-            <button class="view-toggle-btn active" id="viewGridBtn" onclick="setViewMode('grid')" title="Card grid"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/></svg></button>
-            <button class="view-toggle-btn" id="viewCompactBtn" onclick="setViewMode('compact')" title="Compact view"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
-            <button class="view-toggle-btn" id="viewTableBtn" onclick="setViewMode('table')" title="Table view"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg></button>
+            <button class="view-toggle-btn active" id="viewGridBtn" onclick="setViewMode('grid')" data-tip="Grid view" aria-label="Card grid"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/></svg></button>
+            <button class="view-toggle-btn" id="viewCompactBtn" onclick="setViewMode('compact')" data-tip="Compact view" aria-label="Compact view"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+            <button class="view-toggle-btn" id="viewTableBtn" onclick="setViewMode('table')" data-tip="Table view" aria-label="Table view"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg></button>
         </div>
-        <button class="btn btn-secondary btn-sm" id="groupByProjectBtn" onclick="toggleGroupByProject()" title="Group cards by project">⊞ Group</button>
-        <button class="btn btn-secondary btn-sm" id="pauseAllBtn" onclick="togglePauseAll()" title="Pause/Resume all agents">⏸ Pause All</button>
-        <button class="btn btn-secondary btn-sm" onclick="openTimeline()" title="Activity Timeline (Cmd+T)"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12H3"/><path d="M16 6H3"/><path d="M12 18H3"/><path d="m16 12 5 3-5 3v-6Z"/></svg> Timeline</button>
-        <button class="btn btn-secondary btn-sm" onclick="openAnalytics()" title="Fleet Analytics"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg> Analytics</button>
-        <button class="btn btn-secondary btn-sm" onclick="openFleetTimeline()" title="Fleet Timeline"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="10" x2="14" y2="10"/><line x1="4" y1="14" x2="18" y2="14"/><line x1="4" y1="18" x2="10" y2="18"/></svg> Timeline</button>
-        <button class="btn btn-secondary btn-sm" onclick="openSplitView()" title="Split Terminal View"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/></svg> Split</button>
-        <button class="btn btn-secondary btn-sm" onclick="openCollabGraph()" title="Collaboration Graph"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> Graph</button>
-        <button class="btn btn-secondary btn-sm" onclick="openConflicts()" title="File Conflicts"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg> Conflicts</button>
-        <button class="btn btn-secondary btn-sm" onclick="openEventLog()" title="Event Log"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> Events</button>
-        <button class="btn btn-secondary btn-sm" onclick="openGlobalSearch()" title="Search All Outputs (Cmd+Shift+F)"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Search All</button>
-        <button class="btn btn-secondary btn-sm" onclick="toggleFleetStats()" title="Fleet Output Statistics">⊞ Stats</button>
+        <button class="btn btn-secondary btn-sm" id="groupByProjectBtn" onclick="toggleGroupByProject()" data-tip="Group cards by project">⊞ Group</button>
+        <button class="btn btn-secondary btn-sm" id="pauseAllBtn" onclick="togglePauseAll()" data-tip="Pause or resume all running agents">⏸ Pause All</button>
+        <button class="btn btn-secondary btn-sm" onclick="openTimeline()" data-tip="Activity Timeline" data-tip-key="⌘T"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12H3"/><path d="M16 6H3"/><path d="M12 18H3"/><path d="m16 12 5 3-5 3v-6Z"/></svg> Timeline</button>
+        <button class="btn btn-secondary btn-sm" onclick="openAnalytics()" data-tip="Fleet Analytics"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg> Analytics</button>
+        <button class="btn btn-secondary btn-sm" onclick="openFleetTimeline()" data-tip="Fleet Timeline"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="10" x2="14" y2="10"/><line x1="4" y1="14" x2="18" y2="14"/><line x1="4" y1="18" x2="10" y2="18"/></svg> Timeline</button>
+        <button class="btn btn-secondary btn-sm" onclick="openSplitView()" data-tip="Split Terminal View"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/></svg> Split</button>
+        <button class="btn btn-secondary btn-sm" onclick="openCollabGraph()" data-tip="Collaboration Graph"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> Graph</button>
+        <button class="btn btn-secondary btn-sm" onclick="openConflicts()" data-tip="File Conflicts"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg> Conflicts</button>
+        <button class="btn btn-secondary btn-sm" onclick="openEventLog()" data-tip="Event Log"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> Events</button>
+        <button class="btn btn-secondary btn-sm" onclick="openGlobalSearch()" data-tip="Search All Outputs" data-tip-key="⌘/"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Search All</button>
+        <button class="btn btn-secondary btn-sm" onclick="toggleFleetStats()" data-tip="Fleet Output Statistics">⊞ Stats</button>
     </div>
     <table class="agent-table" id="agentTable">
         <thead><tr>
@@ -5268,9 +5423,10 @@ body {
             <div class="shortcuts">
                 <span class="shortcut-hint"><span class="kbd">⌘N</span> spawn agent</span>
                 <span class="shortcut-hint"><span class="kbd">⌘K</span> command palette</span>
-                <span class="shortcut-hint"><span class="kbd">Space</span> push-to-talk</span>
+                <span class="shortcut-hint"><span class="kbd">V</span> voice input</span>
                 <span class="shortcut-hint"><span class="kbd">?</span> shortcuts</span>
             </div>
+            <div style="margin-top:8px"><a href="#" onclick="event.preventDefault();startTour()" style="color:var(--accent);font-size:12px;text-decoration:none">Take the Tour &rarr;</a></div>
         </div>
         <div class="filter-empty-state" id="filterEmptyState" style="display:none">
             <p>No agents match your search</p>
@@ -5279,9 +5435,12 @@ body {
 </div>
 
 <!-- ── Spawn Dialog ── -->
-<div class="modal-overlay" id="spawnOverlay">
+<div class="modal-overlay" id="spawnOverlay" onclick="if(event.target===this)closeSpawnDialog()">
     <div class="spawn-dialog">
-        <div class="dialog-title">Spawn New Agent</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <div class="dialog-title" style="margin-bottom:0">Spawn New Agent</div>
+            <button class="btn btn-icon" onclick="closeSpawnDialog()" aria-label="Close" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:18px;padding:4px 8px;border-radius:var(--radius-xs)">&times;</button>
+        </div>
 
         <div class="resume-sessions-section" id="resumeSessionsSection" style="display:none">
             <div class="section-label">Resume Previous Session</div>
@@ -5314,8 +5473,8 @@ body {
             <select id="spawnPresetSelect" onchange="loadPreset(this.value)">
                 <option value="">From preset...</option>
             </select>
-            <button class="btn btn-secondary btn-sm" onclick="saveAsPreset()" title="Save current form as preset">Save Preset</button>
-            <button class="btn btn-secondary btn-sm" onclick="saveAsFleetTemplate()" title="Save running fleet as template">Save Fleet</button>
+            <button class="btn btn-secondary btn-sm" onclick="saveAsPreset()" data-tip="Save current form as preset">Save Preset</button>
+            <button class="btn btn-secondary btn-sm" onclick="saveAsFleetTemplate()" data-tip="Save running fleet as template">Save Fleet</button>
         </div>
 
         <div class="form-label">Role</div>
@@ -5328,7 +5487,7 @@ body {
 
         <div class="form-group">
             <label class="form-label">Working Directory</label>
-            <input class="form-input" id="spawnDir" placeholder="~/Projects" list="recentDirs">
+            <input class="form-input" id="spawnDir" placeholder="~/Projects" list="recentDirs" data-tip="Must be under ~/ or /tmp. Supports autocomplete from recent dirs.">
             <datalist id="recentDirs"></datalist>
         </div>
 
@@ -5359,7 +5518,7 @@ body {
         <div class="form-row" style="display:flex;gap:12px">
             <div class="form-group" style="flex:1">
                 <label class="form-label">Model (optional)</label>
-                <select class="form-input" id="spawnModel" style="cursor:pointer">
+                <select class="form-input" id="spawnModel" style="cursor:pointer" data-tip="Opus = most capable, Sonnet = fast + smart, Haiku = fastest + cheapest">
                     <option value="">Default</option>
                     <option value="opus">Opus</option>
                     <option value="sonnet">Sonnet</option>
@@ -5368,18 +5527,18 @@ body {
             </div>
             <div class="form-group" style="flex:1">
                 <label class="form-label">Tools (optional)</label>
-                <input class="form-input" id="spawnTools" placeholder="e.g. Bash,Read,Edit">
+                <input class="form-input" id="spawnTools" placeholder="e.g. Bash,Read,Edit" data-tip="Restrict agent to specific tools, e.g. Bash,Read,Edit,Write">
             </div>
         </div>
 
         <div class="toggle-row">
-            <span class="form-label" style="margin:0">Plan Mode</span>
-            <div class="toggle" id="planModeToggle" onclick="this.classList.toggle('active')"></div>
+            <label class="form-label" style="margin:0;cursor:pointer" for="planModeToggleCtrl" data-tip="Agent plans before executing. Safer for complex changes.">Plan Mode</label>
+            <div class="toggle" id="planModeToggle" onclick="this.classList.toggle('active')" role="switch" aria-label="Plan Mode"></div>
         </div>
 
         <div class="dialog-actions">
             <button class="btn btn-secondary" onclick="closeSpawnDialog()">Cancel</button>
-            <button class="btn btn-secondary" onclick="queueFromSpawnDialog()" title="Queue task for auto-spawn when slots are available">Queue</button>
+            <button class="btn btn-secondary" onclick="queueFromSpawnDialog()" data-tip="Queue for auto-spawn when an agent slot opens">Queue</button>
             <button class="btn btn-primary" onclick="spawnAgent()">Spawn Agent <span style="font-size:9px;opacity:0.6;margin-left:4px">⌘↵</span></button>
         </div>
     </div>
@@ -5389,24 +5548,24 @@ body {
 <div class="deep-view" id="deepView" role="region" aria-label="Agent detail view">
     <div class="deep-header">
         <button class="back-btn" onclick="closeDeepView()">← Back</button>
-        <button class="deep-nav-btn" id="deepPrevBtn" onclick="deepNavAgent(-1)" title="Previous agent (Shift+←)">‹</button>
+        <button class="deep-nav-btn" id="deepPrevBtn" onclick="deepNavAgent(-1)" data-tip="Previous agent" data-tip-key="⇧←" aria-label="Previous agent">‹</button>
         <div class="deep-agent-info">
             <span id="deepIcon"></span>
             <span class="deep-agent-name" id="deepName"></span>
             <span class="deep-agent-role" id="deepRole"></span>
-            <span class="deep-work-dir" id="deepWorkDir" onclick="copyWorkingDir(state.focusedAgentId)" title="Click to copy path"></span>
-            <span class="deep-line-count" id="deepLineCount" title="Output lines"></span>
+            <span class="deep-work-dir" id="deepWorkDir" onclick="copyWorkingDir(state.focusedAgentId)" data-tip="Click to copy path"></span>
+            <span class="deep-line-count" id="deepLineCount" data-tip="Output lines"></span>
         </div>
-        <button class="deep-nav-btn" id="deepNextBtn" onclick="deepNavAgent(1)" title="Next agent (Shift+→)">›</button>
+        <button class="deep-nav-btn" id="deepNextBtn" onclick="deepNavAgent(1)" data-tip="Next agent" data-tip-key="⇧→" aria-label="Next agent">›</button>
         <div class="deep-stats">
             <div><span class="metric-label">Status </span><span class="deep-stat-value" id="deepStatus"></span></div>
             <div><span class="metric-label">Phase </span><span class="deep-stat-value" id="deepPhase"></span></div>
             <div class="deep-context-stat"><span class="metric-label">Context </span><span class="deep-stat-value" id="deepContext"></span><div class="deep-context-bar"><div class="deep-context-bar-fill" id="deepContextFill"></div></div></div>
             <div><span class="metric-label">Memory </span><span class="deep-stat-value" id="deepMemory"></span></div>
             <div><span class="metric-label">Health </span><span class="deep-stat-value" id="deepHealth"></span></div>
-            <div><span class="metric-label">Efficiency </span><span class="deep-stat-value" id="deepEfficiency" title="">-</span></div>
+            <div><span class="metric-label">Efficiency </span><span class="deep-stat-value" id="deepEfficiency" data-tip="Task completion efficiency">-</span></div>
             <div><span class="metric-label">Time </span><span class="deep-stat-value" id="deepTime"></span></div>
-            <div><span class="metric-label">Tokens </span><span class="deep-stat-value" id="deepTokens" title="">-</span></div>
+            <div><span class="metric-label">Tokens </span><span class="deep-stat-value" id="deepTokens" data-tip="Estimated token usage">-</span></div>
             <div><span class="metric-label">Cost </span><span class="deep-stat-value" id="deepCost">-</span></div>
             <div><span class="metric-label">Tools </span><span class="deep-stat-value" id="deepToolCount">-</span></div>
             <span class="deep-lang-badge" id="deepLangBadge" style="display:none"></span>
@@ -5418,7 +5577,7 @@ body {
         </div>
         <div class="status-timeline-bar" id="statusTimelineBar"></div>
         <div class="deep-keywords" id="deepKeywords"></div>
-        <div class="activity-heatmap" id="activityHeatmap" title="Activity density over time"></div>
+        <div class="activity-heatmap" id="activityHeatmap" data-tip="Activity density over time"></div>
         <div class="deep-actions">
             <button class="deep-action-btn" id="deepPauseBtn" onclick="deepPauseResume()" id="deepPauseBtnInner"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg></span> Pause</button>
             <div class="copy-dropdown-wrap">
@@ -5446,15 +5605,15 @@ body {
                     </div>
                 </div>
             </div>
-            <button class="deep-action-btn" onclick="deepRegenSummary()" title="AI Summary"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M19.967 17.484A4 4 0 0 1 18 18"/></svg> AI</button>
-            <button class="deep-action-btn" onclick="openDeepMessaging()" title="Send to another agent"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg></span> Msg</button>
-            <button class="deep-action-btn" onclick="deepRestart()" title="Restart agent"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></span> Restart</button>
-            <button class="deep-action-btn" onclick="deepRetry()" title="Retry with modified task"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></span> Retry</button>
-            <button class="deep-action-btn" onclick="openHandoff()" title="Handoff to another agent"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></span> Handoff</button>
-            <button class="deep-action-btn" onclick="deepExportOutput()" title="Download output log"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg></span> Export</button>
-            <button class="deep-action-btn danger" onclick="deepKill()">Kill</button>
-            <button class="deep-action-btn" id="focusModeBtn" onclick="toggleFocusMode()" title="Focus mode (⌘⇧F)">⊡ Focus</button>
-            <button class="deep-action-btn" onclick="toggleDeepShortcutsRef()" title="Keyboard shortcuts" style="position:relative">?
+            <button class="deep-action-btn" onclick="deepRegenSummary()" data-tip="Generate AI summary of agent output"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M19.967 17.484A4 4 0 0 1 18 18"/></svg> AI</button>
+            <button class="deep-action-btn" onclick="openDeepMessaging()" data-tip="Send output to another agent"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg></span> Msg</button>
+            <button class="deep-action-btn" onclick="deepRestart()" data-tip="Restart agent with same configuration"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></span> Restart</button>
+            <button class="deep-action-btn" onclick="deepRetry()" data-tip="Retry with modified task"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></span> Retry</button>
+            <button class="deep-action-btn" onclick="openHandoff()" data-tip="Handoff to another agent"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></span> Handoff</button>
+            <button class="deep-action-btn" onclick="deepExportOutput()" data-tip="Download output log"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg></span> Export</button>
+            <button class="deep-action-btn danger" onclick="deepKill()" data-tip="Terminate this agent" data-tip-key="⌘⇧K"><span class="btn-icon"><svg class="lucide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg></span> Kill</button>
+            <button class="deep-action-btn" id="focusModeBtnDeep" onclick="toggleFocusMode()" data-tip="Focus on one project" data-tip-key="⌘⇧F">⊡ Focus</button>
+            <button class="deep-action-btn" onclick="toggleDeepShortcutsRef()" data-tip="Keyboard shortcuts" style="position:relative">?
                 <div class="deep-shortcuts-popover" id="deepShortcutsPopover">
                     <div class="dsp-title">Deep View Shortcuts</div>
                     <div class="dsp-row"><span class="dsp-desc">Search</span><span class="dsp-key">⌘F</span></div>
@@ -5478,16 +5637,16 @@ body {
         <button class="terminal-toolbar-btn" onclick="exportTerminalTxt()">⬇ Export .txt</button>
         <button class="terminal-toolbar-btn" onclick="clearTerminalDisplay()">⌫ Clear</button>
         <button class="terminal-toolbar-btn" onclick="toggleBookmarksPanel()" id="toolbarBookmarks">★ Bookmarks <span class="bookmark-count-badge" id="bookmarkCountBadge" style="display:none">0</span></button>
-        <button class="terminal-toolbar-btn" onclick="markOutputPosition()" id="toolbarMark" title="Mark current position to track new output">⚑ Mark</button>
-        <button class="terminal-toolbar-btn" id="toolbarTailMode" onclick="toggleTailMode()" title="Show only last 50 lines">⊟ Tail</button>
-        <button class="terminal-toolbar-btn" onclick="openGoToLine()" title="Go to line (Cmd+G)">⤓ Go to line</button>
-        <button class="terminal-toolbar-btn" id="toolbarTimestamps" onclick="toggleTimestamps()" title="Show line timestamps">⏱ Timestamps</button>
-        <button class="terminal-toolbar-btn" id="toolbarDedup" onclick="toggleDedup()" title="Collapse repeated and empty lines">⊞ Dedup</button>
-        <button class="terminal-toolbar-btn" id="toolbarToolFilter" onclick="toggleToolFilterBar()" title="Filter by tool type">⚙ Filter</button>
-        <button class="terminal-toolbar-btn" id="toolbarHighlight" onclick="toggleHighlightPopover()" title="Custom highlight rules">✦ Highlight</button>
-        <button class="terminal-toolbar-btn" id="toolbarSplitPane" onclick="toggleSplitPane()" title="Split pane with notes (Cmd+\\)">⫿ Split</button>
-        <button class="terminal-toolbar-btn" id="toolbarSearchReplace" onclick="toggleSearchReplace()" title="Search and replace (Cmd+H)">⇄ Replace</button>
-        <button class="terminal-toolbar-btn" id="toolbarAutoCollapse" onclick="toggleAutoCollapse()" title="Auto-collapse long tool results">⊟ Collapse</button>
+        <button class="terminal-toolbar-btn" onclick="markOutputPosition()" id="toolbarMark" data-tip="Mark current position to track new output">⚑ Mark</button>
+        <button class="terminal-toolbar-btn" id="toolbarTailMode" onclick="toggleTailMode()" data-tip="Show only last 50 lines">⊟ Tail</button>
+        <button class="terminal-toolbar-btn" onclick="openGoToLine()" data-tip="Go to line" data-tip-key="⌘G">⤓ Go to line</button>
+        <button class="terminal-toolbar-btn" id="toolbarTimestamps" onclick="toggleTimestamps()" data-tip="Show line timestamps">⏱ Timestamps</button>
+        <button class="terminal-toolbar-btn" id="toolbarDedup" onclick="toggleDedup()" data-tip="Collapse repeated and empty lines">⊞ Dedup</button>
+        <button class="terminal-toolbar-btn" id="toolbarToolFilter" onclick="toggleToolFilterBar()" data-tip="Filter by tool type">⚙ Filter</button>
+        <button class="terminal-toolbar-btn" id="toolbarHighlight" onclick="toggleHighlightPopover()" data-tip="Custom highlight rules">✦ Highlight</button>
+        <button class="terminal-toolbar-btn" id="toolbarSplitPane" onclick="toggleSplitPane()" data-tip="Split pane with notes" data-tip-key="⌘\\">⫿ Split</button>
+        <button class="terminal-toolbar-btn" id="toolbarSearchReplace" onclick="toggleSearchReplace()" data-tip="Search and replace" data-tip-key="⌘H">⇄ Replace</button>
+        <button class="terminal-toolbar-btn" id="toolbarAutoCollapse" onclick="toggleAutoCollapse()" data-tip="Auto-collapse long tool results">⊟ Collapse</button>
         <div class="highlight-popover" id="highlightPopover">
             <div style="font-size:11px;font-weight:700;color:var(--text-primary);margin-bottom:8px">Custom Highlights</div>
             <div id="highlightRulesList"></div>
@@ -5501,14 +5660,14 @@ body {
             <label>Line:</label>
             <input type="number" id="gotoLineInput" min="1" placeholder="Line #" />
         </div>
-        <button class="terminal-toolbar-btn" id="toolbarTheme" onclick="toggleThemeSelector()" title="Terminal color theme">◑ Theme</button>
-        <button class="terminal-toolbar-btn" id="toolbarTimepoint" onclick="setTimepoint()" title="Mark timepoint for comparison">⏚ Mark Point</button>
+        <button class="terminal-toolbar-btn" id="toolbarTheme" onclick="toggleThemeSelector()" data-tip="Terminal color theme">◑ Theme</button>
+        <button class="terminal-toolbar-btn" id="toolbarTimepoint" onclick="setTimepoint()" data-tip="Mark timepoint for comparison">⏚ Mark Point</button>
         <div class="theme-selector" id="themeSelector">
-            <div class="theme-swatch active" style="background:#0A0F1A" onclick="setTermTheme('default')" title="Default"></div>
-            <div class="theme-swatch" style="background:#002b36" onclick="setTermTheme('solarized')" title="Solarized"></div>
-            <div class="theme-swatch" style="background:#272822" onclick="setTermTheme('monokai')" title="Monokai"></div>
-            <div class="theme-swatch" style="background:#282a36" onclick="setTermTheme('dracula')" title="Dracula"></div>
-            <div class="theme-swatch" style="background:#0d1117" onclick="setTermTheme('github-dark')" title="GitHub Dark"></div>
+            <div class="theme-swatch active" style="background:#0A0F1A" onclick="setTermTheme('default')" data-tip="Default"></div>
+            <div class="theme-swatch" style="background:#002b36" onclick="setTermTheme('solarized')" data-tip="Solarized"></div>
+            <div class="theme-swatch" style="background:#272822" onclick="setTermTheme('monokai')" data-tip="Monokai"></div>
+            <div class="theme-swatch" style="background:#282a36" onclick="setTermTheme('dracula')" data-tip="Dracula"></div>
+            <div class="theme-swatch" style="background:#0d1117" onclick="setTermTheme('github-dark')" data-tip="GitHub Dark"></div>
         </div>
         <div class="toolbar-spacer"></div>
         <div class="follow-indicator" id="followIndicator" style="display:none">FOLLOWING</div>
@@ -5526,12 +5685,12 @@ body {
         <button class="tool-filter-chip" data-tool="thinking" onclick="setToolFilter('thinking')">Thinking</button>
     </div>
     <div class="deep-tab-bar" id="deepTabBar">
-        <button class="deep-tab active" id="deepTabTerminal" onclick="switchDeepTab('terminal')">Terminal</button>
-        <button class="deep-tab" id="deepTabActivity" onclick="switchDeepTab('activity')">Activity</button>
-        <button class="deep-tab" id="deepTabNotes" onclick="switchDeepTab('notes')">Notes</button>
-        <button class="deep-tab" id="deepTabSnapshots" onclick="switchDeepTab('snapshots')">Snapshots</button>
-        <button class="deep-tab" id="deepTabScratchpad" onclick="switchDeepTab('scratchpad')">Scratchpad</button>
-        <button class="deep-tab" id="deepTabWordCloud" onclick="switchDeepTab('wordcloud')">Words</button>
+        <button class="deep-tab active" id="deepTabTerminal" onclick="switchDeepTab('terminal')" data-tip="Raw terminal output with ANSI colors">Terminal</button>
+        <button class="deep-tab" id="deepTabActivity" onclick="switchDeepTab('activity')" data-tip="Parsed events: file ops, commands, errors">Activity</button>
+        <button class="deep-tab" id="deepTabNotes" onclick="switchDeepTab('notes')" data-tip="Agent notes, tags, and bookmarks">Notes</button>
+        <button class="deep-tab" id="deepTabSnapshots" onclick="switchDeepTab('snapshots')" data-tip="Output snapshots at key moments">Snapshots</button>
+        <button class="deep-tab" id="deepTabScratchpad" onclick="switchDeepTab('scratchpad')" data-tip="Shared scratchpad for cross-agent notes">Scratchpad</button>
+        <button class="deep-tab" id="deepTabWordCloud" onclick="switchDeepTab('wordcloud')" data-tip="Frequency analysis of output words">Words</button>
     </div>
     <div class="deep-error-summary" id="deepErrorSummary" style="display:none">
         <div class="error-summary-header" onclick="toggleErrorSummary()">
@@ -5547,7 +5706,7 @@ body {
             <div id="pinnedMessagesList"></div>
         </div>
         <div class="deep-terminal" id="deepTerminal"></div>
-        <canvas class="output-minimap" id="outputMinimap" width="60" height="400" title="Output minimap — click to scroll"></canvas>
+        <canvas class="output-minimap" id="outputMinimap" width="60" height="400" data-tip="Output minimap — click to scroll"></canvas>
         <div class="bookmarks-panel" id="bookmarksPanel" style="display:none">
             <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border-subtle)">
                 <span style="font-size:12px;font-weight:700;color:var(--text-primary)">Bookmarks</span>
@@ -5613,9 +5772,9 @@ body {
             </div>
         </div>
         <div class="deep-search-bar" id="deepSearchBar">
-            <button class="deep-search-toggle" id="deepRegexToggle" onclick="toggleDeepRegex()" title="Toggle regex mode">.*</button>
-            <button class="deep-search-toggle" id="deepCaseToggle" onclick="toggleDeepCase()" title="Toggle case sensitivity">Aa</button>
-            <button class="deep-search-toggle" id="deepServerSearchToggle" onclick="toggleServerSearch()" title="Search server archive (slower, searches full history)">SRV</button>
+            <button class="deep-search-toggle" id="deepRegexToggle" onclick="toggleDeepRegex()" data-tip="Toggle regex mode" aria-label="Regex mode">.*</button>
+            <button class="deep-search-toggle" id="deepCaseToggle" onclick="toggleDeepCase()" data-tip="Toggle case sensitivity" aria-label="Case sensitivity">Aa</button>
+            <button class="deep-search-toggle" id="deepServerSearchToggle" onclick="toggleServerSearch()" data-tip="Search server archive (slower, full history)" aria-label="Server search">SRV</button>
             <div class="deep-filter-chips" id="deepFilterChips">
                 <button class="deep-filter-chip active" data-filter="all" onclick="setOutputFilter('all')">All</button>
                 <button class="deep-filter-chip err" data-filter="errors" onclick="setOutputFilter('errors')">Errors</button>
@@ -5711,10 +5870,10 @@ body {
 
 <!-- ── Command Bar ── -->
 <div class="command-bar">
-    <button class="voice-btn" id="voiceBtn" onmousedown="startVoice()" onmouseup="stopVoice()" aria-label="Push to talk"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg></button>
-    <span class="voice-status" id="voiceStatus">PTT Ready</span>
+    <button class="voice-btn" id="voiceBtn" onclick="toggleVoice()" aria-label="Toggle voice input" data-tip="Click to start/stop voice input" data-tip-key="V"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg></button>
+    <span class="voice-status" id="voiceStatus">Voice Ready</span>
     <div class="voice-transcript" id="voiceTranscript"></div>
-    <select class="command-target" id="commandTarget" title="Target agent" style="display:none"><option value="">All</option></select>
+    <select class="command-target" id="commandTarget" data-tip="Target agent" style="display:none"><option value="">All</option></select>
     <div class="command-bar-inner">
         <span class="command-target-pill" id="commandTargetPill">
             <span class="pill-arrow">→</span>
@@ -5725,7 +5884,7 @@ body {
                oninput="handleCommandInput(event)" onkeydown="handleCommandKey(event)">
         <div class="command-autocomplete" id="commandAutocomplete"></div>
     </div>
-    <button class="command-send-btn" onclick="sendCommand()">Send</button>
+    <button class="command-send-btn" onclick="sendCommand()" data-tip="Send command to targeted agent" data-tip-key="Enter">Send</button>
 </div>
 
 <!-- ── Project Detail Panel ── -->
@@ -5733,6 +5892,8 @@ body {
     <div class="project-detail-header">
         <button class="back-btn" onclick="closeProjectDetail()">← Back</button>
         <h3 id="projectDetailName"></h3>
+        <span style="flex:1"></span>
+        <button class="btn btn-icon" onclick="deleteCurrentProject()" aria-label="Delete project" style="background:none;border:none;color:var(--text-tertiary);cursor:pointer;padding:4px 8px" data-tip="Delete this project"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>
     </div>
     <div class="project-detail-body">
         <div class="project-detail-path" id="projectDetailPath"></div>
@@ -5758,6 +5919,15 @@ body {
             <h4>Agents</h4>
             <div class="project-agent-list" id="projectDetailAgents"></div>
         </div>
+        <div class="project-detail-section" id="projectGithubSection" style="display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <h4 style="margin:0;display:flex;align-items:center;gap:6px"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg> GitHub</h4>
+                <button class="btn btn-sm" onclick="refreshGithubInfo()" style="font-size:10px;padding:2px 8px;background:var(--bg-elevated);border:1px solid var(--border-subtle);color:var(--text-secondary);border-radius:6px;cursor:pointer">↻ Refresh</button>
+            </div>
+            <div id="projectGithubContent" style="font-size:12px">
+                <div style="color:var(--text-tertiary);padding:8px 0">Loading...</div>
+            </div>
+        </div>
         <div class="project-detail-section">
             <h4>Scratchpad</h4>
             <div id="projectDetailScratchpad"></div>
@@ -5778,15 +5948,15 @@ body {
 <!-- ── History Panel ── -->
 <div class="history-overlay" id="historyOverlay" onclick="if(event.target===this)closeHistory()">
     <div class="history-panel">
-        <h3>Agent History</h3>
-        <div id="historyList"><div class="history-empty">No completed agents yet</div></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><h3 style="margin:0">Agent History</h3><button class="btn btn-icon" onclick="closeHistory()" aria-label="Close" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:18px;padding:4px 8px;border-radius:var(--radius-xs)">&times;</button></div>
+        <div id="historyList"><div class="history-empty">No completed agents yet<br><span style="font-size:12px;color:var(--text-tertiary);margin-top:4px;display:inline-block">Spawn an agent with <kbd style="background:var(--bg-tertiary);padding:1px 5px;border-radius:4px;font-size:11px">⌘N</kbd> to get started</span></div></div>
     </div>
 </div>
 
 <!-- ── Settings Panel ── -->
 <div class="settings-overlay" id="settingsOverlay" onclick="if(event.target===this)closeSettings()">
     <div class="settings-panel">
-        <h3>Settings</h3>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><h3 style="margin:0">Settings</h3><button class="btn btn-icon" onclick="closeSettings()" aria-label="Close" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:18px;padding:4px 8px;border-radius:var(--radius-xs)">&times;</button></div>
         <div class="settings-section" id="licenseSettingsSection">
             <div class="settings-section-title"><span class="settings-section-icon"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18v3c0 .6.4 1 1 1h4v-3h3v-3h2l1.4-1.4a6.5 6.5 0 1 0-4-4Z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg></span> License</div>
             <div class="settings-row" style="align-items:center">
@@ -5808,12 +5978,12 @@ body {
         </div>
         <div class="settings-section">
             <div class="settings-section-title"><span class="settings-section-icon"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg></span> Agents</div>
-            <div class="settings-row"><span class="settings-label">Max concurrent agents</span><input class="settings-input" id="setMaxAgents" type="number" min="1" max="100"><span id="setMaxAgentsNote" style="font-size:10px;color:var(--text-tertiary);margin-left:6px"></span></div>
-            <div class="settings-row"><span class="settings-label">Default role</span><select class="settings-select" id="setDefaultRole"></select></div>
-            <div class="settings-row"><span class="settings-label">Default working directory</span><input class="settings-input" id="setDefaultDir" type="text" style="width:240px"></div>
-            <div class="settings-row"><span class="settings-label">Default backend</span><select class="settings-select" id="setDefaultBackend"></select></div>
-            <div class="settings-row"><span class="settings-label">Output capture interval (sec)</span><input class="settings-input" id="setOutputInterval" type="number" min="0.5" max="30" step="0.5"></div>
-            <div class="settings-row"><span class="settings-label">Memory limit per agent (MB)</span><input class="settings-input" id="setMemoryLimit" type="number" min="256" max="32768" step="256"></div>
+            <div class="settings-row"><span class="settings-label" data-tip="Capped by your license tier. Community = 5, Pro = up to 100.">Max concurrent agents</span><input class="settings-input" id="setMaxAgents" type="number" min="1" max="100"><span id="setMaxAgentsNote" style="font-size:10px;color:var(--text-tertiary);margin-left:6px"></span></div>
+            <div class="settings-row"><span class="settings-label" data-tip="Pre-fills the role dropdown when spawning a new agent">Default role</span><select class="settings-select" id="setDefaultRole"></select></div>
+            <div class="settings-row"><span class="settings-label" data-tip="Must be under ~/ or /tmp. Used when no project is selected.">Default working directory</span><input class="settings-input" id="setDefaultDir" type="text" style="width:240px"></div>
+            <div class="settings-row"><span class="settings-label" data-tip="Which CLI tool agents use by default. Can be overridden per-spawn.">Default backend</span><select class="settings-select" id="setDefaultBackend"></select></div>
+            <div class="settings-row"><span class="settings-label" data-tip="Lower = more responsive, higher = less CPU usage">Output capture interval (sec)</span><input class="settings-input" id="setOutputInterval" type="number" min="0.5" max="30" step="0.5"></div>
+            <div class="settings-row"><span class="settings-label" data-tip="Per-agent memory cap. Agents exceeding this are paused by the memory watchdog.">Memory limit per agent (MB)</span><input class="settings-input" id="setMemoryLimit" type="number" min="256" max="32768" step="256"></div>
         </div>
         <div class="settings-section">
             <div class="settings-section-title"><span class="settings-section-icon"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg></span> Backends</div>
@@ -5821,28 +5991,32 @@ body {
         </div>
         <div class="settings-section">
             <div class="settings-section-title"><span class="settings-section-icon"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M19.967 17.484A4 4 0 0 1 18 18"/></svg></span> AI Summaries (Grok)</div>
-            <div class="settings-row"><span class="settings-label">Enable LLM summaries</span><div class="settings-toggle" id="setLlmEnabled" onclick="this.classList.toggle('active')" role="switch" aria-label="Enable LLM summaries" tabindex="0"></div><span class="settings-badge" id="setLlmStatus"></span></div>
-            <div class="settings-row"><span class="settings-label">Model</span><input class="settings-input" id="setLlmModel" type="text" style="width:240px"></div>
-            <div class="settings-row"><span class="settings-label">Summary interval (sec)</span><input class="settings-input" id="setLlmInterval" type="number" min="3" max="120" step="1"></div>
+            <div class="settings-row"><span class="settings-label" data-tip="Requires XAI_API_KEY environment variable">Enable LLM summaries</span><div class="settings-toggle" id="setLlmEnabled" onclick="this.classList.toggle('active')" role="switch" aria-label="Enable LLM summaries" tabindex="0"></div><span class="settings-badge" id="setLlmStatus"></span></div>
+            <div class="settings-row"><span class="settings-label" data-tip="xAI Grok model name. Must be a valid model ID for your API key.">Model</span><input class="settings-input" id="setLlmModel" type="text" style="width:240px"></div>
+            <div class="settings-row"><span class="settings-label" data-tip="How often each agent's output is summarized. Lower = more API calls.">Summary interval (sec)</span><input class="settings-input" id="setLlmInterval" type="number" min="3" max="120" step="1"></div>
                 <div class="settings-row">
-                    <label class="settings-label" for="setIdleTtl">⏱ Idle Agent TTL (sec)</label>
+                    <span class="settings-label" data-tip="Idle or completed agents are removed from the grid after this many seconds.">Idle Agent TTL (sec)</span>
                     <input class="settings-input" id="setIdleTtl" type="number" min="300" max="86400" step="60">
                 </div>
         </div>
         <div class="settings-section">
             <div class="settings-section-title"><span class="settings-section-icon"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span> Alert Thresholds</div>
-            <div class="settings-row"><span class="settings-label">Health low threshold</span><input class="settings-input" id="setHealthLow" type="number" min="0.05" max="1.0" step="0.05"></div>
-            <div class="settings-row"><span class="settings-label">Health critical threshold</span><input class="settings-input" id="setHealthCritical" type="number" min="0.01" max="1.0" step="0.01"></div>
-            <div class="settings-row"><span class="settings-label">Stall timeout (minutes)</span><input class="settings-input" id="setStallTimeout" type="number" min="1" max="60" step="1"></div>
-            <div class="settings-row"><span class="settings-label">Hung timeout (minutes)</span><input class="settings-input" id="setHungTimeout" type="number" min="1" max="120" step="1"></div>
-            <div class="settings-row"><span class="settings-label">Cost budget per agent ($)</span><input class="settings-input" id="setCostBudget" type="number" min="0" max="100" step="0.10" title="0 = no limit"></div>
-            <div class="settings-row"><span class="settings-label">Auto-pause at budget limit</span><div class="settings-toggle" id="setCostAutoPause" onclick="this.classList.toggle('active')" role="switch" aria-label="Auto-pause at budget limit" tabindex="0"></div></div>
+            <div class="settings-row"><span class="settings-label" data-tip="0.0 = critical, 1.0 = perfect health">Health low threshold</span><input class="settings-input" id="setHealthLow" type="number" min="0.05" max="1.0" step="0.05"></div>
+            <div class="settings-row"><span class="settings-label" data-tip="0.0 = critical, 1.0 = perfect health">Health critical threshold</span><input class="settings-input" id="setHealthCritical" type="number" min="0.01" max="1.0" step="0.01"></div>
+            <div class="settings-row"><span class="settings-label" data-tip="How long an agent can go with no output before it is considered stalled">Stall timeout (minutes)</span><input class="settings-input" id="setStallTimeout" type="number" min="1" max="60" step="1"></div>
+            <div class="settings-row"><span class="settings-label" data-tip="How long a workflow can be silent before it is flagged as hung">Hung timeout (minutes)</span><input class="settings-input" id="setHungTimeout" type="number" min="1" max="120" step="1"></div>
+            <div class="settings-row"><span class="settings-label" data-tip="0 = no limit. Agents auto-pause when budget exceeded.">Cost budget per agent ($)</span><input class="settings-input" id="setCostBudget" type="number" min="0" max="100" step="0.10"></div>
+            <div class="settings-row"><span class="settings-label" data-tip="Pauses all working agents when fleet cost exceeds the budget above">Auto-pause at budget limit</span><div class="settings-toggle" id="setCostAutoPause" onclick="this.classList.toggle('active')" role="switch" aria-label="Auto-pause at budget limit" tabindex="0"></div></div>
         </div>
         <div class="settings-section">
             <div class="settings-section-title"><span class="settings-section-icon"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><path d="m2 14 6-6 6 6"/><path d="M22 18H2"/><path d="M22 22H2"/></svg></span> Auto-Pilot</div>
-            <div class="settings-row"><span class="settings-label">Auto-restart stalled agents</span><div class="settings-toggle" id="setAutoRestartStall" onclick="this.classList.toggle('active')" role="switch" aria-label="Auto-restart on stall" tabindex="0"></div></div>
-            <div class="settings-row"><span class="settings-label">Auto-approve agent prompts</span><div class="settings-toggle" id="setAutoApproveEnabled" onclick="this.classList.toggle('active')" role="switch" aria-label="Auto-approve patterns" tabindex="0"></div></div>
-            <div class="settings-row"><span class="settings-label">Auto-pause on critical health</span><div class="settings-toggle" id="setAutoPauseCritical" onclick="this.classList.toggle('active')" role="switch" aria-label="Auto-pause on critical health" tabindex="0"></div></div>
+            <div class="settings-row"><span class="settings-label" data-tip="Automatically restarts agents that exceed the stall timeout">Auto-restart stalled agents</span><div class="settings-toggle" id="setAutoRestartStall" onclick="this.classList.toggle('active')" role="switch" aria-label="Auto-restart on stall" tabindex="0"></div></div>
+            <div class="settings-row"><span class="settings-label" data-tip="Automatically approves agent prompts. Safety blocklist prevents dangerous commands. Rate limited 5/min/agent.">Auto-approve agent prompts</span><div class="settings-toggle" id="setAutoApproveEnabled" onclick="this.classList.toggle('active')" role="switch" aria-label="Auto-approve patterns" tabindex="0"></div></div>
+            <div class="settings-row" style="flex-direction:column;align-items:stretch">
+                <span class="settings-label" style="margin-bottom:4px" data-tip="Regex patterns that auto-approve matches. One per line. Leave empty to approve all prompts.">Auto-approve patterns</span>
+                <textarea class="settings-input" id="setAutoApprovePatterns" placeholder="e.g. proceed&#10;yes&#10;approve" style="font-family:var(--font-mono);font-size:11px;min-height:48px;resize:vertical;line-height:1.5"></textarea>
+            </div>
+            <div class="settings-row"><span class="settings-label" data-tip="Pauses agents whose health score drops below the critical threshold">Auto-pause on critical health</span><div class="settings-toggle" id="setAutoPauseCritical" onclick="this.classList.toggle('active')" role="switch" aria-label="Auto-pause on critical health" tabindex="0"></div></div>
             <div class="settings-row" style="flex-direction:column;align-items:stretch">
                 <span class="settings-label" style="margin-bottom:4px">Desktop notification events</span>
                 <div style="display:flex;flex-wrap:wrap;gap:6px">
@@ -5855,8 +6029,8 @@ body {
         </div>
         <div class="settings-section">
             <div class="settings-section-title"><span class="settings-section-icon"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg></span> Display</div>
-            <div class="settings-row"><span class="settings-label">Voice feedback sounds</span><div class="settings-toggle" id="setVoiceSounds" onclick="this.classList.toggle('active')" role="switch" aria-label="Voice feedback sounds" tabindex="0"></div></div>
-            <div class="settings-row"><span class="settings-label">Browser notifications</span><div class="settings-toggle" id="setBrowserNotifs" onclick="toggleBrowserNotifPermission()" role="switch" aria-label="Browser notifications" tabindex="0"></div></div>
+            <div class="settings-row"><span class="settings-label" data-tip="Plays tones when voice input starts and stops (Web Audio API)">Voice feedback sounds</span><div class="settings-toggle" id="setVoiceSounds" onclick="this.classList.toggle('active')" role="switch" aria-label="Voice feedback sounds" tabindex="0"></div></div>
+            <div class="settings-row"><span class="settings-label" data-tip="Requests OS notification permission for agent events">Browser notifications</span><div class="settings-toggle" id="setBrowserNotifs" onclick="toggleBrowserNotifPermission()" role="switch" aria-label="Browser notifications" tabindex="0"></div></div>
         </div>
         <div class="settings-section">
             <div class="settings-section-title"><span class="settings-section-icon"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg></span> Server Health</div>
@@ -5877,11 +6051,12 @@ body {
             <div class="settings-row" style="gap:8px">
                 <button class="btn btn-secondary btn-sm" onclick="exportSettings()">Export Settings</button>
                 <button class="btn btn-secondary btn-sm" onclick="importSettings()">Import Settings</button>
-                <button class="btn btn-secondary btn-sm" onclick="exportFleetState()" title="Export current fleet state (all agents, projects, config)">Export Fleet</button>
+                <button class="btn btn-secondary btn-sm" onclick="exportFleetState()" data-tip="Export current fleet state (all agents, projects, config)">Export Fleet</button>
             </div>
         </div>
         <div class="settings-actions">
-            <button class="settings-reset-btn" onclick="resetSettings()">Reset to Defaults</button>
+            <button class="btn btn-secondary btn-sm" onclick="localStorage.removeItem('ashlr_tour_done');showToast('Tour will restart on next page load','info')" data-tip="Clear tour completion flag and replay the onboarding walkthrough">Restart Tour</button>
+            <button class="settings-reset-btn" onclick="resetSettings()" data-tip="Resets all settings to factory defaults">Reset to Defaults</button>
             <div style="flex:1"></div>
             <button class="btn btn-secondary" onclick="closeSettings()">Cancel</button>
             <button class="btn btn-primary" onclick="saveSettings()">Save</button>
@@ -5913,7 +6088,7 @@ body {
 <!-- ── Workflow Editor ── -->
 <div class="wf-editor-overlay" id="wfEditorOverlay" onclick="if(event.target===this)closeWfEditor()">
     <div class="wf-editor">
-        <h3 id="wfEditorTitle">Workflows</h3>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><h3 id="wfEditorTitle" style="margin:0">Workflows</h3><button class="btn btn-icon" onclick="closeWfEditor()" aria-label="Close" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:18px;padding:4px 8px;border-radius:var(--radius-xs)">&times;</button></div>
         <div id="wfEditorContent">
             <!-- Dynamic content: list view or edit form -->
         </div>
@@ -5923,7 +6098,7 @@ body {
 <!-- ── Workflow Picker Modal ── -->
 <div class="wf-picker-overlay" id="wfPickerOverlay" onclick="if(event.target===this)closeWfPicker()">
     <div class="wf-picker">
-        <h3>Run Workflow</h3>
+        <div style="display:flex;align-items:center;justify-content:space-between"><h3 style="margin:0">Run Workflow</h3><button class="btn btn-icon" onclick="closeWfPicker()" aria-label="Close" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:18px;padding:4px 8px;border-radius:var(--radius-xs)">&times;</button></div>
         <p class="wf-picker-subtitle">Select a workflow template to spawn a group of agents</p>
         <div id="wfPickerList"></div>
         <div class="wf-picker-dir-section">
@@ -5957,7 +6132,7 @@ body {
 </div>
 
 <!-- ── Confirmation Modal ── -->
-<div class="confirm-overlay" id="confirmOverlay">
+<div class="confirm-overlay" id="confirmOverlay" onclick="if(event.target===this){const cb=document.getElementById('confirmCancel');if(cb)cb.click()}">
     <div class="confirm-dialog">
         <div class="confirm-icon" id="confirmIcon"></div>
         <h3 class="confirm-title" id="confirmTitle"></h3>
@@ -6028,7 +6203,7 @@ body {
 <!-- ── Edit Agent Modal ── -->
 <div class="modal-overlay" id="editAgentOverlay" onclick="if(event.target===this)closeEditAgent()">
     <div class="edit-agent-dialog">
-        <h3 style="margin:0 0 16px;font-size:16px;font-weight:700;letter-spacing:-0.02em">Edit Agent</h3>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><h3 style="margin:0;font-size:16px;font-weight:700;letter-spacing:-0.02em">Edit Agent</h3><button class="btn btn-icon" onclick="closeEditAgent()" aria-label="Close" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:18px;padding:4px 8px;border-radius:var(--radius-xs)">&times;</button></div>
         <label class="form-label">Name</label>
         <input class="settings-input" id="editAgentName" type="text" maxlength="100">
         <label class="form-label">Task</label>
@@ -6071,7 +6246,7 @@ body {
             </div>
         </div>
         <div class="timeline-list" id="timelineList"></div>
-        <div class="timeline-list" id="historyList" style="display:none"></div>
+        <div class="timeline-list" id="timelineHistoryList" style="display:none"></div>
     </div>
 </div>
 
@@ -6697,7 +6872,9 @@ async function openTeamPanel() {
         const data = await resp.json();
         const users = data.users || [];
         showToast('Team: ' + users.map(u => u.display_name).join(', '), 'info');
-    } catch {}
+    } catch (e) {
+        showToast('Failed to load team members', 'error');
+    }
 }
 
 // Auth form event listeners
@@ -7199,7 +7376,7 @@ function updateMinimap() {
 
     ctx.clearRect(0, 0, W, H);
 
-    const lines = agent._outputBuffer || agent.output_lines || [];
+    const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
     if (!lines.length) return;
 
     const lineH = Math.max(1, H / lines.length);
@@ -7369,6 +7546,7 @@ class AshlrSocket {
     }
 
     connect() {
+        if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
         const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
         const tokenParam = authToken ? `?token=${encodeURIComponent(authToken)}` : '';
         this.ws = new WebSocket(`${proto}//${location.host}/ws${tokenParam}`);
@@ -7379,7 +7557,9 @@ class AshlrSocket {
             this.reconnectDelay = 1000;
             this.reconnectAttempts = 0;
             const banner = document.getElementById('connectionBanner');
-            if (banner) { banner.classList.remove('active'); banner.textContent = ''; }
+            if (banner) { banner.classList.remove('active'); }
+            const bannerMsg = document.getElementById('connectionBannerMsg');
+            if (bannerMsg) bannerMsg.textContent = '';
             // Toast shown after sync provides fleet summary
             state._showSyncSummary = true;
         };
@@ -7401,14 +7581,17 @@ class AshlrSocket {
             const banner = document.getElementById('connectionBanner');
             if (banner) {
                 banner.classList.add('active');
-                if (this.reconnectAttempts >= 10) {
-                    banner.textContent = 'Server unreachable — restart with ./start.sh and refresh';
-                } else {
-                    banner.textContent = `Disconnected — reconnecting (attempt ${this.reconnectAttempts})...`;
+                const msg = document.getElementById('connectionBannerMsg');
+                if (msg) {
+                    if (this.reconnectAttempts >= 10) {
+                        msg.textContent = 'Server unreachable — restart with ./start.sh and refresh';
+                    } else {
+                        msg.textContent = `Disconnected — reconnecting (attempt ${this.reconnectAttempts})...`;
+                    }
                 }
             }
             const jitter = this.reconnectDelay * (0.5 + Math.random());
-            setTimeout(() => this.connect(), jitter);
+            this._reconnectTimer = setTimeout(() => this.connect(), jitter);
             this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, this.maxDelay);
         };
 
@@ -7551,12 +7734,41 @@ function updateIntelligenceStatus() {
     if (!el) return;
     const config = state.config || {};
     const dot = el.querySelector('.intelligence-dot');
+    const label = el.querySelector('.intelligence-label');
+    const miniStatus = document.getElementById('aiMiniStatus');
+    const miniInsights = document.getElementById('aiMiniInsights');
+
+    el.style.display = '';
+
     if (config.intelligence_enabled) {
-        el.style.display = '';
         dot.className = 'intelligence-dot connected';
+        el.classList.add('connected');
+        if (label) label.textContent = 'AI Active';
+        if (miniStatus) miniStatus.textContent = 'Connected to intelligence engine. Fleet analysis runs every 30s when multiple agents are active.';
     } else {
-        el.style.display = '';
         dot.className = 'intelligence-dot disabled';
+        el.classList.remove('connected');
+        if (label) label.textContent = 'AI Off';
+        if (miniStatus) miniStatus.innerHTML = 'Set <code style="font-size:10px;padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">XAI_API_KEY</code> env variable to enable AI summaries, NLU commands, and fleet analysis.';
+    }
+
+    // Update mini insights preview
+    if (miniInsights && state.insights && state.insights.length > 0) {
+        const recent = state.insights.slice(0, 3);
+        miniInsights.innerHTML = recent.map(i =>
+            `<div class="ai-mini-insight">${escapeHtml(i.message || i.text || '').substring(0, 100)}</div>`
+        ).join('');
+    } else if (miniInsights) {
+        miniInsights.innerHTML = '<div class="ai-mini-insight" style="color:var(--text-tertiary);font-style:italic">No insights yet</div>';
+    }
+
+    // Update insight count badge
+    const countEl = document.getElementById('insightCount');
+    if (countEl && state.insights && state.insights.length > 0) {
+        countEl.textContent = state.insights.length;
+        countEl.style.display = '';
+    } else if (countEl) {
+        countEl.style.display = 'none';
     }
 }
 
@@ -8438,46 +8650,66 @@ function createAgentCard(agent) {
         showContextMenu(agent.id, e.clientX, e.clientY);
     };
     card.onkeydown = (e) => {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
             if (document.getElementById('agentGrid').classList.contains('bulk-mode')) {
                 toggleAgentSelection(agent.id);
             } else {
-                // If agent is waiting, open interaction sheet; otherwise deep view
                 const ag = state.agents.get(agent.id);
                 if (ag && ag.needs_input) { openInteraction(agent.id); }
                 else { openDeepView(agent.id); }
             }
+        }
+        if (e.key === 'm' || e.key === 'M') {
+            e.preventDefault();
+            const r = card.getBoundingClientRect();
+            showContextMenu(agent.id, r.right - 40, r.top + 30);
+        }
+        // Arrow key navigation between cards
+        if (['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp'].includes(e.key)) {
+            e.preventDefault();
+            const grid = document.getElementById('agentGrid');
+            const cards = [...grid.querySelectorAll('.agent-card:not([style*="display: none"])')];
+            const idx = cards.indexOf(card);
+            if (idx < 0) return;
+            const cols = Math.max(1, Math.round(grid.offsetWidth / (cards[0]?.offsetWidth || 300)));
+            let next = idx;
+            if (e.key === 'ArrowRight') next = Math.min(cards.length - 1, idx + 1);
+            else if (e.key === 'ArrowLeft') next = Math.max(0, idx - 1);
+            else if (e.key === 'ArrowDown') next = Math.min(cards.length - 1, idx + cols);
+            else if (e.key === 'ArrowUp') next = Math.max(0, idx - cols);
+            if (next !== idx) cards[next].focus();
         }
     };
     card.innerHTML = `
         <div class="card-select" data-action="select"></div>
         <div class="card-header">
             <span class="card-icon"></span>
-            <span class="card-conn-dot" title="Connected"></span>
+            <span class="card-conn-dot" data-tip="Connected"></span>
             <span class="card-name"></span>
             <span class="plan-mode-indicator">PLAN</span>
-            <span class="card-health" title="Health" role="img" aria-label="Agent health"></span>
+            <span class="card-health" data-tip="Health" role="img" aria-label="Agent health"></span>
             <span class="card-message-badge" aria-label="Unread messages"></span>
             <span class="card-conflict-badge"></span>
             <span class="card-files-badge"></span>
-            <span class="card-bookmarks-badge" style="display:none" title="Bookmarked output lines"></span>
-            <span class="card-error-count-badge" style="display:none" title="Error lines detected"></span>
+            <span class="card-bookmarks-badge" style="display:none" data-tip="Bookmarked output lines"></span>
+            <span class="card-error-count-badge" style="display:none" data-tip="Error lines detected"></span>
             <button class="card-menu-btn" data-action="menu" aria-haspopup="true" aria-label="Agent actions menu">⋯</button>
         </div>
         <div class="card-info-row">
             <span class="card-project-badge" style="display:none"></span>
             <span class="card-backend-label"></span>
             <span class="card-model-badge" style="display:none"></span>
-            <span class="card-tools-badge" style="display:none" title="Tool permissions"></span>
-            <span class="card-branch-badge" title="Git branch"></span>
-            <span class="card-workflow-dot" style="display:none" title="Workflow group"></span>
+            <span class="card-tools-badge" style="display:none" data-tip="Tool permissions"></span>
+            <span class="card-branch-badge" data-tip="Git branch"></span>
+            <span class="card-workflow-dot" style="display:none" data-tip="Workflow group"></span>
             <span class="card-pipeline-badge"></span>
         </div>
         <div class="agent-owner" style="display:none"></div>
-        <div class="card-dir" data-action="copy-dir" title="Click to copy path"></div>
+        <div class="card-dir" data-action="copy-dir" data-tip="Click to copy path"></div>
         <div class="card-summary"></div>
         <div class="card-last-action" style="display:none"></div>
-        <div class="card-last-file" style="display:none" title="Last file touched"></div>
+        <div class="card-last-file" style="display:none" data-tip="Last file touched"></div>
         <div class="card-input-section">
             <div class="card-input-row">
                 <div class="card-input-prompt"></div>
@@ -8497,15 +8729,15 @@ function createAgentCard(agent) {
             <span class="status-badge"></span>
             <span class="card-status-duration"></span>
             <span class="card-cost-badge" style="display:none"></span>
-            <span class="card-line-count" style="display:none" title="Total output lines"></span>
+            <span class="card-line-count" style="display:none" data-tip="Total output lines"></span>
             <span class="card-meta"></span>
         </div>
         <div class="card-hover-actions">
-            <button class="card-hover-btn" data-action="pause-resume" title="Pause/Resume">${icon('pause', 12)}</button>
-            <button class="card-hover-btn" data-action="restart" title="Restart">${icon('refresh-cw', 12)}</button>
-            <button class="card-hover-btn" data-action="pin" title="Pin">${icon('pin', 12)}</button>
-            <button class="card-hover-btn" data-action="clone" title="Clone">${icon('copy', 12)}</button>
-            <button class="card-hover-btn danger" data-action="kill" title="Kill">${icon('x', 12)}</button>
+            <button class="card-hover-btn" data-action="pause-resume" data-tip="Pause/Resume" aria-label="Pause or resume agent">${icon('pause', 12)}</button>
+            <button class="card-hover-btn" data-action="restart" data-tip="Restart" aria-label="Restart agent">${icon('refresh-cw', 12)}</button>
+            <button class="card-hover-btn" data-action="pin" data-tip="Pin to top" aria-label="Pin agent">${icon('pin', 12)}</button>
+            <button class="card-hover-btn" data-action="clone" data-tip="Clone agent" aria-label="Clone agent">${icon('copy', 12)}</button>
+            <button class="card-hover-btn danger" data-action="kill" data-tip="Kill agent" aria-label="Kill agent">${icon('x', 12)}</button>
         </div>
         <div class="card-menu" role="menu">
             <div class="card-menu-item" role="menuitem" data-action="deep-view">${icon('terminal', 14)} View Terminal</div>
@@ -8675,7 +8907,7 @@ function applyCardReorder(fromId, toId) {
 }
 
 function detectLastAction(agent) {
-    const lines = agent._outputBuffer || agent.output_lines || [];
+    const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
     if (lines.length === 0) return null;
     if (agent._lastActionLen === lines.length) return agent._lastActionCache;
     const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
@@ -8702,7 +8934,7 @@ function detectLastAction(agent) {
 }
 
 function detectProgressText(agent) {
-    const lines = agent._outputBuffer || agent.output_lines || [];
+    const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
     if (lines.length === 0) return null;
     if (agent._progressTextLen === lines.length) return agent._progressTextCache;
     const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
@@ -8734,7 +8966,7 @@ function detectProgressText(agent) {
 }
 
 function detectToolCounts(agent) {
-    const lines = agent._outputBuffer || agent.output_lines || [];
+    const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
     const len = lines.length;
     if (len === 0) return null;
     // Incremental scan: only process new lines since last call
@@ -8757,7 +8989,7 @@ function detectToolCounts(agent) {
 }
 
 function detectLastFile(agent) {
-    const lines = agent._outputBuffer || agent.output_lines || [];
+    const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
     if (lines.length === 0) return null;
     if (agent._lastFileLen === lines.length) return agent._lastFileCache;
     const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
@@ -9064,7 +9296,7 @@ function updateAgentCard(card, agent) {
     // Error count badge (cached by buffer length)
     const errBadge = el.errorCountBadge;
     if (errBadge) {
-        const lines = agent._outputBuffer || agent.output_lines || [];
+        const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
         let errCount = 0;
         if (agent._errCountLen !== lines.length) {
             const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
@@ -9435,7 +9667,7 @@ function showCardPreview(agentId, cardEl) {
     const agent = state.agents.get(agentId);
     if (!agent) return;
     // Skip preview for idle/paused agents with no output
-    const lines = agent._outputBuffer || agent.output_lines || [];
+    const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
     if (lines.length === 0) return;
     const preview = document.getElementById('cardPreview');
     if (!preview) return;
@@ -9948,7 +10180,7 @@ async function loadFleetTemplates() {
             btn.onclick = () => deployFleetTemplate(t.id, t.name);
             list.appendChild(btn);
         }
-    } catch { /* ignore */ }
+    } catch (e) { console.warn('Failed to load fleet templates:', e); }
 }
 
 async function deployFleetTemplate(templateId, templateName) {
@@ -10113,6 +10345,202 @@ let deepAutoScroll = true;
 let deepSearchMatches = [];
 let deepSearchIdx = -1;
 
+// ── xterm.js Manager ──
+const xtermManager = {
+    terminal: null,
+    fitAddon: null,
+    searchAddon: null,
+    webglAddon: null,
+    _resizeObserver: null,
+    _available: null, // null = unchecked, true/false after check
+
+    isAvailable() {
+        if (this._available !== null) return this._available;
+        this._available = typeof Terminal !== 'undefined' && typeof FitAddon !== 'undefined';
+        return this._available;
+    },
+
+    create(container) {
+        if (!this.isAvailable()) return false;
+        this.destroy(); // clean up any existing instance
+
+        const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+        this.terminal = new Terminal({
+            disableStdin: true,
+            cursorBlink: false,
+            cursorStyle: 'bar',
+            cursorInactiveStyle: 'none',
+            fontSize: 13,
+            fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+            lineHeight: 1.5,
+            scrollback: 15000,
+            convertEol: true,
+            allowProposedApi: true,
+            theme: isDark ? {
+                background: '#0D1520',
+                foreground: '#E2E8F0',
+                cursor: '#E2E8F0',
+                selectionBackground: 'rgba(99,102,241,0.35)',
+                selectionForeground: '#FFFFFF',
+                black: '#1E293B',
+                red: '#EF4444',
+                green: '#22C55E',
+                yellow: '#EAB308',
+                blue: '#3B82F6',
+                magenta: '#A855F7',
+                cyan: '#06B6D4',
+                white: '#E2E8F0',
+                brightBlack: '#475569',
+                brightRed: '#F87171',
+                brightGreen: '#4ADE80',
+                brightYellow: '#FDE047',
+                brightBlue: '#60A5FA',
+                brightMagenta: '#C084FC',
+                brightCyan: '#22D3EE',
+                brightWhite: '#F8FAFC',
+            } : {
+                background: '#F8FAFC',
+                foreground: '#1E293B',
+                cursor: '#1E293B',
+                selectionBackground: 'rgba(99,102,241,0.25)',
+                selectionForeground: '#000000',
+                black: '#CBD5E1',
+                red: '#DC2626',
+                green: '#16A34A',
+                yellow: '#CA8A04',
+                blue: '#2563EB',
+                magenta: '#9333EA',
+                cyan: '#0891B2',
+                white: '#1E293B',
+                brightBlack: '#94A3B8',
+                brightRed: '#EF4444',
+                brightGreen: '#22C55E',
+                brightYellow: '#EAB308',
+                brightBlue: '#3B82F6',
+                brightMagenta: '#A855F7',
+                brightCyan: '#06B6D4',
+                brightWhite: '#0F172A',
+            }
+        });
+
+        // Load addons
+        try {
+            this.fitAddon = new FitAddon.FitAddon();
+            this.terminal.loadAddon(this.fitAddon);
+        } catch (e) { console.warn('xterm fit addon failed:', e); }
+
+        try {
+            this.searchAddon = new SearchAddon.SearchAddon();
+            this.terminal.loadAddon(this.searchAddon);
+        } catch (e) { console.warn('xterm search addon failed:', e); }
+
+        try {
+            if (typeof WebLinksAddon !== 'undefined') {
+                this.terminal.loadAddon(new WebLinksAddon.WebLinksAddon());
+            }
+        } catch (e) { console.warn('xterm web-links addon failed:', e); }
+
+        // Open terminal in container
+        this.terminal.open(container);
+
+        // Try WebGL renderer for performance
+        try {
+            if (typeof WebglAddon !== 'undefined') {
+                this.webglAddon = new WebglAddon.WebglAddon();
+                this.webglAddon.onContextLoss(() => {
+                    this.webglAddon.dispose();
+                    this.webglAddon = null;
+                });
+                this.terminal.loadAddon(this.webglAddon);
+            }
+        } catch (e) { console.warn('xterm WebGL not available, using canvas:', e); }
+
+        // Fit to container
+        requestAnimationFrame(() => {
+            if (this.fitAddon) try { this.fitAddon.fit(); } catch(e) {}
+        });
+
+        // Auto-resize on container size change
+        this._resizeObserver = new ResizeObserver(() => {
+            if (this.fitAddon) try { this.fitAddon.fit(); } catch(e) {}
+        });
+        this._resizeObserver.observe(container);
+
+        return true;
+    },
+
+    write(data) {
+        if (this.terminal) this.terminal.write(data);
+    },
+
+    writeln(line) {
+        if (this.terminal) this.terminal.writeln(line);
+    },
+
+    writeLines(lines) {
+        if (!this.terminal) return;
+        // Batch write for performance
+        const data = lines.join('\r\n') + '\r\n';
+        this.terminal.write(data);
+    },
+
+    clear() {
+        if (this.terminal) { this.terminal.clear(); this.terminal.reset(); }
+    },
+
+    search(query) {
+        if (this.searchAddon && query) return this.searchAddon.findNext(query);
+        return false;
+    },
+
+    searchPrev(query) {
+        if (this.searchAddon && query) return this.searchAddon.findPrevious(query);
+        return false;
+    },
+
+    clearSearch() {
+        if (this.searchAddon) this.searchAddon.clearDecorations();
+    },
+
+    scrollToBottom() {
+        if (this.terminal) this.terminal.scrollToBottom();
+    },
+
+    isAtBottom() {
+        if (!this.terminal) return true;
+        const buf = this.terminal.buffer.active;
+        return buf.viewportY >= buf.baseY;
+    },
+
+    updateTheme() {
+        if (!this.terminal) return;
+        const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+        this.terminal.options.theme = isDark ? {
+            background: '#0D1520', foreground: '#E2E8F0',
+            selectionBackground: 'rgba(99,102,241,0.35)',
+            black: '#1E293B', red: '#EF4444', green: '#22C55E', yellow: '#EAB308',
+            blue: '#3B82F6', magenta: '#A855F7', cyan: '#06B6D4', white: '#E2E8F0',
+            brightBlack: '#475569', brightRed: '#F87171', brightGreen: '#4ADE80', brightYellow: '#FDE047',
+            brightBlue: '#60A5FA', brightMagenta: '#C084FC', brightCyan: '#22D3EE', brightWhite: '#F8FAFC',
+        } : {
+            background: '#F8FAFC', foreground: '#1E293B',
+            selectionBackground: 'rgba(99,102,241,0.25)',
+            black: '#CBD5E1', red: '#DC2626', green: '#16A34A', yellow: '#CA8A04',
+            blue: '#2563EB', magenta: '#9333EA', cyan: '#0891B2', white: '#1E293B',
+            brightBlack: '#94A3B8', brightRed: '#EF4444', brightGreen: '#22C55E', brightYellow: '#EAB308',
+            brightBlue: '#3B82F6', brightMagenta: '#A855F7', brightCyan: '#06B6D4', brightWhite: '#0F172A',
+        };
+    },
+
+    destroy() {
+        if (this._resizeObserver) { this._resizeObserver.disconnect(); this._resizeObserver = null; }
+        if (this.webglAddon) { try { this.webglAddon.dispose(); } catch(e) {} this.webglAddon = null; }
+        if (this.searchAddon) { this.searchAddon = null; }
+        if (this.fitAddon) { this.fitAddon = null; }
+        if (this.terminal) { this.terminal.dispose(); this.terminal = null; }
+    }
+};
+
 function openDeepView(agentId) {
     const agent = state.agents.get(agentId);
     if (!agent) return;
@@ -10160,78 +10588,109 @@ function openDeepView(agentId) {
         terminal._ashlrScrollHandler = null;
     }
     terminal.innerHTML = '';
-    terminal.style.whiteSpace = 'pre-wrap';
-    terminal.style.wordWrap = 'break-word';
+
     const lines = agent._outputBuffer || [];
-    if (lines.length) {
-        _addLoadMoreIndicator(terminal);
-        resetCodeBlockState(agentId);
-        if (_showTimestamps) terminal.classList.add('show-timestamps');
-        const tsMap = agent._outputTimestamps || [];
-        const frag = document.createDocumentFragment();
-        for (let li = 0; li < lines.length; li++) {
-            const cl = classifyTerminalLine(lines[li], agentId);
-            const div = document.createElement('div');
-            div.className = cl.className;
-            const ts = tsMap[li] ? `<span class="line-timestamp">${formatLineTimestamp(tsMap[li])}</span>` : '<span class="line-timestamp"></span>';
-            div.innerHTML = ts + cl.html;
-            addLineNumber(div, li, agentId);
-            frag.appendChild(div);
+    const useXterm = xtermManager.isAvailable();
+
+    if (useXterm) {
+        // ── xterm.js rendering path ──
+        terminal.style.whiteSpace = '';
+        terminal.style.wordWrap = '';
+        terminal.style.padding = '0';
+        terminal.style.overflow = 'hidden';
+        terminal.classList.add('xterm-active');
+        xtermManager.create(terminal);
+        if (lines.length) {
+            // Write all buffered output at once
+            xtermManager.terminal.write(lines.join('\r\n') + '\r\n');
+        } else {
+            xtermManager.terminal.writeln('\x1b[2m Loading output...\x1b[0m');
+            loadOutputChunk(agentId, 'initial').then(() => {
+                if (state.focusedAgentId !== agentId) return;
+                const freshAgent = state.agents.get(agentId);
+                if (!freshAgent) return;
+                const buf = freshAgent._outputBuffer || [];
+                if (!buf.length) return;
+                xtermManager.clear();
+                xtermManager.terminal.write(buf.join('\r\n') + '\r\n');
+                if (deepAutoScroll) xtermManager.scrollToBottom();
+            }).catch(e => console.warn('Deep view progressive load failed:', e.message));
         }
-        terminal.appendChild(frag);
-        // Check if there's archived output we haven't loaded
-        const ps = _getProgressiveState(agent);
-        if (ps.loadedFrom < 0) {
-            // First open — estimate: if total_output_lines > buffer, there's more
-            const totalKnown = agent.total_output_lines || lines.length;
-            if (totalKnown > lines.length) {
-                ps.total = totalKnown;
-                ps.loadedFrom = totalKnown - lines.length;
-                ps.hasMore = ps.loadedFrom > 0;
-            } else {
-                ps.loadedFrom = 0;
-                ps.total = lines.length;
-                ps.hasMore = false;
-            }
-        }
-        _updateLoadMoreIndicator(agentId);
-        applyOutputFolding(terminal);
+        if (deepAutoScroll) xtermManager.scrollToBottom();
     } else {
-        terminal.innerHTML = '<span style="color:var(--text-tertiary)">Loading output...</span>';
-        // Progressive load from full-output API (includes archive)
-        loadOutputChunk(agentId, 'initial').then(() => {
-            if (state.focusedAgentId !== agentId) return;
-            const freshAgent = state.agents.get(agentId);
-            if (!freshAgent) return;
-            const buf = freshAgent._outputBuffer || [];
-            if (!buf.length) return;
-            const termEl = document.getElementById('deepTerminal');
-            if (!termEl) return;
-            termEl.innerHTML = '';
-            _addLoadMoreIndicator(termEl);
+        // ── Legacy DOM rendering path ──
+        terminal.style.whiteSpace = 'pre-wrap';
+        terminal.style.wordWrap = 'break-word';
+        terminal.classList.remove('xterm-active');
+        if (lines.length) {
+            _addLoadMoreIndicator(terminal);
             resetCodeBlockState(agentId);
+            if (_showTimestamps) terminal.classList.add('show-timestamps');
+            const tsMap = agent._outputTimestamps || [];
             const frag = document.createDocumentFragment();
-            for (let li = 0; li < buf.length; li++) {
-                const cl = classifyTerminalLine(buf[li], agentId);
+            for (let li = 0; li < lines.length; li++) {
+                const cl = classifyTerminalLine(lines[li], agentId);
                 const div = document.createElement('div');
                 div.className = cl.className;
-                div.innerHTML = cl.html;
+                const ts = tsMap[li] ? `<span class="line-timestamp">${formatLineTimestamp(tsMap[li])}</span>` : '<span class="line-timestamp"></span>';
+                div.innerHTML = ts + cl.html;
                 addLineNumber(div, li, agentId);
                 frag.appendChild(div);
             }
-            termEl.appendChild(frag);
+            terminal.appendChild(frag);
+            const ps = _getProgressiveState(agent);
+            if (ps.loadedFrom < 0) {
+                const totalKnown = agent.total_output_lines || lines.length;
+                if (totalKnown > lines.length) {
+                    ps.total = totalKnown;
+                    ps.loadedFrom = totalKnown - lines.length;
+                    ps.hasMore = ps.loadedFrom > 0;
+                } else {
+                    ps.loadedFrom = 0;
+                    ps.total = lines.length;
+                    ps.hasMore = false;
+                }
+            }
             _updateLoadMoreIndicator(agentId);
-            applyOutputFolding(termEl);
-            scrollDeepToBottom();
-        }).catch(e => console.warn('Deep view progressive load failed:', e.message));
+            applyOutputFolding(terminal);
+        } else {
+            terminal.innerHTML = '<span style="color:var(--text-tertiary)">Loading output...</span>';
+            loadOutputChunk(agentId, 'initial').then(() => {
+                if (state.focusedAgentId !== agentId) return;
+                const freshAgent = state.agents.get(agentId);
+                if (!freshAgent) return;
+                const buf = freshAgent._outputBuffer || [];
+                if (!buf.length) return;
+                const termEl = document.getElementById('deepTerminal');
+                if (!termEl) return;
+                termEl.innerHTML = '';
+                _addLoadMoreIndicator(termEl);
+                resetCodeBlockState(agentId);
+                const frag = document.createDocumentFragment();
+                for (let li = 0; li < buf.length; li++) {
+                    const cl = classifyTerminalLine(buf[li], agentId);
+                    const div = document.createElement('div');
+                    div.className = cl.className;
+                    div.innerHTML = cl.html;
+                    addLineNumber(div, li, agentId);
+                    frag.appendChild(div);
+                }
+                termEl.appendChild(frag);
+                _updateLoadMoreIndicator(agentId);
+                applyOutputFolding(termEl);
+                scrollDeepToBottom();
+            }).catch(e => console.warn('Deep view progressive load failed:', e.message));
+        }
     }
     // Apply line annotations from localStorage
-    requestAnimationFrame(() => applyAnnotationsToTerminal());
+    if (!useXterm) requestAnimationFrame(() => applyAnnotationsToTerminal());
     // Load split notes if split pane is active
     if (_splitPaneActive) { loadSplitNotes(); renderSplitAnnotations(); }
 
     // Restore saved scroll position or scroll to bottom
-    if (savedScrollPos != null) {
+    if (useXterm) {
+        if (deepAutoScroll) xtermManager.scrollToBottom();
+    } else if (savedScrollPos != null) {
         requestAnimationFrame(() => {
             terminal.scrollTop = savedScrollPos;
             deepAutoScroll = false;
@@ -10242,7 +10701,8 @@ function openDeepView(agentId) {
         scrollDeepToBottom();
     }
 
-    // Remove old scroll handler to prevent leak, then add fresh one
+    // Scroll handler — xterm.js manages its own scroll, legacy needs DOM handler
+    if (!useXterm) {
     if (terminal._ashlrScrollHandler) terminal.removeEventListener('scroll', terminal._ashlrScrollHandler);
     terminal._ashlrScrollHandler = () => {
         const isBottom = terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 40;
@@ -10259,6 +10719,7 @@ function openDeepView(agentId) {
         }
     };
     terminal.addEventListener('scroll', terminal._ashlrScrollHandler);
+    } // end if (!useXterm) scroll handler block
 
     setTimeout(() => document.getElementById('deepInput').focus(), 100);
 
@@ -10431,7 +10892,7 @@ function updateDeepViewHeader(agent) {
     const charEl = document.getElementById('deepCharCount');
     const wordEl = document.getElementById('deepWordCount');
     if (charEl && wordEl) {
-        const lines = agent._outputBuffer || agent.output_lines || [];
+        const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
         if (agent._charWordLen !== lines.length) {
             const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
             let totalChars = 0, totalWords = 0;
@@ -10676,13 +11137,33 @@ function updateScrollSpeedIndicator() {
 function appendDeepOutput(lines) {
     const terminal = document.getElementById('deepTerminal');
     if (!terminal) return;
+
+    // ── xterm.js path: write raw lines directly ──
+    if (xtermManager.terminal) {
+        const wasAtBottom = xtermManager.isAtBottom();
+        xtermManager.terminal.write(lines.join('\r\n') + '\r\n');
+        trackOutputLines(lines.length);
+        if (wasAtBottom || deepAutoScroll) {
+            xtermManager.scrollToBottom();
+            deepAutoScroll = true;
+            _newLinesSinceScroll = 0;
+        } else {
+            _newLinesSinceScroll += lines.length;
+            const jumpBtn = document.getElementById('jumpToBottom');
+            if (jumpBtn) {
+                jumpBtn.textContent = `↓ ${_newLinesSinceScroll} new lines`;
+                jumpBtn.classList.add('visible');
+            }
+        }
+        return;
+    }
+
+    // ── Legacy DOM path ──
     // Clear placeholder if present
     if (terminal.querySelector('span[style*="text-dimmed"]') && terminal.children.length <= 1) terminal.innerHTML = '';
     const frag = document.createDocumentFragment();
     const aid = state.focusedAgentId || '';
-    // Count existing lines for line numbering
     let existingCount = terminal.querySelectorAll('.terminal-line').length;
-    // Add capture separator when not auto-scrolling and there's existing content
     if (!deepAutoScroll && existingCount > 0 && lines.length > 0) {
         const sep = document.createElement('div');
         sep.className = 'capture-separator';
@@ -10704,7 +11185,6 @@ function appendDeepOutput(lines) {
     trackOutputLines(lines.length);
     if (state.focusedAgentId) markNewLines(state.focusedAgentId);
     if (_autoCollapseEnabled) applyAutoCollapse();
-    // Auto-scroll if following
     if (deepAutoScroll) {
         terminal.scrollTop = terminal.scrollHeight;
         _newLinesSinceScroll = 0;
@@ -10719,9 +11199,13 @@ function appendDeepOutput(lines) {
 }
 
 function scrollDeepToBottom() {
-    const t = document.getElementById('deepTerminal');
-    if (!t) return;
-    t.scrollTop = t.scrollHeight;
+    if (xtermManager.terminal) {
+        xtermManager.scrollToBottom();
+    } else {
+        const t = document.getElementById('deepTerminal');
+        if (!t) return;
+        t.scrollTop = t.scrollHeight;
+    }
     deepAutoScroll = true;
     _newLinesSinceScroll = 0;
     const jumpBtn = document.getElementById('jumpToBottom');
@@ -10759,14 +11243,25 @@ function closeDeepView() {
     stopDeepTimeTimer();
     stopMinimapUpdates();
     stopScrollSpeedTracking();
+    // Destroy xterm.js instance if active
+    xtermManager.destroy();
     const terminal = document.getElementById('deepTerminal');
-    // Save scroll position for this agent
-    if (state.focusedAgentId && terminal) {
+    if (terminal) {
+        terminal.classList.remove('xterm-active');
+        terminal.style.padding = '';
+        terminal.style.overflow = '';
+    }
+    // Save scroll position for this agent (legacy only)
+    if (state.focusedAgentId && terminal && !terminal.classList.contains('xterm-active')) {
         state.deepScrollPositions.set(state.focusedAgentId, terminal.scrollTop);
     }
     if (terminal && terminal._ashlrScrollHandler) {
         terminal.removeEventListener('scroll', terminal._ashlrScrollHandler);
         terminal._ashlrScrollHandler = null;
+    }
+    if (terminal && terminal._ashlrVScrollHandler) {
+        terminal.removeEventListener('scroll', terminal._ashlrVScrollHandler);
+        terminal._ashlrVScrollHandler = null;
     }
     document.getElementById('deepView').classList.remove('active', 'archived-view');
     closeDeepSearch();
@@ -11072,7 +11567,7 @@ function deepCopyMarkdown() {
     const agent = state.agents.get(state.focusedAgentId);
     if (!agent) return;
     const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
-    const lines = agent._outputBuffer || agent.output_lines || [];
+    const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
     // Strip ANSI codes for clean markdown
     const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
     const cleanLines = lines.map(l => l.replace(ansiRe, ''));
@@ -11125,7 +11620,7 @@ async function deepExportJSON() {
     if (!agent) return;
     const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
     const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
-    const lines = (agent._outputBuffer || agent.output_lines || []).map(l => l.replace(ansiRe, ''));
+    const lines = (agent._outputBuffer || agent._outputBuffer || agent.output_lines || []).map(l => l.replace(ansiRe, ''));
     // Fetch structured activity data
     let activity = agent._activity;
     if (!activity) {
@@ -11191,7 +11686,7 @@ const _errorRe = /\b(error|exception|traceback|fatal|fail(ed)?|panic|FAIL|ERROR|
 function updateErrorSummary(agent) {
     const panel = document.getElementById('deepErrorSummary');
     if (!panel || !agent) return;
-    const lines = agent._outputBuffer || agent.output_lines || [];
+    const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
     const ansiRe = /\x1b\[[0-9;]*m/g;
     const errorLines = [];
     for (let i = 0; i < lines.length; i++) {
@@ -11292,14 +11787,14 @@ async function addBookmarkFromSelection() {
         // Bookmark the last visible line
         const agent = state.agents.get(state.focusedAgentId);
         if (!agent) return;
-        const lines = agent.output_lines || [];
+        const lines = agent._outputBuffer || agent.output_lines || [];
         selectedText = lines.length > 0 ? lines[lines.length - 1] : '';
     }
     const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
     const cleanText = selectedText.replace(ansiRe, '').substring(0, 200);
     // Estimate line number
     const agent = state.agents.get(state.focusedAgentId);
-    const lineNum = agent ? (agent.output_lines || []).length : 0;
+    const lineNum = agent ? (agent._outputBuffer || agent.output_lines || []).length : 0;
     const label = await promptInput('Bookmark Label', 'Optional label for this bookmark', {
         iconKey: 'bookmark', confirmText: 'Save', defaultValue: ''
     });
@@ -11340,7 +11835,7 @@ function jumpToBookmarkLine(lineNum) {
     // Scroll to approximate position based on line number
     const totalHeight = terminal.scrollHeight;
     const agent = state.agents.get(state.focusedAgentId);
-    const totalLines = agent ? (agent.output_lines || []).length : 1;
+    const totalLines = agent ? (agent._outputBuffer || agent.output_lines || []).length : 1;
     const ratio = Math.min(1, lineNum / Math.max(1, totalLines));
     terminal.scrollTop = ratio * totalHeight;
 }
@@ -11357,7 +11852,7 @@ function markOutputPosition() {
     }
     const agent = state.agents.get(state.focusedAgentId);
     if (!agent) return;
-    const lineCount = (agent._outputBuffer || agent.output_lines || []).length;
+    const lineCount = (agent._outputBuffer || agent._outputBuffer || agent.output_lines || []).length;
     _outputMarks.set(state.focusedAgentId, lineCount);
     const btn = document.getElementById('toolbarMark');
     btn.classList.add('active');
@@ -11721,9 +12216,32 @@ function hideSearchHistory() {
 }
 
 function deepSearch() {
+    const query = document.getElementById('deepSearchInput').value;
+
+    // ── xterm.js search path ──
+    if (xtermManager.searchAddon) {
+        if (!query) { xtermManager.clearSearch(); document.getElementById('deepSearchCount').textContent = ''; return; }
+        clearTimeout(deepSearch._historyTimer);
+        deepSearch._historyTimer = setTimeout(() => addToSearchHistory(query), 1500);
+        hideSearchHistory();
+        const found = xtermManager.searchAddon.findNext(query, {
+            caseSensitive: deepCaseSensitive,
+            regex: deepRegexMode,
+            decorations: {
+                matchBackground: '#6366F140',
+                matchBorder: '#6366F180',
+                activeMatchBackground: '#6366F180',
+                activeMatchBorder: '#6366F1',
+            }
+        });
+        document.getElementById('deepSearchCount').textContent = found ? 'Found' : 'No matches';
+        document.getElementById('deepSearchCount').style.color = found ? '' : 'var(--danger)';
+        return;
+    }
+
+    // ── Legacy DOM search path ──
     clearSearchHighlights();
     _virtualSearchMatches = [];
-    const query = document.getElementById('deepSearchInput').value;
     if (!query) { document.getElementById('deepSearchCount').textContent = ''; _restoreTerminalContent(); return; }
     // Save to history after a debounce
     clearTimeout(deepSearch._historyTimer);
@@ -11887,6 +12405,11 @@ function _updateCurrentSearchHighlight() {
 }
 
 function deepSearchNext() {
+    if (xtermManager.searchAddon) {
+        const query = document.getElementById('deepSearchInput').value;
+        xtermManager.searchAddon.findNext(query, { caseSensitive: deepCaseSensitive, regex: deepRegexMode });
+        return;
+    }
     if (deepSearchMatches.length === 0) return;
     deepSearchIdx = (deepSearchIdx + 1) % deepSearchMatches.length;
     if (_virtualSearchMatches.length > 0) {
@@ -11898,6 +12421,11 @@ function deepSearchNext() {
 }
 
 function deepSearchPrev() {
+    if (xtermManager.searchAddon) {
+        const query = document.getElementById('deepSearchInput').value;
+        xtermManager.searchAddon.findPrevious(query, { caseSensitive: deepCaseSensitive, regex: deepRegexMode });
+        return;
+    }
     if (deepSearchMatches.length === 0) return;
     deepSearchIdx = (deepSearchIdx - 1 + deepSearchMatches.length) % deepSearchMatches.length;
     if (_virtualSearchMatches.length > 0) {
@@ -12550,9 +13078,17 @@ document.addEventListener('keydown', (e) => {
             ['gsearchOverlay', closeGlobalSearch],
             ['pipelineOverlay', closePipeline],
             ['handoffOverlay', closeHandoff],
+            ['editAgentOverlay', closeEditAgent],
+            ['fleetTimelineOverlay', closeFleetTimeline],
+            ['collabOverlay', closeCollabGraph],
+            ['splitViewOverlay', closeSplitView],
+            ['batchSendOverlay', closeBatchSend],
+            ['globalSearchOverlay', closeGlobalSearchBar],
+            ['spawnOverlay', closeSpawnDialog],
         ];
         for (const [id, closeFn] of _overlayStack) {
-            if (document.getElementById(id)?.classList.contains('active')) { closeFn(); return; }
+            const el = document.getElementById(id);
+            if (el && (el.classList.contains('active') || (el.style.display && el.style.display !== 'none'))) { closeFn(); return; }
         }
         return;
     }
@@ -12583,11 +13119,8 @@ document.addEventListener('keydown', (e) => {
     // Cmd+E — extensions
     if (e.metaKey && e.key === 'e' && !e.shiftKey) { e.preventDefault(); toggleExtensionsPanel(); return; }
 
-    // Cmd+Shift+F — global search across all agents
-    if (e.metaKey && e.shiftKey && e.key === 'F') { e.preventDefault(); openGlobalSearch(); return; }
-
-    // Cmd+Shift+O — toggle focus mode
-    if (e.metaKey && e.shiftKey && e.key === 'O') { e.preventDefault(); toggleFocusMode(); return; }
+    // Cmd+Shift+F — toggle focus mode
+    if (e.metaKey && e.shiftKey && e.key === 'F') { e.preventDefault(); toggleFocusMode(); return; }
 
     // Cmd+/ — open global search bar (cross-agent output search)
     if (e.metaKey && e.key === '/') { e.preventDefault(); openGlobalSearchBar(); return; }
@@ -12914,6 +13447,14 @@ function quickSwitchProject(index) {
 function toggleFocusMode() {
     state.focusMode = !state.focusMode;
     localStorage.setItem('ashlr_focus_mode', state.focusMode ? 'true' : 'false');
+    // Also toggle deep view focus-mode CSS class
+    const deepView = document.getElementById('deepView');
+    if (deepView) deepView.classList.toggle('focus-mode', state.focusMode);
+    // Update both focus mode buttons (header + deep view toolbar)
+    ['focusModeBtn', 'focusModeBtnDeep'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.classList.toggle('active', state.focusMode);
+    });
     renderAgentGrid();
 }
 
@@ -13077,6 +13618,8 @@ function openProjectDetail(projectId) {
     document.getElementById('projectDetailPath').textContent = project.directory || project.path || '';
     updateProjectDetailContent(projectId);
     document.getElementById('projectDetailPanel').classList.add('active');
+    // Load GitHub info asynchronously (non-blocking)
+    loadGithubInfo(projectId);
 
     // Close with Escape — remove first to prevent accumulation
     document.removeEventListener('keydown', _projectDetailEscHandler);
@@ -13091,6 +13634,204 @@ function closeProjectDetail() {
     document.getElementById('projectDetailPanel').classList.remove('active');
     document.removeEventListener('keydown', _projectDetailEscHandler);
     state._projectDetailId = null;
+}
+
+async function deleteCurrentProject() {
+    const pid = state._projectDetailId;
+    if (!pid) return;
+    const project = state.projects?.find(p => p.id === pid);
+    const name = project?.name || pid;
+    const ok = await confirmAction('Delete Project', `Delete "${name}"? Active agents will be unassigned but not killed.`, 'Delete', { iconKey: 'trash-2', danger: true });
+    if (!ok) return;
+    try {
+        const res = await apiFetch(`/api/projects/${pid}`, { method: 'DELETE' });
+        if (res.ok) {
+            showToast(`Project "${name}" deleted`, 'success');
+            closeProjectDetail();
+            state.projects = (state.projects || []).filter(p => p.id !== pid);
+            renderProjectSelector();
+        } else {
+            const data = await res.json().catch(() => ({}));
+            showToast(data.error || 'Failed to delete project', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to delete project', 'error');
+    }
+}
+
+// ── GitHub Integration ──
+
+let _ghAvailable = null; // cached gh CLI status
+
+async function checkGithubAvailability() {
+    try {
+        const res = await apiFetch('/api/github/status');
+        if (res.ok) {
+            const data = await res.json();
+            _ghAvailable = data.available && data.authenticated;
+            return _ghAvailable;
+        }
+    } catch (e) {}
+    _ghAvailable = false;
+    return false;
+}
+
+async function loadGithubInfo(projectId) {
+    const section = document.getElementById('projectGithubSection');
+    const content = document.getElementById('projectGithubContent');
+    if (!section || !content) return;
+
+    // Check gh availability (cached after first call)
+    if (_ghAvailable === null) await checkGithubAvailability();
+    if (!_ghAvailable) { section.style.display = 'none'; return; }
+
+    // Check if project has a git remote
+    const project = state.projects?.find(p => p.id === projectId);
+    if (!project?.git_remote_url || !project.git_remote_url.includes('github')) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = '';
+    content.innerHTML = '<div style="color:var(--text-tertiary);padding:8px 0">Loading GitHub data...</div>';
+
+    try {
+        const res = await apiFetch(`/api/projects/${projectId}/github`);
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            content.innerHTML = `<div style="color:var(--text-tertiary);padding:8px 0">${escapeHtml(err.error || 'Failed to load')}</div>`;
+            return;
+        }
+        const data = await res.json();
+        renderGithubPanel(data, content, projectId);
+    } catch (e) {
+        content.innerHTML = '<div style="color:var(--text-tertiary);padding:8px 0">Failed to connect to GitHub</div>';
+    }
+}
+
+function renderGithubPanel(data, container, projectId) {
+    let html = '';
+
+    // Repo info bar
+    const repo = data.repo || {};
+    const name = repo.nameWithOwner || '';
+    const stars = repo.stargazerCount || 0;
+    const forks = repo.forkCount || 0;
+    const isPrivate = repo.isPrivate;
+    html += `<div class="gh-repo-info">
+        <span class="gh-repo-stat">${isPrivate ? '🔒' : '🌐'} ${escapeHtml(name)}</span>
+        ${stars ? `<span class="gh-repo-stat">⭐ ${stars}</span>` : ''}
+        ${forks ? `<span class="gh-repo-stat">🔀 ${forks}</span>` : ''}
+    </div>`;
+
+    // Pull Requests
+    const prs = data.pull_requests || [];
+    html += `<div class="gh-section-label">Pull Requests ${prs.length ? `(${prs.length})` : ''}</div>`;
+    if (prs.length) {
+        prs.forEach(pr => {
+            const author = pr.author?.login || '';
+            html += `<a class="gh-item" href="${escapeHtml(pr.url || '')}" target="_blank" rel="noopener">
+                <span class="gh-item-num"><span class="gh-badge gh-badge-pr">PR</span></span>
+                <div style="flex:1">
+                    <div class="gh-item-title">#${pr.number} ${escapeHtml(pr.title || '')}</div>
+                    <div class="gh-item-meta">${escapeHtml(pr.headRefName || '')} · ${escapeHtml(author)}</div>
+                </div>
+            </a>`;
+        });
+    } else {
+        html += '<div style="color:var(--text-tertiary);font-size:11px;padding:4px 0">No open pull requests</div>';
+    }
+
+    // Issues
+    const issues = data.issues || [];
+    html += `<div class="gh-section-label">Issues ${issues.length ? `(${issues.length})` : ''}</div>`;
+    if (issues.length) {
+        issues.forEach(issue => {
+            const author = issue.author?.login || '';
+            const labels = (issue.labels || []).map(l => l.name || l).slice(0, 3);
+            html += `<a class="gh-item" href="${escapeHtml(issue.url || '')}" target="_blank" rel="noopener">
+                <span class="gh-item-num"><span class="gh-badge gh-badge-open">#${issue.number}</span></span>
+                <div style="flex:1">
+                    <div class="gh-item-title">${escapeHtml(issue.title || '')}</div>
+                    <div class="gh-item-meta">${escapeHtml(author)}${labels.length ? ' · ' + labels.map(l => escapeHtml(l)).join(', ') : ''}</div>
+                </div>
+            </a>`;
+        });
+    } else {
+        html += '<div style="color:var(--text-tertiary);font-size:11px;padding:4px 0">No open issues</div>';
+    }
+
+    // Branches
+    const branches = data.branches || [];
+    if (branches.length) {
+        html += `<div class="gh-section-label">Branches (${branches.length})</div>`;
+        html += '<div class="gh-branch-list">';
+        branches.slice(0, 15).forEach(b => {
+            html += `<span class="gh-branch-tag">${escapeHtml(b)}</span>`;
+        });
+        if (branches.length > 15) html += `<span class="gh-branch-tag" style="color:var(--text-tertiary)">+${branches.length - 15} more</span>`;
+        html += '</div>';
+    }
+
+    // Actions
+    html += `<div class="gh-actions">
+        <button class="btn" onclick="createGithubIssue('${projectId}')" style="font-size:11px;padding:4px 10px;background:var(--bg-elevated);border:1px solid var(--border-subtle);color:var(--text-secondary);border-radius:6px;cursor:pointer">+ New Issue</button>
+        <button class="btn" onclick="createGithubPR('${projectId}')" style="font-size:11px;padding:4px 10px;background:var(--bg-elevated);border:1px solid var(--border-subtle);color:var(--text-secondary);border-radius:6px;cursor:pointer">+ New PR</button>
+        <a href="${escapeHtml(repo.url || '')}" target="_blank" rel="noopener" style="font-size:11px;padding:4px 10px;background:var(--accent);color:white;border-radius:6px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:4px">Open on GitHub ↗</a>
+    </div>`;
+
+    container.innerHTML = html;
+}
+
+async function refreshGithubInfo() {
+    const pid = state._projectDetailId;
+    if (pid) await loadGithubInfo(pid);
+}
+
+async function createGithubIssue(projectId) {
+    const title = await promptInput('New GitHub Issue', 'Issue title...', { iconKey: 'alert-circle', confirmText: 'Create' });
+    if (!title) return;
+    try {
+        const res = await apiFetch(`/api/projects/${projectId}/github/issues`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title }),
+        });
+        if (res.ok) {
+            const data = await res.json();
+            showToast('Issue created', 'success');
+            if (data.url) window.open(data.url, '_blank');
+            refreshGithubInfo();
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Failed to create issue', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to create issue', 'error');
+    }
+}
+
+async function createGithubPR(projectId) {
+    const title = await promptInput('New Pull Request', 'PR title...', { iconKey: 'git-pull-request', confirmText: 'Create' });
+    if (!title) return;
+    try {
+        const res = await apiFetch(`/api/projects/${projectId}/github/pulls`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title }),
+        });
+        if (res.ok) {
+            const data = await res.json();
+            showToast('Pull request created', 'success');
+            if (data.url) window.open(data.url, '_blank');
+            refreshGithubInfo();
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Failed to create PR', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to create PR', 'error');
+    }
 }
 
 function updateProjectDetailContent(projectId) {
@@ -13305,35 +14046,60 @@ class VoiceInput {
     constructor() {
         this.recognition = null;
         this.isListening = false;
+        this._pttMode = false; // true when holding Space
         const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SR) {
             this.recognition = new SR();
             this.recognition.lang = 'en-US';
-            this.recognition.interimResults = false;
+            this.recognition.interimResults = true;
+            this.recognition.continuous = true;
             this.recognition.maxAlternatives = 1;
 
             this.recognition.onresult = (e) => {
-                const transcript = e.results[0][0].transcript;
-                showVoiceTranscript(transcript);
-                this.processCommand(transcript);
+                let interim = '', final = '';
+                for (let i = e.resultIndex; i < e.results.length; i++) {
+                    const transcript = e.results[i][0].transcript;
+                    if (e.results[i].isFinal) final += transcript;
+                    else interim += transcript;
+                }
+                // Show interim results live
+                if (interim) showVoiceTranscript(interim, true);
+                if (final) {
+                    showVoiceTranscript(final, false);
+                    this.processCommand(final);
+                }
             };
             this.recognition.onerror = (e) => {
-                this.stopUI();
-                if (e.error === 'not-allowed') showToast('Microphone access denied', 'error');
-                else if (e.error !== 'aborted') showToast('Voice recognition error', 'warning');
+                if (e.error === 'not-allowed') { this.stopUI(); showToast('Microphone access denied', 'error'); }
+                else if (e.error === 'no-speech') { /* ignore, keep listening */ }
+                else if (e.error !== 'aborted') { this.stopUI(); showToast('Voice recognition error', 'warning'); }
             };
-            this.recognition.onend = () => this.stopUI();
+            this.recognition.onend = () => {
+                // If in toggle mode (not PTT) and still supposed to be listening, restart
+                if (this.isListening && !this._pttMode) {
+                    try { this.recognition.start(); } catch(e) { this.stopUI(); }
+                } else {
+                    this.stopUI();
+                }
+            };
         }
     }
 
-    start() {
-        if (!this.recognition || this.isListening) return;
+    toggle() {
+        if (this.isListening) this.stop();
+        else this.start();
+    }
+
+    start(ptt = false) {
+        if (!this.recognition) { showToast('Speech recognition not supported in this browser', 'warning'); return; }
+        if (this.isListening) return;
+        this._pttMode = ptt;
         try {
             this.recognition.start();
             this.isListening = true;
             document.getElementById('voiceBtn').classList.add('listening');
             const vs = document.getElementById('voiceStatus');
-            vs.textContent = 'Listening...';
+            vs.textContent = ptt ? 'Listening (hold)...' : 'Listening — click to stop';
             vs.classList.add('listening');
             playTone([440], 0.1);
         } catch (e) {}
@@ -13341,15 +14107,19 @@ class VoiceInput {
 
     stop() {
         if (!this.recognition || !this.isListening) return;
-        this.recognition.stop();
+        this.isListening = false;
+        this._pttMode = false;
+        try { this.recognition.stop(); } catch(e) {}
+        playTone([330], 0.08);
     }
 
     stopUI() {
         this.isListening = false;
-        document.getElementById('voiceBtn').classList.remove('listening');
+        this._pttMode = false;
+        const btn = document.getElementById('voiceBtn');
+        if (btn) btn.classList.remove('listening');
         const vs = document.getElementById('voiceStatus');
-        vs.textContent = 'PTT Ready';
-        vs.classList.remove('listening');
+        if (vs) { vs.textContent = 'Voice Ready'; vs.classList.remove('listening'); }
     }
 
     async processCommand(text) {
@@ -13440,14 +14210,19 @@ class VoiceInput {
 }
 
 const voice = new VoiceInput();
-function startVoice() { voice.start(); }
+function toggleVoice() { voice.toggle(); }
+function startVoice() { voice.start(true); }
 function stopVoice() { voice.stop(); }
 
-function showVoiceTranscript(text) {
+let _voiceTranscriptTimer = null;
+function showVoiceTranscript(text, interim = false) {
     const el = document.getElementById('voiceTranscript');
     el.textContent = text;
+    el.style.opacity = interim ? '0.7' : '1';
+    el.style.fontStyle = interim ? 'italic' : 'normal';
     el.classList.add('active');
-    setTimeout(() => el.classList.remove('active'), 3000);
+    if (_voiceTranscriptTimer) clearTimeout(_voiceTranscriptTimer);
+    if (!interim) _voiceTranscriptTimer = setTimeout(() => el.classList.remove('active'), 4000);
 }
 
 async function openCrossAgentSearch() {
@@ -13544,15 +14319,25 @@ function openQueuePanel() {
     dropdown.classList.add('active');
 }
 
-// PTT via Space
+// Voice keyboard shortcuts
 document.addEventListener('keydown', (e) => {
-    if (e.code === 'Space' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) && !document.querySelector('.confirm-overlay.active')) {
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    if (document.querySelector('.confirm-overlay.active')) return;
+    // V key = toggle voice on/off
+    if (e.key === 'v' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        toggleVoice();
+        return;
+    }
+    // Space = push-to-talk (hold)
+    if (e.code === 'Space' && !voice.isListening) {
         e.preventDefault();
         startVoice();
     }
 });
 document.addEventListener('keyup', (e) => {
-    if (e.code === 'Space' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) stopVoice();
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    if (e.code === 'Space' && voice._pttMode) stopVoice();
 });
 
 // ── Audio Feedback ──
@@ -13634,7 +14419,7 @@ function toggleTailMode() {
         const agent = state.agents.get(state.focusedAgentId);
         if (agent) {
             const terminal = document.getElementById('deepTerminal');
-            const lines = agent._outputBuffer || agent.output_lines || [];
+            const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
             terminal.innerHTML = '';
             resetCodeBlockState(state.focusedAgentId);
             const frag = document.createDocumentFragment();
@@ -14031,7 +14816,7 @@ function renderNotificationList() {
             const isCrit = a.severity === 'critical';
             el.className = 'notification-item';
             el.style.borderLeft = `3px solid ${isCrit ? 'var(--status-error)' : 'var(--status-waiting)'}`;
-            el.innerHTML = `<span class="ni-icon">${icon(isCrit ? 'shield-alert' : 'alert-triangle', 14)}</span>`
+            el.innerHTML = `<span class="ni-icon">${icon(isCrit ? 'skull' : 'alert-triangle', 14)}</span>`
                 + `<span class="ni-text"><strong style="color:${isCrit ? 'var(--status-error)' : 'var(--status-waiting)'}">${escapeHtml(a.label)}</strong> on ${escapeHtml(a.agent_name)}`
                 + (a.line ? `<br><span style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)">${escapeHtml(a.line.substring(0, 100))}</span>` : '')
                 + `</span><span class="ni-time">${timeAgo(a.timestamp)}</span>`;
@@ -14389,7 +15174,7 @@ function renderAttentionQueue() {
         const questionText = isPlan ? 'Plan ready for review' : escapeHtml(agent.input_prompt || 'Waiting for input...');
         const approveLabel = isPlan ? 'Approve Plan' : 'Approve';
 
-        const outputLines = (agent._outputBuffer || agent.output_lines || []);
+        const outputLines = (agent._outputBuffer || agent._outputBuffer || agent.output_lines || []);
         const meaningfulLines = outputLines
             .filter(l => l.trim() && !/^[\s─╭╰│┌┐└┘]+$/.test(l))
             .slice(-3)
@@ -14511,14 +15296,17 @@ function drawSparkline() {
     ctx.clearRect(0, 0, w, h);
 
     const max = 100;
-    const step = w / (60 - 1);
+    const maxPoints = 60;
+    const step = w / (maxPoints - 1);
+    // Right-align: offset so the latest point sits at the right edge
+    const xOffset = (maxPoints - data.length) * step;
 
     ctx.beginPath();
     ctx.strokeStyle = data[data.length - 1] > 80 ? '#EF4444' : data[data.length - 1] > 50 ? '#F59E0B' : '#22C55E';
     ctx.lineWidth = 1.5;
 
     for (let i = 0; i < data.length; i++) {
-        const x = i * step;
+        const x = xOffset + i * step;
         const y = h - (data[i] / max) * h;
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
@@ -14526,8 +15314,8 @@ function drawSparkline() {
     ctx.stroke();
 
     // Fill gradient
-    ctx.lineTo((data.length - 1) * step, h);
-    ctx.lineTo(0, h);
+    ctx.lineTo(xOffset + (data.length - 1) * step, h);
+    ctx.lineTo(xOffset, h);
     ctx.closePath();
     const grad = ctx.createLinearGradient(0, 0, 0, h);
     const color = data[data.length - 1] > 80 ? '239,68,68' : data[data.length - 1] > 50 ? '245,158,11' : '34,197,94';
@@ -14689,6 +15477,7 @@ function applyTheme(pref) {
     }
     html.setAttribute('data-theme', effective);
     updateThemeIcon(pref);
+    xtermManager.updateTheme();
 }
 
 function updateThemeIcon(pref) {
@@ -14834,15 +15623,37 @@ async function fetchServerHealth() {
 async function resetSettings() {
     const ok = await confirmAction('Reset Settings', 'Reset all settings to defaults?', 'Reset', { iconKey: 'refresh-cw', danger: false });
     if (!ok) return;
+    // Agents
     document.getElementById('setMaxAgents').value = 16;
+    document.getElementById('setDefaultRole').value = 'general';
     document.getElementById('setDefaultDir').value = '~/Projects';
+    document.getElementById('setDefaultBackend').value = 'claude-code';
     document.getElementById('setOutputInterval').value = 1.0;
     document.getElementById('setMemoryLimit').value = 2048;
+    // AI Summaries
+    document.getElementById('setLlmEnabled').classList.remove('active');
     document.getElementById('setLlmModel').value = 'grok-4-1-fast-reasoning';
     document.getElementById('setLlmInterval').value = 10;
     document.getElementById('setIdleTtl').value = 3600;
-    document.getElementById('setLlmEnabled').classList.remove('active');
-    document.getElementById('setDefaultRole').value = 'general';
+    // Alert Thresholds
+    document.getElementById('setHealthLow').value = 0.3;
+    document.getElementById('setHealthCritical').value = 0.1;
+    document.getElementById('setStallTimeout').value = 5;
+    document.getElementById('setHungTimeout').value = 10;
+    document.getElementById('setCostBudget').value = 0;
+    document.getElementById('setCostAutoPause').classList.remove('active');
+    // Auto-Pilot
+    document.getElementById('setAutoRestartStall').classList.remove('active');
+    document.getElementById('setAutoApproveEnabled').classList.remove('active');
+    document.getElementById('setAutoApprovePatterns').value = '';
+    document.getElementById('setAutoPauseCritical').classList.remove('active');
+    // Display
+    document.getElementById('setVoiceSounds').classList.add('active');
+    // Notification checkboxes
+    document.getElementById('notifEvtNeedsInput').checked = true;
+    document.getElementById('notifEvtError').checked = true;
+    document.getElementById('notifEvtCompleted').checked = false;
+    document.getElementById('notifEvtRestartExhausted').checked = true;
     showToast('Reset to defaults — save to apply', 'info');
 }
 
@@ -14899,7 +15710,12 @@ function renderExtensionsContent() {
             !filter || s.name.toLowerCase().includes(filter) || (s.description || '').toLowerCase().includes(filter)
         );
         if (items.length === 0) {
-            html = '<div class="ext-empty">No skills found</div>';
+            html = `<div class="ext-empty-rich">
+                <div class="ext-empty-rich-icon">${icon('terminal', 32)}</div>
+                <h4>No skills found</h4>
+                <p>Skills are reusable prompts your agents can invoke. Add <code>.md</code> files to <code>~/.claude/commands/</code> or your project's <code>.claude/commands/</code> directory.</p>
+                <button class="btn btn-secondary btn-sm" onclick="refreshExtensions()">&#8635; Refresh</button>
+            </div>`;
         } else {
             items.forEach(s => {
                 const srcBadge = s.source === 'user'
@@ -14923,7 +15739,14 @@ function renderExtensionsContent() {
             !filter || m.name.toLowerCase().includes(filter) || (m.url_or_command || '').toLowerCase().includes(filter)
         );
         if (items.length === 0) {
-            html = '<div class="ext-empty">No MCP servers configured</div>';
+            html = `<div class="ext-empty-rich">
+                <div class="ext-empty-rich-icon">${icon('plug', 32)}</div>
+                <h4>No MCP servers detected</h4>
+                <p>MCP servers extend your agents with tools like databases, APIs, and file systems.</p>
+                <p>Add servers to <code>~/.claude/settings.json</code> under <code>mcpServers</code>, or add <code>.mcp.json</code> to your project root.</p>
+                <a href="https://modelcontextprotocol.io/quickstart/user" target="_blank" rel="noopener">Learn more &rarr;</a><br>
+                <button class="btn btn-secondary btn-sm" onclick="refreshExtensions()">&#8635; Refresh</button>
+            </div>`;
         } else {
             items.forEach(m => {
                 const typeIcon = m.type === 'stdio' ? icon('terminal', 14) : m.type === 'http' ? icon('plug', 14) : m.type === 'sse' ? icon('zap', 14) : icon('info', 14);
@@ -14946,7 +15769,11 @@ function renderExtensionsContent() {
             !filter || p.name.toLowerCase().includes(filter) || (p.provider || '').toLowerCase().includes(filter)
         );
         if (items.length === 0) {
-            html = '<div class="ext-empty">No plugins found</div>';
+            html = `<div class="ext-empty-rich">
+                <div class="ext-empty-rich-icon">${icon('puzzle', 32)}</div>
+                <h4>No plugins installed</h4>
+                <p>Plugins add custom behavior to Ashlr. Check the docs for available plugins.</p>
+            </div>`;
         } else {
             items.forEach(p => {
                 const statusBadge = p.enabled
@@ -15912,8 +16739,8 @@ function renderComparePane(agentId, headerElId, termElId) {
     const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
     const ctxPct = Math.round((agent.context_pct || 0) * 100);
     const healthPct = Math.round((agent.health_score ?? 1) * 100);
-    header.innerHTML = `${roleIcon(agent.role, 16)}<span style="font-weight:600">${escapeHtml(agent.name)}</span><span class="status-badge" style="font-size:9px">${agent.status}</span><span style="color:var(--text-tertiary);font-size:11px;margin-left:auto">ctx ${ctxPct}% · health ${healthPct}%</span>`;
-    const lines = agent.output_lines || [];
+    header.innerHTML = `${roleIcon(agent.role, 16)}<span style="font-weight:600">${escapeHtml(agent.name)}</span><span class="status-badge" style="font-size:9px">${escapeHtml(agent.status)}</span><span style="color:var(--text-tertiary);font-size:11px;margin-left:auto">ctx ${ctxPct}% · health ${healthPct}%</span>`;
+    const lines = agent._outputBuffer || agent.output_lines || [];
     const tail = lines.slice(-100);
     const shouldScroll = term.scrollTop + term.clientHeight >= term.scrollHeight - 50;
     term.innerHTML = tail.map(l => `<div class="terminal-line">${ansiToHtml(l)}</div>`).join('');
@@ -16020,7 +16847,7 @@ function switchTimelineTab(tab) {
     document.getElementById('tlTabEvents').classList.toggle('active', tab === 'events');
     document.getElementById('tlTabHistory').classList.toggle('active', tab === 'history');
     document.getElementById('timelineList').style.display = tab === 'events' ? '' : 'none';
-    document.getElementById('historyList').style.display = tab === 'history' ? '' : 'none';
+    document.getElementById('timelineHistoryList').style.display = tab === 'history' ? '' : 'none';
     document.getElementById('timelineAgentFilter').style.display = tab === 'events' ? '' : 'none';
     document.getElementById('timelineTypeFilter').style.display = tab === 'events' ? '' : 'none';
     if (tab === 'history') loadSessionHistory();
@@ -16457,7 +17284,7 @@ function refreshSplitPane(idx) {
         return;
     }
     if (statusEl) statusEl.textContent = agent.status;
-    const lines = agent.output_lines || [];
+    const lines = agent._outputBuffer || agent.output_lines || [];
     const last50 = lines.slice(-50);
     terminal.innerHTML = last50.map(l => {
         const html = ansiToHtml(l);
@@ -16967,7 +17794,7 @@ function escapeRegex(str) {
 }
 
 async function loadSessionHistory() {
-    const list = document.getElementById('historyList');
+    const list = document.getElementById('timelineHistoryList');
     list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary)">Loading...</div>';
     try {
         const res = await apiFetch('/api/history?limit=50');
@@ -17906,7 +18733,7 @@ function refreshWordCloud() {
     if (!container) return;
     const agent = state.agents.get(state.focusedAgentId);
     if (!agent) { container.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px">No agent selected</div>'; return; }
-    const lines = agent._outputBuffer || agent.output_lines || [];
+    const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
     if (lines.length === 0) { container.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px">No output yet</div>'; return; }
     // Strip ANSI codes and extract words
     const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
@@ -18491,7 +19318,7 @@ async function togglePauseAll() {
 
 function _countAgentErrors(agent) {
     if (agent.error_count) return agent.error_count;
-    const lines = agent._outputBuffer || agent.output_lines || [];
+    const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
     const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
     let count = 0;
     for (const l of lines) {
@@ -18521,6 +19348,7 @@ openSettings = function() {
     // Auto-pilot toggles
     document.getElementById('setAutoRestartStall').classList.toggle('active', cfg.auto_restart_on_stall !== false);
     document.getElementById('setAutoApproveEnabled').classList.toggle('active', !!cfg.auto_approve_enabled);
+    document.getElementById('setAutoApprovePatterns').value = (cfg.auto_approve_patterns || []).join('\n');
     document.getElementById('setAutoPauseCritical').classList.toggle('active', !!cfg.auto_pause_on_critical_health);
     // Notification event prefs
     const notifPrefs = JSON.parse(localStorage.getItem('ashlr_notif_events') || '{}');
@@ -18555,6 +19383,7 @@ saveSettings = async function() {
             cost_budget_auto_pause: document.getElementById('setCostAutoPause').classList.contains('active'),
             auto_restart_on_stall: document.getElementById('setAutoRestartStall').classList.contains('active'),
             auto_approve_enabled: document.getElementById('setAutoApproveEnabled').classList.contains('active'),
+            auto_approve_patterns: document.getElementById('setAutoApprovePatterns').value.split('\n').map(s => s.trim()).filter(Boolean),
             auto_pause_on_critical_health: document.getElementById('setAutoPauseCritical').classList.contains('active'),
         };
         // Save notification event prefs to localStorage
@@ -18570,12 +19399,18 @@ saveSettings = async function() {
         if (isNaN(payload.max_agents) || payload.max_agents < 1 || payload.max_agents > 100) errors.push(['setMaxAgents', '1-100']);
         if (isNaN(payload.output_capture_interval) || payload.output_capture_interval < 0.5 || payload.output_capture_interval > 30) errors.push(['setOutputInterval', '0.5-30']);
         if (isNaN(payload.memory_limit_mb) || payload.memory_limit_mb < 256 || payload.memory_limit_mb > 65536) errors.push(['setMemoryLimit', '256-65536']);
-        if (isNaN(payload.llm_summary_interval) || payload.llm_summary_interval < 5 || payload.llm_summary_interval > 300) errors.push(['setLlmInterval', '5-300']);
+        if (isNaN(payload.llm_summary_interval) || payload.llm_summary_interval < 3 || payload.llm_summary_interval > 120) errors.push(['setLlmInterval', '3-120']);
         if (isNaN(payload.idle_agent_ttl) || payload.idle_agent_ttl < 300 || payload.idle_agent_ttl > 86400) errors.push(['setIdleTtl', '300-86400']);
         if (isNaN(payload.health_low_threshold) || payload.health_low_threshold <= 0 || payload.health_low_threshold > 1) errors.push(['setHealthLow', '0.01-1.0']);
         if (isNaN(payload.health_critical_threshold) || payload.health_critical_threshold <= 0 || payload.health_critical_threshold > 1) errors.push(['setHealthCritical', '0.01-1.0']);
         if (isNaN(payload.stall_timeout_minutes) || payload.stall_timeout_minutes < 1 || payload.stall_timeout_minutes > 60) errors.push(['setStallTimeout', '1-60']);
         if (isNaN(payload.hung_timeout_minutes) || payload.hung_timeout_minutes < 1 || payload.hung_timeout_minutes > 120) errors.push(['setHungTimeout', '1-120']);
+        // Validate auto-approve patterns are valid regex
+        if (payload.auto_approve_patterns.length > 0) {
+            for (const pat of payload.auto_approve_patterns) {
+                try { new RegExp(pat); } catch { errors.push(['setAutoApprovePatterns', `Invalid regex: ${pat}`]); break; }
+            }
+        }
         document.querySelectorAll('#settingsOverlay .field-error').forEach(e => e.remove());
         document.querySelectorAll('#settingsOverlay .settings-input').forEach(e => e.style.borderColor = '');
         if (errors.length) {
@@ -19164,7 +19999,7 @@ document.getElementById('agentGrid')?.addEventListener('click', (e) => {
     // Remove any existing preview
     document.querySelectorAll('.card-inline-preview').forEach(p => p.remove());
 
-    const lines = agent._outputBuffer || agent.output_lines || [];
+    const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
     const last5 = lines.slice(-5);
     const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
     const cleaned = last5.map(l => l.replace(ansiRe, '')).join('\n') || '(no output)';
@@ -19202,7 +20037,7 @@ function updateFleetStatsPanel() {
     const errorPatterns = {};
 
     for (const [id, agent] of state.agents) {
-        const lines = agent._outputBuffer || agent.output_lines || [];
+        const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
         totalLines += lines.length;
         if (lines.length > mostActive.lines) { mostActive = { name: agent.name, lines: lines.length }; }
 
@@ -19505,16 +20340,8 @@ document.getElementById('deepTerminal')?.addEventListener('contextmenu', (e) => 
 // ═══════════════════════════════════════════════════════════════════
 // ── Focus Mode ──
 // ═══════════════════════════════════════════════════════════════════
-let _focusMode = false;
-
-function toggleFocusMode() {
-    _focusMode = !_focusMode;
-    const deepView = document.getElementById('deepView');
-    if (deepView) deepView.classList.toggle('focus-mode', _focusMode);
-}
-
 document.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'f' && state.view === 'deep') {
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'F' && state.view === 'deep') {
         e.preventDefault();
         toggleFocusMode();
     }
@@ -19569,7 +20396,7 @@ const LANG_MAP = {
 };
 
 function detectPrimaryLanguage(agent) {
-    const lines = agent._outputBuffer || agent.output_lines || [];
+    const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
     const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
     const extCounts = {};
     const fileRe = /(?:Read|Edit|Write|Glob|Grep)\s*\(\s*["']?([^"'\s)]+)/g;
@@ -19641,7 +20468,7 @@ openDeepView = function(agentId) {
 // ── Smart Error Grouping ──
 // ═══════════════════════════════════════════════════════════════════
 function groupErrors(agent) {
-    const lines = agent._outputBuffer || agent.output_lines || [];
+    const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
     const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
     const errorRe = /\b(error|exception|traceback|FAILED|ERROR|panic|fatal)\b/i;
     const groups = new Map();
@@ -19766,7 +20593,7 @@ function copyLineLink(lineIdx) {
 // ── Progress Bar Extraction ──
 // ═══════════════════════════════════════════════════════════════════
 function extractProgress(agent) {
-    const lines = agent._outputBuffer || agent.output_lines || [];
+    const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
     const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
     // Scan last 20 lines for progress indicators
     for (let i = lines.length - 1; i >= Math.max(0, lines.length - 20); i--) {
@@ -19814,7 +20641,7 @@ updateDeepViewHeader = function(agent) {
 // ── Last Command Tooltip on Card Hover ──
 // ═══════════════════════════════════════════════════════════════════
 function getLastCommands(agent, count) {
-    const lines = agent._outputBuffer || agent.output_lines || [];
+    const lines = agent._outputBuffer || agent._outputBuffer || agent.output_lines || [];
     const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
     const toolRe = /\b(Read|Edit|Write|Bash|Grep|Glob)\s*\(\s*["']?([^"'\s)]{1,80})/;
     const cmds = [];
@@ -20019,6 +20846,247 @@ const EMPTY_STATE_HTML = document.getElementById('emptyState').innerHTML;
 socket.connect();
 renderAgentGrid();
 
+// ── Custom Tooltip System ──
+(function initTooltips() {
+    const tip = document.createElement('div');
+    tip.className = 'ao-tip';
+    document.body.appendChild(tip);
+    let showTimer = null, hideTimer = null, currentTarget = null;
+
+    function positionTip(el) {
+        const r = el.getBoundingClientRect();
+        const tw = tip.offsetWidth, th = tip.offsetHeight;
+        let top = r.top - th - 6, left = r.left + (r.width - tw) / 2;
+        if (top < 4) top = r.bottom + 6; // flip below if no room above
+        if (left < 4) left = 4;
+        if (left + tw > window.innerWidth - 4) left = window.innerWidth - tw - 4;
+        tip.style.top = top + 'px';
+        tip.style.left = left + 'px';
+    }
+
+    document.body.addEventListener('pointerover', function(e) {
+        const el = e.target.closest('[data-tip]');
+        if (!el) return;
+        clearTimeout(hideTimer);
+        if (currentTarget === el) return;
+        clearTimeout(showTimer);
+        currentTarget = el;
+        showTimer = setTimeout(() => {
+            const text = el.getAttribute('data-tip');
+            const key = el.getAttribute('data-tip-key');
+            if (!text) return;
+            // Suppress tooltips when modal overlays are active
+            if (document.querySelector('.confirm-overlay.active, .modal-overlay.active')) return;
+            tip.innerHTML = escapeHtml(text) + (key ? `<span class="ao-tip-key">${escapeHtml(key)}</span>` : '');
+            tip.classList.add('visible');
+            positionTip(el);
+        }, 400);
+    });
+
+    document.body.addEventListener('pointerout', function(e) {
+        const el = e.target.closest('[data-tip]');
+        if (!el) return;
+        clearTimeout(showTimer);
+        hideTimer = setTimeout(() => {
+            tip.classList.remove('visible');
+            currentTarget = null;
+        }, 100);
+    });
+
+    // Hide on scroll or click
+    document.addEventListener('scroll', () => { tip.classList.remove('visible'); currentTarget = null; }, true);
+    document.addEventListener('pointerdown', () => { tip.classList.remove('visible'); currentTarget = null; });
+})();
+
+// ── Onboarding Tour Engine ──
+const TOUR_STEPS = [
+    { target: '.top-bar', title: 'Welcome to Ashlr', body: 'Your command center for AI coding agents. Each agent runs in its own terminal — you monitor, interact, and orchestrate from here.' },
+    { target: '#metricsBar', title: 'Live System Metrics', body: 'CPU, RAM, active agents, cost, and fleet health — all updating in real-time. Click any metric to expand details.' },
+    { target: '#planBadge', title: 'Your License', body: 'Shows your current plan and tier. Manage your license key and see feature limits in Settings.' },
+    { target: '#projectSelector', title: 'Projects', body: 'Filter agents by project. Add repos and each gets its own default backend, model, and role settings.' },
+    { target: '.status-filter-chips', title: 'Filter & Monitor', body: 'Filter by status — see which agents are working, waiting for input, or hit errors. Orange badges mean agents need your attention.' },
+    { target: '#agentGrid', title: 'Agent Grid', body: 'Each card is a live agent. Hover for quick actions (pause, restart, kill). Click to open the full terminal view. Use arrow keys to navigate.' },
+    { target: '.btn-new-agent', title: 'Spawn Agents', body: 'Create new agents with a role, task, and working directory. Use Quick Templates for common tasks or Fleet Presets to launch coordinated teams.' },
+    { target: '#commandInput', title: 'Command Bar', body: 'Type commands, @mention agents, or use /slash commands. With an AI key configured, use natural language like "spawn 3 agents on auth-service".' },
+    { target: null, title: 'You\'re Ready!', body: '⌘K command palette  •  ⌘N new agent  •  ⌘, settings\nV toggle voice input  •  Space push-to-talk  •  ? cheatsheet\n\nArrow keys navigate agent cards. Click any card to dive in.' }
+];
+
+let tourStep = -1, tourOverlay = null, tourCard = null, tourArrow = null;
+
+function startTour() {
+    tourStep = 0;
+    renderTourStep();
+}
+
+function endTour() {
+    if (tourOverlay) { tourOverlay.remove(); tourOverlay = null; }
+    if (tourCard) { tourCard.remove(); tourCard = null; }
+    if (tourArrow) { tourArrow.remove(); tourArrow = null; }
+    tourStep = -1;
+    localStorage.setItem('ashlr_tour_done', '1');
+}
+
+function renderTourStep() {
+    if (tourStep < 0 || tourStep >= TOUR_STEPS.length) { endTour(); return; }
+    const step = TOUR_STEPS[tourStep];
+    const targetEl = step.target ? document.querySelector(step.target) : null;
+
+    // Build overlay
+    if (!tourOverlay) {
+        tourOverlay = document.createElement('div');
+        tourOverlay.className = 'tour-overlay';
+        tourOverlay.addEventListener('click', (e) => { if (e.target === tourOverlay || e.target.tagName === 'svg' || e.target.tagName === 'rect') nextTourStep(); });
+        document.body.appendChild(tourOverlay);
+    }
+
+    // Build SVG spotlight mask
+    const W = window.innerWidth, H = window.innerHeight;
+    let svgHtml;
+    if (targetEl) {
+        const r = targetEl.getBoundingClientRect();
+        const pad = 10, rx = 14;
+        const mx = r.left - pad, my = r.top - pad, mw = r.width + pad * 2, mh = r.height + pad * 2;
+        svgHtml = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+            <defs><mask id="tourMask">
+                <rect width="100%" height="100%" fill="white"/>
+                <rect x="${mx}" y="${my}" width="${mw}" height="${mh}" rx="${rx}" fill="black"/>
+            </mask></defs>
+            <rect width="100%" height="100%" fill="rgba(0,0,0,0.55)" mask="url(#tourMask)"/>
+        </svg>`;
+    } else {
+        svgHtml = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+            <rect width="100%" height="100%" fill="rgba(0,0,0,0.55)"/>
+        </svg>`;
+    }
+    tourOverlay.innerHTML = svgHtml;
+
+    // Build card
+    if (!tourCard) {
+        tourCard = document.createElement('div');
+        tourCard.className = 'tour-card';
+        document.body.appendChild(tourCard);
+    }
+
+    // Build arrow
+    if (!tourArrow) {
+        tourArrow = document.createElement('div');
+        tourArrow.className = 'tour-arrow';
+        document.body.appendChild(tourArrow);
+    }
+
+    const pct = Math.round(((tourStep + 1) / TOUR_STEPS.length) * 100);
+    const isFirst = tourStep === 0, isLast = tourStep === TOUR_STEPS.length - 1;
+    const bodyHtml = escapeHtml(step.body).replace(/\n/g, '<br>');
+    tourCard.innerHTML = `
+        <div class="tour-card-step">Step ${tourStep + 1} of ${TOUR_STEPS.length}</div>
+        <div class="tour-card-title">${escapeHtml(step.title)}</div>
+        <div class="tour-card-body">${bodyHtml}</div>
+        <div class="tour-progress">
+            <div class="tour-progress-bar"><div class="tour-progress-fill" style="width:${pct}%"></div></div>
+            <span class="tour-progress-text">${pct}%</span>
+        </div>
+        <div class="tour-actions">
+            <button class="tour-btn tour-btn-skip" onclick="endTour()">Skip tour</button>
+            ${!isFirst ? '<button class="tour-btn tour-btn-back" onclick="prevTourStep()">Back</button>' : ''}
+            <button class="tour-btn tour-btn-next" onclick="${isLast ? 'endTour()' : 'nextTourStep()'}">${isLast ? 'Get Started' : 'Next →'}</button>
+        </div>`;
+
+    // Position card with edge-safe logic + arrow
+    tourCard.style.animation = 'none';
+    tourCard.style.transform = '';
+    tourCard.offsetHeight; // reflow
+    tourCard.style.animation = '';
+
+    if (targetEl) {
+        const r = targetEl.getBoundingClientRect();
+        const cardW = Math.min(400, W - 40);
+        const cardH = tourCard.offsetHeight || 240;
+        const gap = 20; // gap between target and card
+        let top, left, arrowDir;
+
+        // Prefer placing below, then above, then right
+        if (r.bottom + gap + cardH < H - 20) {
+            top = r.bottom + gap;
+            arrowDir = 'up';
+        } else if (r.top - gap - cardH > 20) {
+            top = r.top - gap - cardH;
+            arrowDir = 'down';
+        } else {
+            // Place beside target
+            top = Math.max(20, Math.min(r.top, H - cardH - 20));
+            if (r.right + gap + cardW < W - 20) {
+                left = r.right + gap;
+                arrowDir = 'left';
+            } else {
+                left = Math.max(20, r.left - gap - cardW);
+                arrowDir = 'right';
+            }
+        }
+
+        // Horizontal centering for above/below
+        if (arrowDir === 'up' || arrowDir === 'down') {
+            left = r.left + r.width / 2 - cardW / 2;
+            if (left + cardW > W - 20) left = W - cardW - 20;
+            if (left < 20) left = 20;
+        }
+
+        tourCard.style.top = top + 'px';
+        tourCard.style.left = left + 'px';
+
+        // Position arrow
+        tourArrow.style.display = '';
+        tourArrow.className = 'tour-arrow arrow-' + arrowDir;
+        const arrowSize = 14;
+        const centerX = Math.max(left + 20, Math.min(r.left + r.width / 2, left + cardW - 20));
+        if (arrowDir === 'up') {
+            tourArrow.style.top = (top - arrowSize / 2) + 'px';
+            tourArrow.style.left = (centerX - arrowSize / 2) + 'px';
+        } else if (arrowDir === 'down') {
+            tourArrow.style.top = (top + cardH - arrowSize / 2) + 'px';
+            tourArrow.style.left = (centerX - arrowSize / 2) + 'px';
+        } else if (arrowDir === 'left') {
+            tourArrow.style.left = (left - arrowSize / 2) + 'px';
+            tourArrow.style.top = (top + Math.min(40, cardH / 2) - arrowSize / 2) + 'px';
+        } else {
+            tourArrow.style.left = (left + cardW - arrowSize / 2) + 'px';
+            tourArrow.style.top = (top + Math.min(40, cardH / 2) - arrowSize / 2) + 'px';
+        }
+    } else {
+        // Center for the final step
+        tourCard.style.top = '50%';
+        tourCard.style.left = '50%';
+        tourCard.style.transform = 'translate(-50%, -50%)';
+        tourArrow.style.display = 'none';
+    }
+}
+
+function nextTourStep() { tourStep++; renderTourStep(); }
+function prevTourStep() { if (tourStep > 0) { tourStep--; renderTourStep(); } }
+
+// Tour keyboard handler
+document.addEventListener('keydown', (e) => {
+    if (tourStep < 0) return;
+    if (e.key === 'Escape') { endTour(); e.stopPropagation(); return; }
+    if (e.key === 'ArrowRight' || e.key === 'Enter') { e.preventDefault(); nextTourStep(); return; }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); prevTourStep(); return; }
+}, true); // capture phase so we intercept before the global Escape handler
+
+// Auto-trigger tour on first sync
+const _origHandleSync = handleSync;
+handleSync = async function(data) {
+    await _origHandleSync(data);
+    const authLogin = document.getElementById('authLogin');
+    const authVisible = authLogin && authLogin.style.display !== 'none';
+    if (!localStorage.getItem('ashlr_tour_done') && tourStep < 0 && !authVisible) {
+        setTimeout(startTour, 800);
+    }
+};
+
 </script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0/lib/xterm.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-search@0.15.0/lib/addon-search.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-webgl@0.18.0/lib/addon-webgl.js" crossorigin="anonymous"></script>
 </body>
 </html>

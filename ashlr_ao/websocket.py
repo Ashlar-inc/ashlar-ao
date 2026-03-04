@@ -54,15 +54,16 @@ async def collect_system_metrics(agent_manager: AgentManager) -> SystemMetrics:
 
     active = sum(1 for a in list(agent_manager.agents.values()) if a.status in ("working", "planning"))
 
+    _GiB = 1024 ** 3
     return SystemMetrics(
         cpu_pct=round(cpu, 1),
         cpu_count=psutil.cpu_count() or 1,
-        memory_total_gb=round(mem.total / 1e9, 1),
-        memory_used_gb=round(mem.used / 1e9, 1),
-        memory_available_gb=round(mem.available / 1e9, 1),
+        memory_total_gb=round(mem.total / _GiB, 1),
+        memory_used_gb=round(mem.used / _GiB, 1),
+        memory_available_gb=round(mem.available / _GiB, 1),
         memory_pct=round(mem.percent, 1),
-        disk_total_gb=round(disk.total / 1e9, 1),
-        disk_used_gb=round(disk.used / 1e9, 1),
+        disk_total_gb=round(disk.total / _GiB, 1),
+        disk_used_gb=round(disk.used / _GiB, 1),
         disk_pct=round(disk.percent, 1),
         load_avg=[round(x, 2) for x in os.getloadavg()],
         agents_active=active,
@@ -147,7 +148,7 @@ class WebSocketHub:
                         except Exception as e2:
                             log.debug(f"Failed to send WS error response: {e2}")
                 elif msg.type == aiohttp.WSMsgType.ERROR:
-                    log.error(f"WebSocket error: {ws.exception()}")
+                    log.error(f"WebSocket error: {str(ws.exception())[:500]}")
                     break
         except Exception as e:
             log.error(f"WebSocket handler error: {e}")

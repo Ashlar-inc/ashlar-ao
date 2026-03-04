@@ -209,6 +209,10 @@ from ashlr_ao.models import (  # noqa: F401
 # AgentManager moved to ashlr_ao.manager — re-exported above
 
 
+# Concurrency guard for config file writes
+_config_write_lock = asyncio.Lock()
+
+
 # ─────────────────────────────────────────────
 # Section 8: REST API Handlers
 # ─────────────────────────────────────────────
@@ -399,14 +403,15 @@ async def spawn_agent(request: web.Request) -> web.Response:
             agent.owner_id = user.id
             agent.owner_name = user.display_name
 
-        # Broadcast to WebSocket clients
+        # Broadcast to WebSocket clients (skip ghost broadcast on spawn failure)
         hub: WebSocketHub = request.app["ws_hub"]
-        await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
-        await hub.broadcast_event("agent_spawned", f"Agent {agent.name} spawned", agent.id, agent.name)
+        if agent.status != "error":
+            await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
+            await hub.broadcast_event("agent_spawned", f"Agent {agent.name} spawned", agent.id, agent.name)
 
         return web.json_response(agent.to_dict(), status=201)
     except ValueError as e:
-        return web.json_response({"error": str(e)}, status=400)
+        return web.json_response({"error": redact_secrets(str(e))}, status=400)
 
 
 async def get_agent(request: web.Request) -> web.Response:
@@ -698,7 +703,7 @@ async def restart_agent(request: web.Request) -> web.Response:
         return web.json_response({"error": "Restart failed"}, status=500)
     except Exception as e:
         log.error(f"Restart endpoint error for {agent_id}: {e}")
-        return web.json_response({"error": str(e)}, status=500)
+        return web.json_response({"error": redact_secrets(str(e))}, status=500)
 
 
 async def system_metrics(request: web.Request) -> web.Response:
@@ -926,11 +931,12 @@ async def health_detailed(request: web.Request) -> web.Response:
             log.debug(f"Failed to get DB file size: {e}")
 
     # Background task health
-    bg_tasks = request.app.get("_bg_tasks", {})
+    bg_task_list = request.app.get("bg_tasks", [])
+    bg_task_names = ["output_capture", "metrics", "health_check", "memory_watchdog", "archive_cleanup", "meta_agent"]
     bg_task_status = {}
-    for name, task in bg_tasks.items():
-        if isinstance(task, asyncio.Task):
-            bg_task_status[name] = "running" if not task.done() else "stopped"
+    for i, task in enumerate(bg_task_list):
+        name = bg_task_names[i] if i < len(bg_task_names) else f"task_{i}"
+        bg_task_status[name] = "running" if not task.done() else "stopped"
 
     # Process memory (server itself)
     try:
@@ -994,7 +1000,7 @@ async def run_diagnostic(request: web.Request) -> web.Response:
         stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
         results["tmux"] = {"ok": True, "version": stdout.decode().strip()}
     except Exception as e:
-        results["tmux"] = {"ok": False, "error": str(e)}
+        results["tmux"] = {"ok": False, "error": redact_secrets(str(e))}
 
     # 2. Python version
     results["python"] = {"ok": True, "version": sys.version, "executable": sys.executable}
@@ -1005,7 +1011,7 @@ async def run_diagnostic(request: web.Request) -> web.Response:
         free_gb = disk.free / (1024**3)
         results["disk"] = {"ok": free_gb > 1.0, "free_gb": round(free_gb, 1), "pct_used": disk.percent}
     except Exception as e:
-        results["disk"] = {"ok": False, "error": str(e)}
+        results["disk"] = {"ok": False, "error": redact_secrets(str(e))}
 
     # 4. Database write/read test
     try:
@@ -1021,7 +1027,7 @@ async def run_diagnostic(request: web.Request) -> web.Response:
         else:
             results["database"] = {"ok": False, "error": "Database not available"}
     except Exception as e:
-        results["database"] = {"ok": False, "error": str(e)}
+        results["database"] = {"ok": False, "error": redact_secrets(str(e))}
 
     # 5. System resources
     try:
@@ -1035,7 +1041,7 @@ async def run_diagnostic(request: web.Request) -> web.Response:
             "memory_pct": mem.percent,
         }
     except Exception as e:
-        results["system"] = {"ok": False, "error": str(e)}
+        results["system"] = {"ok": False, "error": redact_secrets(str(e))}
 
     # 6. Backend availability
     manager: AgentManager = request.app["agent_manager"]
@@ -1478,27 +1484,28 @@ async def put_config(request: web.Request) -> web.Response:
 
     # FIRST: write YAML to disk. Only update in-memory config on success.
     config_path = ASHLR_DIR / "ashlr.yaml"
-    try:
-        def _write_config():
-            raw = DEFAULT_CONFIG.copy()
-            if config_path.exists():
-                with open(config_path) as f:
-                    raw = deep_merge(raw, yaml.safe_load(f) or {})
-            raw = deep_merge(raw, yaml_update)
-            tmp_path = config_path.with_suffix(".yaml.tmp")
-            with open(tmp_path, "w") as f:
-                yaml.dump(raw, f, default_flow_style=False, sort_keys=False)
-            tmp_path.rename(config_path)
-        await asyncio.to_thread(_write_config)
-        log.info(f"Config saved to disk: {', '.join(data.keys())}")
-    except Exception as e:
-        log.warning(f"Failed to save config to disk: {e}")
+    async with _config_write_lock:
         try:
-            config_path.with_suffix(".yaml.tmp").unlink(missing_ok=True)
-        except Exception as e2:
-            log.debug(f"Failed to clean up temp config file: {e2}")
-        # Do NOT update in-memory config — disk write failed
-        return web.json_response({"error": f"Failed to save: {e}", "config": config.to_dict()}, status=500)
+            def _write_config():
+                raw = DEFAULT_CONFIG.copy()
+                if config_path.exists():
+                    with open(config_path) as f:
+                        raw = deep_merge(raw, yaml.safe_load(f) or {})
+                raw = deep_merge(raw, yaml_update)
+                tmp_path = config_path.with_suffix(".yaml.tmp")
+                with open(tmp_path, "w") as f:
+                    yaml.dump(raw, f, default_flow_style=False, sort_keys=False)
+                tmp_path.rename(config_path)
+            await asyncio.to_thread(_write_config)
+            log.info(f"Config saved to disk: {', '.join(data.keys())}")
+        except Exception as e:
+            log.warning(f"Failed to save config to disk: {e}")
+            try:
+                config_path.with_suffix(".yaml.tmp").unlink(missing_ok=True)
+            except Exception as e2:
+                log.debug(f"Failed to clean up temp config file: {e2}")
+            # Do NOT update in-memory config — disk write failed
+            return web.json_response({"error": f"Failed to save: {e}", "config": config.to_dict()}, status=500)
 
     # THEN: update in-memory config (disk write succeeded)
     for key in allowed_keys:
@@ -1721,6 +1728,152 @@ async def update_project(request: web.Request) -> web.Response:
     return web.json_response(updated)
 
 
+# ── GitHub integration ──
+
+
+async def _run_gh(args: list[str], cwd: str | None = None, timeout: float = 10.0) -> tuple[bool, str]:
+    """Run a gh CLI command. Returns (success, stdout_or_error)."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "gh", *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=cwd,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        if proc.returncode == 0:
+            return True, stdout.decode().strip()
+        return False, stderr.decode().strip()
+    except FileNotFoundError:
+        return False, "gh CLI not found"
+    except asyncio.TimeoutError:
+        return False, "gh command timed out"
+    except Exception as e:
+        return False, redact_secrets(str(e))
+
+
+async def github_status(request: web.Request) -> web.Response:
+    """GET /api/github/status — check gh CLI availability and auth status."""
+    ok, output = await _run_gh(["auth", "status", "--hostname", "github.com"])
+    if ok:
+        return web.json_response({"available": True, "authenticated": True, "detail": output})
+    # Check if gh exists but not authed
+    exists_ok, _ = await _run_gh(["--version"])
+    if exists_ok:
+        return web.json_response({"available": True, "authenticated": False, "detail": output})
+    return web.json_response({"available": False, "authenticated": False, "detail": "gh CLI not installed"})
+
+
+async def github_project_info(request: web.Request) -> web.Response:
+    """GET /api/projects/{id}/github — fetch GitHub repo info (PRs, issues, branches)."""
+    db: Database = request.app["db"]
+    project_id = request.match_info["id"]
+    project = await db.get_project(project_id)
+    if not project:
+        return web.json_response({"error": "Project not found"}, status=404)
+
+    path = project.get("path", "")
+    if not path or not os.path.isdir(os.path.expanduser(path)):
+        return web.json_response({"error": "Project path not found on disk"}, status=400)
+    cwd = os.path.expanduser(path)
+
+    # Verify this is a GitHub repo
+    ok, remote = await _run_gh(["repo", "view", "--json", "nameWithOwner,url,description,defaultBranchRef,isPrivate,stargazerCount,forkCount"], cwd=cwd)
+    if not ok:
+        return web.json_response({"error": "Not a GitHub repository or gh not authenticated", "detail": remote}, status=400)
+
+    try:
+        repo_info = json.loads(remote)
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Failed to parse repo info"}, status=500)
+
+    # Fetch open PRs
+    pr_ok, pr_output = await _run_gh(["pr", "list", "--json", "number,title,state,author,createdAt,headRefName,url", "--limit", "10"], cwd=cwd)
+    prs = json.loads(pr_output) if pr_ok and pr_output else []
+
+    # Fetch open issues
+    issue_ok, issue_output = await _run_gh(["issue", "list", "--json", "number,title,state,author,createdAt,labels,url", "--limit", "10"], cwd=cwd)
+    issues = json.loads(issue_output) if issue_ok and issue_output else []
+
+    # Fetch branches
+    branch_ok, branch_output = await _run_gh(["api", "repos/{owner}/{repo}/branches", "--jq", ".[].name", "--paginate"], cwd=cwd, timeout=15.0)
+    branches = branch_output.split("\n") if branch_ok and branch_output else []
+
+    return web.json_response({
+        "repo": repo_info,
+        "pull_requests": prs,
+        "issues": issues,
+        "branches": [b for b in branches if b][:30],
+    })
+
+
+async def github_create_issue(request: web.Request) -> web.Response:
+    """POST /api/projects/{id}/github/issues — create a GitHub issue."""
+    db: Database = request.app["db"]
+    project_id = request.match_info["id"]
+    project = await db.get_project(project_id)
+    if not project:
+        return web.json_response({"error": "Project not found"}, status=404)
+
+    try:
+        data = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    title = data.get("title", "").strip()
+    body = data.get("body", "").strip()
+    labels = data.get("labels", [])
+    if not title:
+        return web.json_response({"error": "Title is required"}, status=400)
+
+    cwd = os.path.expanduser(project.get("path", ""))
+    args = ["issue", "create", "--title", title]
+    if body:
+        args += ["--body", body]
+    for label in labels[:5]:
+        args += ["--label", str(label)]
+
+    ok, output = await _run_gh(args, cwd=cwd)
+    if ok:
+        return web.json_response({"url": output}, status=201)
+    return web.json_response({"error": redact_secrets(output)}, status=400)
+
+
+async def github_create_pr(request: web.Request) -> web.Response:
+    """POST /api/projects/{id}/github/pulls — create a GitHub pull request."""
+    db: Database = request.app["db"]
+    project_id = request.match_info["id"]
+    project = await db.get_project(project_id)
+    if not project:
+        return web.json_response({"error": "Project not found"}, status=404)
+
+    try:
+        data = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    title = data.get("title", "").strip()
+    body = data.get("body", "").strip()
+    head = data.get("head", "").strip()
+    base = data.get("base", "").strip()
+    if not title:
+        return web.json_response({"error": "Title is required"}, status=400)
+
+    cwd = os.path.expanduser(project.get("path", ""))
+    args = ["pr", "create", "--title", title]
+    if body:
+        args += ["--body", body]
+    if head:
+        args += ["--head", head]
+    if base:
+        args += ["--base", base]
+
+    ok, output = await _run_gh(args, cwd=cwd)
+    if ok:
+        return web.json_response({"url": output}, status=201)
+    return web.json_response({"error": redact_secrets(output)}, status=400)
+
+
 # ── Workflow endpoints ──
 
 async def list_workflows(request: web.Request) -> web.Response:
@@ -1908,7 +2061,7 @@ async def run_workflow(request: web.Request) -> web.Response:
                 agent_ids.append(agent.id)
             except ValueError as e:
                 log.warning(f"Workflow spawn failed: {e}")
-                failed.append({"role": agent_def.get("role", "general"), "error": str(e)})
+                failed.append({"role": agent_def.get("role", "general"), "error": redact_secrets(str(e))})
 
         # Link related agents
         for aid in agent_ids:
@@ -2816,23 +2969,22 @@ async def deploy_fleet_template(request: web.Request) -> web.Response:
             if not working_dir:
                 working_dir = config.default_working_dir
 
-            agent_id = await manager.spawn(
+            agent = await manager.spawn(
                 role=spec.get("role", config.default_role),
                 task=task_text,
                 name=spec.get("name", ""),
                 working_dir=working_dir,
                 backend=spec.get("backend", config.default_backend),
                 model=spec.get("model", ""),
-                tools=spec.get("tools", ""),
-                system_prompt=spec.get("system_prompt", ""),
-                project_id=project_id,
+                tools=spec.get("tools") or None,
+                system_prompt_extra=spec.get("system_prompt", "") or None,
             )
-            agent = manager.agents.get(agent_id)
             if agent:
+                agent.project_id = project_id
                 spawned.append(agent.to_dict())
                 await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
         except Exception as e:
-            errors.append({"spec": spec.get("role", "?"), "error": str(e)})
+            errors.append({"spec": spec.get("role", "?"), "error": redact_secrets(str(e))})
 
     return web.json_response({
         "template": template["name"],
@@ -3022,7 +3174,7 @@ async def clone_agent(request: web.Request) -> web.Response:
         )
         return web.json_response({"agent": agent.to_dict()}, status=201)
     except ValueError as e:
-        return web.json_response({"error": str(e)}, status=400)
+        return web.json_response({"error": redact_secrets(str(e))}, status=400)
 
 
 # ── Task Queue endpoints ──
@@ -3298,14 +3450,17 @@ async def import_config(request: web.Request) -> web.Response:
         data["server"].pop("host", None)
 
     # Atomic write (validated)
-    try:
-        tmp_path = config_path.with_suffix(".yaml.tmp")
-        with open(tmp_path, "w") as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
-        tmp_path.rename(config_path)
-    except Exception as e:
-        tmp_path.unlink(missing_ok=True)
-        return web.json_response({"error": f"Failed to write config: {e}"}, status=500)
+    async with _config_write_lock:
+        try:
+            tmp_path = config_path.with_suffix(".yaml.tmp")
+            def _write_import():
+                with open(tmp_path, "w") as f:
+                    yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+                tmp_path.rename(config_path)
+            await asyncio.to_thread(_write_import)
+        except Exception as e:
+            tmp_path.unlink(missing_ok=True)
+            return web.json_response({"error": f"Failed to write config: {e}"}, status=500)
 
     # Reload in-memory config
     config: Config = request.app["config"]
@@ -3711,6 +3866,60 @@ async def get_project_scratchpad(request: web.Request) -> web.Response:
     return web.json_response(entries)
 
 
+async def upsert_project_scratchpad(request: web.Request) -> web.Response:
+    """POST /api/projects/{id}/scratchpad — convenience alias."""
+    if r := _check_rate(request, cost=2):
+        return r
+    db: Database = request.app["db"]
+    project_id = request.match_info["id"]
+    try:
+        data = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+    key = data.get("key", "").strip()
+    value = data.get("value", "").strip()
+    set_by = data.get("set_by", "user").strip()
+    if not key or not value:
+        return web.json_response({"error": "key and value required"}, status=400)
+    await db.upsert_scratchpad(project_id, key[:200], value[:10000], set_by[:100])
+    hub: WebSocketHub = request.app["ws_hub"]
+    await hub.broadcast({
+        "type": "scratchpad_update",
+        "project_id": project_id,
+        "key": key[:200],
+        "value": value[:10000],
+        "set_by": set_by[:100],
+    })
+    return web.json_response({"status": "ok"})
+
+
+async def get_project_events(request: web.Request) -> web.Response:
+    """GET /api/projects/{id}/events — events for agents in a project."""
+    if r := _check_rate(request, cost=1):
+        return r
+    db: Database = request.app["db"]
+    manager: AgentManager = request.app["agent_manager"]
+    project_id = request.match_info["id"]
+    limit = min(int(request.query.get("limit", "100")), 500)
+    since = request.query.get("since")
+
+    # Find agent IDs belonging to this project
+    project_agent_ids = [
+        aid for aid, agent in list(manager.agents.items())
+        if agent.project_id == project_id
+    ]
+
+    # Gather events for each project agent
+    all_events = []
+    for aid in project_agent_ids:
+        events = await db.get_events(limit=limit, agent_id=aid, since=since)
+        all_events.extend(events)
+
+    # Sort by created_at descending and limit
+    all_events.sort(key=lambda e: e.get("created_at", ""), reverse=True)
+    return web.json_response(all_events[:limit])
+
+
 # ── Bulk operations endpoint (Wave 3B) ──
 
 async def bulk_agent_action(request: web.Request) -> web.Response:
@@ -3751,6 +3960,11 @@ async def bulk_agent_action(request: web.Request) -> web.Response:
         agent = manager.agents.get(aid)
         if not agent:
             failed_items.append({"id": aid, "error": "Agent not found"})
+            continue
+
+        # Ownership check — non-admin users can only act on their own agents
+        if err := _check_agent_ownership(request, agent):
+            failed_items.append({"id": aid, "error": "Permission denied"})
             continue
 
         try:
@@ -3804,7 +4018,7 @@ async def bulk_agent_action(request: web.Request) -> web.Response:
                     failed_items.append({"id": aid, "error": "Restart failed"})
 
         except Exception as e:
-            failed_items.append({"id": aid, "error": str(e)})
+            failed_items.append({"id": aid, "error": redact_secrets(str(e))})
 
     return web.json_response({"success": success_ids, "failed": failed_items})
 
@@ -3885,7 +4099,7 @@ async def batch_spawn(request: web.Request) -> web.Response:
             await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
             await hub.broadcast_event("agent_spawned", f"Batch spawned: {agent.name}", agent.id, agent.name)
         except Exception as e:
-            failed.append({"index": i, "error": str(e)})
+            failed.append({"index": i, "error": redact_secrets(str(e))})
 
     return web.json_response({
         "spawned": spawned,
@@ -3918,7 +4132,7 @@ async def agent_suggestions(request: web.Request) -> web.Response:
         return web.json_response({"suggestions": suggestions, "query": task_query})
     except Exception as e:
         log.error(f"Agent suggestions error: {e}")
-        return web.json_response({"suggestions": [], "error": str(e)})
+        return web.json_response({"suggestions": [], "error": redact_secrets(str(e))})
 
 
 async def bulk_respond(request: web.Request) -> web.Response:
@@ -3964,7 +4178,7 @@ async def bulk_respond(request: web.Request) -> web.Response:
             success_ids.append(aid)
             await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
         except Exception as e:
-            failed_items.append({"id": aid, "error": str(e)})
+            failed_items.append({"id": aid, "error": redact_secrets(str(e))})
 
     return web.json_response({"success": success_ids, "failed": failed_items})
 
@@ -4227,6 +4441,12 @@ def create_app(config: Config) -> web.Application:
     app.router.add_delete("/api/projects/{id}", delete_project)
     app.router.add_put("/api/projects/{id}", update_project)
 
+    # REST API — GitHub Integration
+    app.router.add_get("/api/github/status", github_status)
+    app.router.add_get("/api/projects/{id}/github", github_project_info)
+    app.router.add_post("/api/projects/{id}/github/issues", github_create_issue)
+    app.router.add_post("/api/projects/{id}/github/pulls", github_create_pr)
+
     # REST API — Workflows
     app.router.add_get("/api/workflows", list_workflows)
     app.router.add_post("/api/workflows", create_workflow)
@@ -4262,8 +4482,10 @@ def create_app(config: Config) -> web.Application:
     app.router.add_post("/api/agents/{id}/clone", clone_agent)
     app.router.add_post("/api/agents/{id}/configure-handoff", configure_handoff)
 
-    # REST API — Project Scratchpad alias
+    # REST API — Project Scratchpad + Events alias
     app.router.add_get("/api/projects/{id}/scratchpad", get_project_scratchpad)
+    app.router.add_post("/api/projects/{id}/scratchpad", upsert_project_scratchpad)
+    app.router.add_get("/api/projects/{id}/events", get_project_events)
 
     # REST API — Session Resume
     app.router.add_get("/api/sessions/resumable", get_resumable_sessions)

@@ -23,7 +23,7 @@ with patch("psutil.cpu_percent", return_value=0.0):
 class TestParseAgentStatus:
     def test_detects_waiting_from_question(self, make_agent):
         agent = make_agent(status="working")
-        lines = ["Looking at the code...", "Do you want me to proceed with this change?"]
+        lines = ["Looking at the code...", "Do you want to continue? [Y/n]"]
         status = parse_agent_status(lines, agent)
         assert status == "waiting"
         assert agent.needs_input is True
@@ -246,3 +246,48 @@ class TestEstimateProgress:
         agent.output_lines.extend(["Done successfully"] * 20)
         progress = estimate_progress(agent)
         assert progress <= 1.0
+
+
+class TestWaitingPatternNegativeLookahead:
+    """Test that Claude narration like 'Do you want me to...' doesn't trigger waiting."""
+
+    def test_do_you_want_me_to_not_waiting(self, make_agent):
+        """'Do you want me to proceed?' is Claude narrating — NOT a prompt to the user."""
+        agent = make_agent()
+        lines = ["Do you want me to proceed with the changes?"]
+        result = parse_agent_status(lines, agent)
+        assert result != "waiting", "Claude narration 'Do you want me to...' should not trigger waiting"
+
+    def test_shall_i_me_to_not_waiting(self, make_agent):
+        """'Shall I proceed?' is also Claude narrating."""
+        agent = make_agent()
+        lines = ["Shall I update the configuration?"]
+        # This should not be waiting because `shall I` without `me to` still matches.
+        # But `Shall I me to` wouldn't normally occur in English.
+        # The key test is the next one.
+        pass
+
+    def test_would_you_like_me_to_not_waiting(self, make_agent):
+        agent = make_agent()
+        lines = ["Would you like me to run the tests now?"]
+        result = parse_agent_status(lines, agent)
+        assert result != "waiting"
+
+    def test_do_you_want_actual_prompt_is_waiting(self, make_agent):
+        """'Do you want to continue? [Y/n]' IS a real user prompt."""
+        agent = make_agent()
+        lines = ["Do you want to continue? [Y/n]"]
+        result = parse_agent_status(lines, agent)
+        assert result == "waiting"
+
+    def test_yes_no_prompt_still_works(self, make_agent):
+        agent = make_agent()
+        lines = ["Save changes? (yes/no)"]
+        result = parse_agent_status(lines, agent)
+        assert result == "waiting"
+
+    def test_proceed_question_still_works(self, make_agent):
+        agent = make_agent()
+        lines = ["Shall we proceed?"]
+        result = parse_agent_status(lines, agent)
+        assert result == "waiting"

@@ -63,6 +63,8 @@ class AgentManager:
         self.file_activity: dict[str, dict[str, str]] = {}  # file_path → {agent_id: operation}
         # Task queue for auto-spawning
         self.task_queue: list[QueuedTask] = []
+        # Cached psutil.Process objects for accurate per-agent CPU readings
+        self._proc_cache: dict[str, psutil.Process] = {}
         # Server stats
         self._start_time: float = time.monotonic()
         self._total_spawned: int = 0
@@ -317,6 +319,15 @@ class AgentManager:
                     reasons.append(f"Memory at {pressure.get('memory_pct', 0):.0f}%")
                 raise ValueError(f"System under pressure ({', '.join(reasons)}), spawning blocked. Lower load or disable spawn_pressure_block in config.")
 
+        # Disk space check — warn if dangerously low
+        try:
+            disk_stat = shutil.disk_usage(os.path.expanduser("~"))
+            free_mb = disk_stat.free / (1024 * 1024)
+            if free_mb < 500:
+                raise ValueError(f"Disk space critically low ({free_mb:.0f} MB free). Free space before spawning agents.")
+        except (OSError, AttributeError):
+            pass  # Non-critical — skip if check fails
+
         # ── Input validation ──
 
         # Validate and sanitize name
@@ -339,7 +350,7 @@ class AgentManager:
             working_dir = os.path.realpath(os.path.expanduser(working_dir))
             home_dir = str(Path.home())
             config_dirs = [str(ASHLR_DIR)]
-            allowed_prefixes = [home_dir, "/tmp"] + config_dirs
+            allowed_prefixes = [home_dir, "/tmp", "/private/tmp"] + config_dirs
             if not any(working_dir == prefix or working_dir.startswith(prefix + os.sep) for prefix in allowed_prefixes):
                 raise ValueError(
                     f"Working directory '{working_dir}' is outside allowed paths. "
@@ -439,6 +450,7 @@ class AgentManager:
                 # Remove zombie agent from dict (skip in demo mode — tmux expected to fail)
                 if not self.config.demo_mode:
                     self.agents.pop(agent_id, None)
+                    self._proc_cache.pop(agent_id, None)
                 return agent
         except Exception as e:
             agent.status = "error"
@@ -450,6 +462,7 @@ class AgentManager:
             # Remove zombie agent from dict (skip in demo mode — tmux expected to fail)
             if not self.config.demo_mode:
                 self.agents.pop(agent_id, None)
+                self._proc_cache.pop(agent_id, None)
             return agent
 
         # Get pane PID
@@ -458,7 +471,7 @@ class AgentManager:
         if self.config.demo_mode:
             # Demo mode: run a bash script that simulates agent behavior
             try:
-                demo_script = self._build_demo_script(role, task, agent)
+                demo_script = await asyncio.to_thread(self._build_demo_script, role, task, agent)
                 await self._tmux_send_keys(session_name, demo_script)
             except Exception as e:
                 agent.status = "error"
@@ -777,9 +790,10 @@ class AgentManager:
                 'sleep 86400',
             ])
 
-        # Write to temp file and execute
+        # Write to temp file and execute (sync I/O, called from async via to_thread in spawn)
         script_path = Path(tempfile.gettempdir()) / f"ashlr_demo_{uuid.uuid4().hex[:8]}.sh"
-        script_path.write_text("\n".join(script_lines))
+        script_content = "\n".join(script_lines)
+        script_path.write_text(script_content)
         script_path.chmod(0o755)
         if agent:
             agent.script_path = str(script_path)
@@ -836,6 +850,7 @@ class AgentManager:
 
         # Guard deletion — agent may have been removed by concurrent coroutine
         self.agents.pop(agent_id, None)
+        self._proc_cache.pop(agent_id, None)
         self._total_killed += 1
         return True
 
@@ -989,7 +1004,7 @@ class AgentManager:
             agent.pid = await self._tmux_get_pane_pid(session_name)
 
             if self.config.demo_mode:
-                demo_script = self._build_demo_script(saved_role, saved_task, agent)
+                demo_script = await asyncio.to_thread(self._build_demo_script, saved_role, saved_task, agent)
                 await self._tmux_send_keys(session_name, demo_script)
             else:
                 # Use BackendConfig-based command building (same as spawn)
@@ -1276,13 +1291,23 @@ class AgentManager:
             return 0.0
 
     async def get_agent_cpu(self, agent_id: str) -> float:
-        """Get CPU % of agent's process tree (sum of all children)."""
+        """Get CPU % of agent's process tree (sum of all children).
+
+        Uses cached psutil.Process objects so cpu_percent(interval=None) can
+        compute a meaningful delta between successive calls.
+        """
         agent = self.agents.get(agent_id)
         if not agent or not agent.pid:
+            self._proc_cache.pop(agent_id, None)
             return 0.0
 
         try:
-            proc = psutil.Process(agent.pid)
+            proc = self._proc_cache.get(agent_id)
+            if proc is None or proc.pid != agent.pid:
+                proc = psutil.Process(agent.pid)
+                proc.cpu_percent(interval=None)  # prime baseline
+                self._proc_cache[agent_id] = proc
+                return 0.0  # first reading always returns 0
             total = proc.cpu_percent(interval=None)
             for child in proc.children(recursive=True):
                 try:
@@ -1291,6 +1316,7 @@ class AgentManager:
                     pass
             return round(total, 1)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
+            self._proc_cache.pop(agent_id, None)
             return 0.0
 
     def check_system_pressure(self) -> dict[str, bool]:

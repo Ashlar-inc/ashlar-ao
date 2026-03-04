@@ -34,6 +34,8 @@ from ashlr_ao.server import (  # noqa: F401
     _SECRET_PATTERNS,
     _ANSI_ESCAPE_RE,
     _supervised_task,
+    _run_gh,
+    _config_write_lock,
 )
 
 if __name__ == "__main__":
