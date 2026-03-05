@@ -5125,6 +5125,10 @@ body {
 .deep-tab:hover { background: var(--bg-elevated); }
 .status-chip:hover { transform: translateY(-1px); }
 .terminal-toolbar-btn:active, .deep-action-btn:active, .card-hover-btn:active { transform: scale(0.95); }
+.deep-action-btn:hover { background: var(--bg-elevated); color: var(--text-primary); }
+.deep-action-btn.danger:hover { background: rgba(239,68,68,0.1); color: var(--danger); }
+.card-hover-btn:hover { background: var(--bg-elevated); color: var(--text-primary); }
+.status-chip:active { transform: scale(0.95); }
 
 /* ── Tour Overlay ── */
 .tour-overlay {
@@ -5401,12 +5405,12 @@ body {
         <span class="conflict-banner-icon"><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span>
         <span class="conflict-banner-text" id="conflictBannerText"></span>
         <button class="conflict-banner-btn" onclick="showConflictSummary()">Details</button>
-        <button class="conflict-banner-dismiss" onclick="dismissConflictBanner()" title="Dismiss">&times;</button>
+        <button class="conflict-banner-dismiss" onclick="dismissConflictBanner()" data-tip="Dismiss">&times;</button>
     </div>
     <div class="fleet-stats-panel" id="fleetStatsPanel">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
             <span style="font-size:13px;font-weight:700;color:var(--text-primary)">Fleet Output Statistics</span>
-            <select class="stats-refresh-select" id="statsRefreshSelect" onchange="setStatsRefreshInterval(this.value)" title="Auto-refresh">
+            <select class="stats-refresh-select" id="statsRefreshSelect" onchange="setStatsRefreshInterval(this.value)" data-tip="Auto-refresh">
                 <option value="0">Manual</option>
                 <option value="5">5s</option>
                 <option value="10">10s</option>
@@ -6126,7 +6130,7 @@ body {
         <div class="ext-header">
             <h3><svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.39 4.39a2.12 2.12 0 0 1 3 3l-1.64 1.64"/><path d="M13.5 7.5 6.75 14.25a2.12 2.12 0 0 0 3 3l6.75-6.75"/><path d="M10 15.5a5 5 0 0 1-7-7l2-2"/><path d="M14 8.5a5 5 0 0 1 7 7l-2 2"/></svg> Extensions</h3>
             <div class="ext-header-actions">
-                <button class="btn btn-secondary btn-sm" onclick="refreshExtensions()" title="Re-scan filesystem">↻ Refresh</button>
+                <button class="btn btn-secondary btn-sm" onclick="refreshExtensions()" data-tip="Re-scan filesystem">↻ Refresh</button>
                 <button class="ext-close-btn" onclick="closeExtensionsPanel()" aria-label="Close">&times;</button>
             </div>
         </div>
@@ -6363,7 +6367,7 @@ body {
         <div class="analytics-header">
             <h3 style="margin:0;font-weight:700;letter-spacing:-0.02em">Fleet Analytics</h3>
             <div style="display:flex;gap:8px;align-items:center">
-                <button class="btn btn-secondary btn-sm" onclick="loadAnalytics()" title="Refresh">Refresh</button>
+                <button class="btn btn-secondary btn-sm" onclick="loadAnalytics()" data-tip="Refresh">Refresh</button>
                 <button class="btn btn-secondary btn-sm" onclick="closeAnalytics()">Close</button>
             </div>
         </div>
@@ -6432,7 +6436,7 @@ body {
         <div class="conflicts-header">
             <h3 style="margin:0;font-weight:700;letter-spacing:-0.02em">File Conflicts</h3>
             <div style="display:flex;gap:8px;align-items:center">
-                <button class="btn btn-secondary btn-sm" onclick="loadConflicts()" title="Refresh">Refresh</button>
+                <button class="btn btn-secondary btn-sm" onclick="loadConflicts()" data-tip="Refresh">Refresh</button>
                 <button class="btn btn-secondary btn-sm" onclick="closeConflicts()">Close</button>
             </div>
         </div>
@@ -6488,8 +6492,8 @@ body {
             <button class="btn btn-secondary btn-sm" onclick="closeGlobalSearch()">Close</button>
         </div>
         <div class="gsearch-opts">
-            <button class="gsearch-opt-btn" id="gsearchRegex" onclick="this.classList.toggle('active')" title="Use regex">.*</button>
-            <button class="gsearch-opt-btn" id="gsearchCase" onclick="this.classList.toggle('active')" title="Case sensitive">Aa</button>
+            <button class="gsearch-opt-btn" id="gsearchRegex" onclick="this.classList.toggle('active')" data-tip="Use regex">.*</button>
+            <button class="gsearch-opt-btn" id="gsearchCase" onclick="this.classList.toggle('active')" data-tip="Case sensitive">Aa</button>
             <select class="gsearch-agent-filter" id="gsearchAgentFilter">
                 <option value="">All Agents</option>
             </select>
@@ -6652,6 +6656,7 @@ const ICONS = {
     'message-circle':'<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
     'download':      '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
     'dollar-sign':   '<line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+    'x-circle':      '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
 };
 
 function icon(name, size = 16, className = '') {
@@ -6678,6 +6683,10 @@ const ROLE_ICONS = {
 function safeParseJSON(key, fallback) {
     try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); }
     catch { return fallback; }
+}
+
+async function safeJson(resp, fallback = null) {
+    try { return await resp.json(); } catch { return fallback; }
 }
 
 const state = {
@@ -7663,7 +7672,9 @@ class AshlrSocket {
     }
 
     send(data) {
-        if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(data));
+        try {
+            if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(data));
+        } catch (e) { console.warn('WebSocket send failed:', e.message); }
     }
 
     handleMessage(data) {
@@ -8788,7 +8799,7 @@ function createAgentCard(agent) {
         <div class="card-mini-stats" style="display:none"></div>
         <canvas class="card-sparkline" width="160" height="20"></canvas>
         <canvas class="card-health-sparkline" width="80" height="14"></canvas>
-        <div class="context-bar-row"><div class="context-bar" role="progressbar" aria-label="Context window usage"><div class="context-bar-fill"></div></div><span class="context-pct-label low">0%</span><span class="context-warn-icon" title="High context usage">&#9888;</span><span class="context-text"></span></div>
+        <div class="context-bar-row"><div class="context-bar" role="progressbar" aria-label="Context window usage"><div class="context-bar-fill"></div></div><span class="context-pct-label low">0%</span><span class="context-warn-icon" data-tip="High context usage">&#9888;</span><span class="context-text"></span></div>
         <span class="card-pin-indicator">${icon('pin', 12)}</span>
         <div class="card-tags-row" style="display:none"></div>
         <div class="card-footer">
@@ -8803,7 +8814,7 @@ function createAgentCard(agent) {
             <button class="card-hover-btn" data-action="restart" data-tip="Restart" aria-label="Restart agent">${icon('refresh-cw', 12)}</button>
             <button class="card-hover-btn" data-action="pin" data-tip="Pin to top" aria-label="Pin agent">${icon('pin', 12)}</button>
             <button class="card-hover-btn" data-action="clone" data-tip="Clone agent" aria-label="Clone agent">${icon('copy', 12)}</button>
-            <button class="card-hover-btn danger" data-action="kill" data-tip="Kill agent" aria-label="Kill agent">${icon('x', 12)}</button>
+            <button class="card-hover-btn danger" data-action="kill" data-tip="Kill agent" aria-label="Kill agent">${icon('x-circle', 12)}</button>
         </div>
         <div class="card-menu" role="menu">
             <div class="card-menu-item" role="menuitem" data-action="deep-view">${icon('terminal', 14)} View Terminal</div>
@@ -8814,7 +8825,7 @@ function createAgentCard(agent) {
             <div class="card-menu-item" role="menuitem" data-action="compare">${icon('columns', 14)} Compare</div>
             <div class="card-menu-item" role="menuitem" data-action="restart">${icon('refresh-cw', 14)} Restart</div>
             <div class="card-menu-item" role="menuitem" data-action="retry">${icon('rotate-ccw', 14)} Retry with Changes</div>
-            <div class="card-menu-item danger" role="menuitem" data-action="kill">${icon('x', 14)} Kill</div>
+            <div class="card-menu-item danger" role="menuitem" data-action="kill">${icon('x-circle', 14)} Kill</div>
         </div>
     `;
     // Cache element references to avoid 42 querySelector calls per update cycle
@@ -9820,7 +9831,7 @@ function openSpawnDialog() {
     // Load recent dirs
     const datalist = document.getElementById('recentDirs');
     datalist.innerHTML = '';
-    const recent = JSON.parse(localStorage.getItem('ashlr_recent_dirs') || '[]');
+    const recent = safeParseJSON('ashlr_recent_dirs', []);
     recent.forEach(d => { const o = document.createElement('option'); o.value = d; datalist.appendChild(o); });
 
     const dirInput = document.getElementById('spawnDir');
@@ -9875,7 +9886,7 @@ function openSpawnDialog() {
                     recentTasksList.style.display = '';
                     recentTasksList.innerHTML = projectTasks.slice(0, 8).map(t => {
                         const shortTask = (t.task || '').length > 50 ? t.task.slice(0, 50) + '...' : (t.task || '');
-                        return `<span class="recent-task-chip" onclick="document.getElementById('spawnTask').value=this.dataset.task" data-task="${escapeHtml(t.task || '')}" title="${escapeHtml(t.task || '')}">${escapeHtml(shortTask)}</span>`;
+                        return `<span class="recent-task-chip" onclick="document.getElementById('spawnTask').value=this.dataset.task" data-task="${escapeHtml(t.task || '')}" data-tip="${escapeHtml(t.task || '')}">${escapeHtml(shortTask)}</span>`;
                     }).join('');
                 }
                 // Reload fleet templates for selected project
@@ -9905,12 +9916,12 @@ function openSpawnDialog() {
 
     // Load recent tasks
     const recentTasksList = document.getElementById('recentTasksList');
-    const recentTasks = JSON.parse(localStorage.getItem('ashlr_recent_tasks') || '[]');
+    const recentTasks = safeParseJSON('ashlr_recent_tasks', []);
     if (recentTasks.length > 0) {
         recentTasksList.style.display = '';
         recentTasksList.innerHTML = recentTasks.slice(0, 8).map(t => {
             const shortTask = t.task.length > 50 ? t.task.slice(0, 50) + '...' : t.task;
-            return `<span class="recent-task-chip" onclick="document.getElementById('spawnTask').value=this.dataset.task" data-task="${escapeHtml(t.task)}" title="${escapeHtml(t.task)}">${escapeHtml(shortTask)}</span>`;
+            return `<span class="recent-task-chip" onclick="document.getElementById('spawnTask').value=this.dataset.task" data-task="${escapeHtml(t.task)}" data-tip="${escapeHtml(t.task)}">${escapeHtml(shortTask)}</span>`;
         }).join('');
     } else {
         recentTasksList.style.display = 'none';
@@ -10164,7 +10175,7 @@ async function loadTaskSuggestions() {
             const cost = s.cost_usd > 0 ? ` · $${s.cost_usd.toFixed(2)}` : '';
             html += `<div class="task-suggestion" data-sug-role="${escapeHtml(s.role)}" data-sug-task="${escapeHtml(s.task || '')}">`;
             html += `<span class="task-suggestion-role">${escapeHtml(roleName)}</span>`;
-            html += `<span class="task-suggestion-task" title="${escapeHtml(s.task || '')}">${escapeHtml(shortTask)}</span>`;
+            html += `<span class="task-suggestion-task" data-tip="${escapeHtml(s.task || '')}">${escapeHtml(shortTask)}</span>`;
             html += `<span class="task-suggestion-outcome ${outcome}">${label}${dur ? ' · ' + dur : ''}${cost}</span>`;
             html += `</div>`;
         }
@@ -10377,13 +10388,13 @@ async function spawnAgent() {
 
         // Save dir to recent
         if (dir) {
-            const recent = JSON.parse(localStorage.getItem('ashlr_recent_dirs') || '[]');
+            const recent = safeParseJSON('ashlr_recent_dirs', []);
             const updated = [dir, ...recent.filter(d => d !== dir)].slice(0, 10);
             localStorage.setItem('ashlr_recent_dirs', JSON.stringify(updated));
         }
         // Save task to recent
         if (task) {
-            const recentTasks = JSON.parse(localStorage.getItem('ashlr_recent_tasks') || '[]');
+            const recentTasks = safeParseJSON('ashlr_recent_tasks', []);
             const updated = [{ task, role: state.selectedRole, dir }, ...recentTasks.filter(t => t.task !== task)].slice(0, 15);
             localStorage.setItem('ashlr_recent_tasks', JSON.stringify(updated));
         }
@@ -11019,7 +11030,7 @@ function updateDeepViewHeader(agent) {
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 6)
                 .forEach(([name, count]) => {
-                    chips.push(`<span class="deep-keyword-chip file" title="${count} ops">${name}</span>`);
+                    chips.push(`<span class="deep-keyword-chip file" data-tip="${count} ops">${name}</span>`);
                 });
             // Top tools used (deduped)
             const toolCounts = {};
@@ -11030,7 +11041,7 @@ function updateDeepViewHeader(agent) {
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 4)
                 .forEach(([tool, count]) => {
-                    chips.push(`<span class="deep-keyword-chip tool" title="${count}x">${tool}</span>`);
+                    chips.push(`<span class="deep-keyword-chip tool" data-tip="${count}x">${tool}</span>`);
                 });
         } else {
             // Fallback: extract from client-side activity cache
@@ -11051,7 +11062,7 @@ function updateDeepViewHeader(agent) {
                     .sort((a, b) => b[1] - a[1])
                     .slice(0, 4)
                     .forEach(([cat, count]) => {
-                        chips.push(`<span class="deep-keyword-chip tool" title="${count}x">${cat}</span>`);
+                        chips.push(`<span class="deep-keyword-chip tool" data-tip="${count}x">${cat}</span>`);
                     });
             }
         }
@@ -11094,7 +11105,7 @@ function updateDeepViewHeader(agent) {
                 '<input type="text" class="deep-prompt-input" id="deepPromptInput" placeholder="Custom response..." onkeydown="if(event.key===\'Enter\'){sendDeepPromptCustom();event.preventDefault()}">' +
                 '<button class="btn btn-primary btn-sm" onclick="sendDeepPromptResponse(\'yes\')">' + approveLabel + '</button>' +
                 '<button class="btn btn-secondary btn-sm" onclick="sendDeepPromptResponse(\'no\')">Reject</button>' +
-                '<button class="btn btn-ghost btn-sm" onclick="sendDeepPromptCustom()" title="Send custom response">Send</button>';
+                '<button class="btn btn-ghost btn-sm" onclick="sendDeepPromptCustom()" data-tip="Send custom response">Send</button>';
             deepPromptBar.style.display = '';
         } else {
             deepPromptBar.style.display = 'none';
@@ -11497,7 +11508,7 @@ function renderQuickReplies() {
     const templates = getReplyTemplates();
     container.innerHTML = templates.map((t, i) =>
         `<button class="qc-btn" data-qr-idx="${i}">${escapeHtml(t.label)}</button>`
-    ).join('') + `<button class="qc-btn" onclick="openReplyTemplateEditor()" title="Edit templates" style="opacity:0.5">+</button>`;
+    ).join('') + `<button class="qc-btn" onclick="openReplyTemplateEditor()" data-tip="Edit templates" style="opacity:0.5">+</button>`;
     container.querySelectorAll('[data-qr-idx]').forEach(btn => {
         btn.addEventListener('click', () => quickSend(templates[parseInt(btn.dataset.qrIdx)].message));
     });
@@ -11772,7 +11783,7 @@ function updateErrorSummary(agent) {
     if (list.dataset.count !== String(errorLines.length)) {
         list.dataset.count = String(errorLines.length);
         list.innerHTML = errorLines.slice(-20).map(e =>
-            `<div class="error-summary-line" title="Line ${e.lineIdx + 1}" onclick="scrollToOutputLine(${e.lineIdx})">${escapeHtml(e.text)}</div>`
+            `<div class="error-summary-line" data-tip="Line ${e.lineIdx + 1}" onclick="scrollToOutputLine(${e.lineIdx})">${escapeHtml(e.text)}</div>`
         ).join('');
     }
 }
@@ -11828,7 +11839,7 @@ function renderBookmarksList() {
             <div class="bookmark-text">${escapeHtml(b.text)}</div>
             <div class="bookmark-meta">
                 <span>Line ${b.line}</span>
-                <span class="bookmark-delete" onclick="event.stopPropagation();deleteBookmark('${b.id}')" title="Remove">&times;</span>
+                <span class="bookmark-delete" onclick="event.stopPropagation();deleteBookmark('${b.id}')" data-tip="Remove">&times;</span>
             </div>
         </div>
     `).join('');
@@ -11871,7 +11882,7 @@ async function addBookmarkFromSelection() {
         body: JSON.stringify({ line: lineNum, text: cleanText, label: label || '' })
     });
     if (res && res.ok) {
-        const data = await res.json();
+        const data = await safeJson(res, {});
         if (data && data.bookmark) {
             const agent = state.agents.get(state.focusedAgentId);
             if (agent) {
@@ -13580,7 +13591,7 @@ function saveFilterState() {
 
 function restoreFilterState() {
     try {
-        const saved = JSON.parse(localStorage.getItem('ashlr_filter_state') || '{}');
+        const saved = safeParseJSON('ashlr_filter_state', {});
         if (saved.projectId) {
             state.selectedProjectId = saved.projectId;
             const projSel = document.getElementById('projectSelector');
@@ -13962,7 +13973,7 @@ async function openHistory() {
             const dur = item.duration_sec ? formatDuration(item.duration_sec) : '';
             const el = document.createElement('div');
             el.className = 'history-item';
-            const resumable = item.resumable ? `<button class="btn-ghost" style="font-size:11px;padding:2px 8px;color:var(--accent);border:1px solid var(--accent);border-radius:var(--radius-sm)" onclick="event.stopPropagation();resumeSession('${item.id}')" title="Resume this agent session">Resume</button>` : '';
+            const resumable = item.resumable ? `<button class="btn-ghost" style="font-size:11px;padding:2px 8px;color:var(--accent);border:1px solid var(--accent);border-radius:var(--radius-sm)" onclick="event.stopPropagation();resumeSession('${item.id}')" data-tip="Resume this agent session">Resume</button>` : '';
             el.innerHTML = `
                 <span class="hi-icon">${info.icon}</span>
                 <span class="hi-name">${escapeHtml(item.name)}</span>
@@ -14375,7 +14386,7 @@ function openQueuePanel() {
                 <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(t.name)}</div>
                 <div style="font-size:11px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(t.task.slice(0, 80))}</div>
             </div>
-            <button onclick="removeFromQueue('${t.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;padding:4px" title="Remove">✕</button>
+            <button onclick="removeFromQueue('${t.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;padding:4px" data-tip="Remove">✕</button>
         </div>`;
     });
     html += '</div>';
@@ -14525,7 +14536,7 @@ function applyTailMode() {
 
 // ── Custom Highlight Rules ──
 
-let _highlightRules = JSON.parse(localStorage.getItem('ashlr_hl_rules') || '[]');
+let _highlightRules = safeParseJSON('ashlr_hl_rules', []);
 
 function toggleHighlightPopover() {
     const pop = document.getElementById('highlightPopover');
@@ -14545,7 +14556,7 @@ function renderHighlightRules() {
     list.innerHTML = _highlightRules.map((r, i) => `
         <div class="hl-rule-item">
             <span class="hl-rule-swatch" style="background:${r.color}"></span>
-            <span class="hl-rule-pattern" title="${escapeHtml(r.pattern)}">${escapeHtml(r.pattern)}</span>
+            <span class="hl-rule-pattern" data-tip="${escapeHtml(r.pattern)}">${escapeHtml(r.pattern)}</span>
             <span class="hl-rule-remove" onclick="removeHighlightRule(${i})">&times;</span>
         </div>
     `).join('');
@@ -14934,7 +14945,7 @@ function sendBrowserNotification(title, body, agentId, eventType) {
     if (document.hasFocus()) return;
     // Check per-event preferences
     if (eventType) {
-        const prefs = JSON.parse(localStorage.getItem('ashlr_notif_events') || '{}');
+        const prefs = safeParseJSON('ashlr_notif_events', {});
         // Default: needs_input, error, restart_exhausted ON; completed OFF
         if (eventType === 'agent_completed' && !prefs.agent_completed) return;
         if (eventType === 'agent_needs_input' && prefs.agent_needs_input === false) return;
@@ -15944,7 +15955,7 @@ function renderExtensionsContent() {
                         <div class="ext-item-desc">${escapeHtml(s.description || 'No description')}</div>
                     </div>
                     ${srcBadge}
-                    <button class="ext-item-action" onclick="invokeSkillOnAgent('${escapeHtml(s.name)}')" ${hasTarget ? '' : 'disabled'} title="${hasTarget ? 'Send to targeted agent' : 'No agent targeted'}">Invoke</button>
+                    <button class="ext-item-action" onclick="invokeSkillOnAgent('${escapeHtml(s.name)}')" ${hasTarget ? '' : 'disabled'} data-tip="${hasTarget ? 'Send to targeted agent' : 'No agent targeted'}">Invoke</button>
                 </div>`;
             });
         }
@@ -16076,10 +16087,10 @@ function renderWfList() {
             <span class="wf-count">${agents.length} agents</span>
             ${isBuiltin ? '<span class="wf-builtin">built-in</span>' : ''}
             <span class="wf-actions">
-                ${!isBuiltin ? `<button onclick="event.stopPropagation();editWorkflow('${wf.id}')" title="Edit">${icon('edit', 12)}</button>` : ''}
-                <button class="wf-duplicate-btn" onclick="event.stopPropagation();duplicateWorkflow('${wf.id}')" title="Duplicate">${icon('copy', 12)}</button>
-                <button onclick="event.stopPropagation();runWorkflowById('${wf.id}')" title="Run">${icon('play', 12)}</button>
-                ${!isBuiltin ? `<button onclick="event.stopPropagation();deleteWorkflow('${wf.id}')" title="Delete" style="color:var(--danger)">${icon('trash-2', 12)}</button>` : ''}
+                ${!isBuiltin ? `<button onclick="event.stopPropagation();editWorkflow('${wf.id}')" data-tip="Edit">${icon('edit', 12)}</button>` : ''}
+                <button class="wf-duplicate-btn" onclick="event.stopPropagation();duplicateWorkflow('${wf.id}')" data-tip="Duplicate">${icon('copy', 12)}</button>
+                <button onclick="event.stopPropagation();runWorkflowById('${wf.id}')" data-tip="Run">${icon('play', 12)}</button>
+                ${!isBuiltin ? `<button onclick="event.stopPropagation();deleteWorkflow('${wf.id}')" data-tip="Delete" style="color:var(--danger)">${icon('trash-2', 12)}</button>` : ''}
             </span>
         </div>`;
     });
@@ -17773,7 +17784,7 @@ function renderConflicts(data) {
             html += `<div class="conflict-agents">`;
             for (const agent of c.agents) {
                 const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
-                html += `<div class="conflict-agent-chip" onclick="closeConflicts();openDeepView('${agent.id}')" title="View agent">`;
+                html += `<div class="conflict-agent-chip" onclick="closeConflicts();openDeepView('${agent.id}')" data-tip="View agent">`;
                 html += `${icon(info.icon, 12)} ${escapeHtml(agent.name)} <span style="color:var(--text-tertiary)">(${agent.status})</span>`;
                 html += `</div>`;
             }
@@ -19574,7 +19585,7 @@ openSettings = function() {
     document.getElementById('setAutoApprovePatterns').value = (cfg.auto_approve_patterns || []).join('\n');
     document.getElementById('setAutoPauseCritical').classList.toggle('active', !!cfg.auto_pause_on_critical_health);
     // Notification event prefs
-    const notifPrefs = JSON.parse(localStorage.getItem('ashlr_notif_events') || '{}');
+    const notifPrefs = safeParseJSON('ashlr_notif_events', {});
     document.getElementById('notifEvtNeedsInput').checked = notifPrefs.agent_needs_input !== false;
     document.getElementById('notifEvtError').checked = notifPrefs.agent_error !== false;
     document.getElementById('notifEvtCompleted').checked = !!notifPrefs.agent_completed;
@@ -19836,7 +19847,7 @@ function renderLineAnnotation(lineEl, lineIdx, text) {
     const annDiv = document.createElement('div');
     annDiv.className = 'line-annotation';
     annDiv.dataset.lineIdx = lineIdx;
-    annDiv.innerHTML = `<span class="line-annotation-icon">${icon('edit', 14)}</span> ${escapeHtml(text)} <button class="line-annotation-del" onclick="deleteLineAnnotation(${lineIdx}, this)" title="Remove">✕</button>`;
+    annDiv.innerHTML = `<span class="line-annotation-icon">${icon('edit', 14)}</span> ${escapeHtml(text)} <button class="line-annotation-del" onclick="deleteLineAnnotation(${lineIdx}, this)" data-tip="Remove">✕</button>`;
     lineEl.after(annDiv);
 }
 
@@ -20538,7 +20549,7 @@ function renderPinnedMessages() {
         `<div class="pinned-message">
             <span class="pm-line">L${p.line + 1}</span>
             <span class="pm-text">${escapeHtml(p.text)}</span>
-            <button class="pm-unpin" onclick="unpinLine(${p.line})" title="Unpin">✕</button>
+            <button class="pm-unpin" onclick="unpinLine(${p.line})" data-tip="Unpin">✕</button>
         </div>`
     ).join('');
 }
