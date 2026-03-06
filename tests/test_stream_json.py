@@ -419,6 +419,7 @@ class TestSpawnOutputModeValidation:
     async def test_invalid_output_mode_rejected(self):
         config = Config()
         config.demo_mode = True
+        config.spawn_pressure_block = False
         manager = AgentManager(config)
         with pytest.raises(ValueError, match="Invalid output_mode"):
             await manager.spawn(task="test", output_mode="invalid")

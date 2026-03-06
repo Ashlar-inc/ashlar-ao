@@ -6676,6 +6676,8 @@ document.addEventListener('keydown', (e) => {
 
     // Escape always works — close topmost overlay via stack
     if (e.key === 'Escape') {
+        // Close right panel (terminal/AI chat) if open
+        if (_rightPanel.isOpen) { toggleRightPanel(); return; }
         if (state.view === 'deep') { closeDeepView(); return; }
         if (state.view === 'spawn') { closeSpawnDialog(); return; }
         if (state.view === 'palette') { closePalette(); return; }
@@ -16299,8 +16301,8 @@ function toggleRightPanel(tab) {
     const panel = document.getElementById('rightPanel');
     if (!panel) return;
 
-    if (_rightPanel.isOpen && tab && tab === _rightPanel.activeTab) {
-        // Close if clicking same tab
+    // Close if: no tab specified (X button), or clicking the already-active tab
+    if (_rightPanel.isOpen && (!tab || tab === _rightPanel.activeTab)) {
         _rightPanel.isOpen = false;
         panel.classList.remove('open');
     } else {
@@ -16419,9 +16421,9 @@ function addBottomTerminal(cwd) {
     const tabInfo = { id, label, terminal: term, fitAddon, ws: null, container, resizeObserver: ro };
     _bottomTerminals.tabs.push(tabInfo);
 
-    // WebSocket connect
+    // WebSocket connect — use setTimeout to ensure container is painted before fit()
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    requestAnimationFrame(() => {
+    setTimeout(() => {
         if (fitAddon) try { fitAddon.fit(); } catch(e) {}
         const cols = term.cols || 200;
         const rows = term.rows || 50;
@@ -16431,22 +16433,28 @@ function addBottomTerminal(cwd) {
         ws.binaryType = 'arraybuffer';
         tabInfo.ws = ws;
 
+        ws.onopen = () => {
+            // Send initial resize after connection
+            if (fitAddon) try { fitAddon.fit(); } catch(e) {}
+        };
         ws.onmessage = (ev) => {
             if (ev.data instanceof ArrayBuffer) {
                 term.write(new Uint8Array(ev.data));
+            } else if (typeof ev.data === 'string') {
+                // Initial pty_session info or control messages — ignore
             }
         };
         ws.onclose = () => {
             tabInfo.ws = null;
-            tabInfo.label += ' (closed)';
+            if (!tabInfo.label.includes('(closed)')) tabInfo.label += ' (closed)';
             renderBottomTerminalTabs();
         };
         ws.onerror = () => {
             tabInfo.ws = null;
-            tabInfo.label += ' (error)';
+            if (!tabInfo.label.includes('(error)')) tabInfo.label += ' (error)';
             renderBottomTerminalTabs();
         };
-    });
+    }, 100);
 
     term.onData(data => {
         if (tabInfo.ws && tabInfo.ws.readyState === WebSocket.OPEN) {

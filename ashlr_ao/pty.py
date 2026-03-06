@@ -127,7 +127,7 @@ class PTYManager:
         home = os.path.expanduser("~")
         real_cwd = os.path.realpath(cwd)
         real_tmp = os.path.realpath("/tmp")
-        if not (real_cwd.startswith(home) or real_cwd.startswith("/tmp") or real_cwd.startswith(real_tmp)):
+        if not any(real_cwd == p or real_cwd.startswith(p + os.sep) for p in [home, "/tmp", real_tmp]):
             raise ValueError("Working directory must be under home or /tmp")
 
         session_id = self._generate_id()

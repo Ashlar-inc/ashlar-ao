@@ -1059,7 +1059,7 @@ async def update_project(request: web.Request) -> web.Response:
         if not os.path.isdir(resolved_path):
             return web.json_response({"error": f"Path is not a valid directory: {resolved_path}"}, status=400)
         home = str(Path.home())
-        if not (resolved_path.startswith(home) or resolved_path.startswith("/tmp") or resolved_path.startswith("/private/tmp")):
+        if not any(resolved_path == p or resolved_path.startswith(p + os.sep) for p in [home, "/tmp", "/private/tmp"]):
             return web.json_response({"error": "Project path must be under home directory or /tmp"}, status=400)
         data["path"] = resolved_path
 
@@ -1173,11 +1173,17 @@ async def github_project_info(request: web.Request) -> web.Response:
 
     # Fetch open PRs
     pr_ok, pr_output = await _run_gh(["pr", "list", "--json", "number,title,state,author,createdAt,headRefName,url", "--limit", "10"], cwd=cwd)
-    prs = json.loads(pr_output) if pr_ok and pr_output else []
+    try:
+        prs = json.loads(pr_output) if pr_ok and pr_output else []
+    except json.JSONDecodeError:
+        prs = []
 
     # Fetch open issues
     issue_ok, issue_output = await _run_gh(["issue", "list", "--json", "number,title,state,author,createdAt,labels,url", "--limit", "10"], cwd=cwd)
-    issues = json.loads(issue_output) if issue_ok and issue_output else []
+    try:
+        issues = json.loads(issue_output) if issue_ok and issue_output else []
+    except json.JSONDecodeError:
+        issues = []
 
     # Fetch branches
     branch_ok, branch_output = await _run_gh(["api", "repos/{owner}/{repo}/branches", "--jq", ".[].name", "--paginate"], cwd=cwd, timeout=15.0)
@@ -1319,7 +1325,10 @@ async def send_agent_message(request: web.Request) -> web.Response:
     # Send to tmux session
     sanitized = content.strip()[:500]
     sanitized = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', sanitized)  # Strip control chars except newline/tab
-    await manager.send_message(to_agent_id, f"[Message from {from_agent.name}]: {sanitized}")
+    try:
+        await manager.send_message(to_agent_id, f"[Message from {from_agent.name}]: {sanitized}")
+    except ValueError as e:
+        return web.json_response({"error": str(e)}, status=400)
 
     await hub.broadcast({"type": "agent_message", "message": msg})
     await hub.broadcast({"type": "agent_update", "agent": to_agent.to_dict()})
@@ -2729,7 +2738,7 @@ async def configure_handoff(request: web.Request) -> web.Response:
         if wd:
             resolved_wd = os.path.realpath(os.path.expanduser(wd))
             home = str(Path.home())
-            if not (resolved_wd.startswith(home) or resolved_wd.startswith("/tmp") or resolved_wd.startswith("/private/tmp")):
+            if not any(resolved_wd == p or resolved_wd.startswith(p + os.sep) for p in [home, "/tmp", "/private/tmp"]):
                 return web.json_response({"error": "working_dir must be under home directory or /tmp"}, status=400)
             wd = resolved_wd
         # Sanitize

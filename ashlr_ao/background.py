@@ -763,6 +763,9 @@ async def health_check_loop(app: web.Application) -> None:
                     continue
 
                 # -- Check if tmux session is still alive --
+                # Stream-json agents don't use tmux; they're monitored via reader task
+                if agent.output_mode == "stream-json":
+                    continue
                 exists = await manager._tmux_session_exists(agent.tmux_session)
                 if not exists:
                     log.warning(f"Agent {agent_id} ({agent.name}) tmux session died")
