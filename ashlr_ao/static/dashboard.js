@@ -1,0 +1,16557 @@
+/* ─────────────────────────────────────────────
+   Ashlr AO — Production Dashboard
+   ───────────────────────────────────────────── */
+
+// ── One-time localStorage migration: ashlar_* → ashlr_* ──
+(function() {
+    if (localStorage.getItem('_ashlr_migrated')) return;
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('ashlar_')) {
+            localStorage.setItem(key.replace('ashlar_', 'ashlr_'), localStorage.getItem(key));
+        }
+    }
+    localStorage.setItem('_ashlr_migrated', '1');
+})();
+
+// ── Lucide Icon System ──
+
+const ICONS = {
+    // Roles
+    'paintbrush':    '<path d="M18.37 2.63a2.12 2.12 0 0 1 3 3L14 13l-4 1 1-4Z"/><path d="M20 14.5V18a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3.5"/>',
+    'server':        '<rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>',
+    'rocket':        '<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09Z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2Z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>',
+    'test-tube':     '<path d="M14.5 2v17.5c0 1.4-1.1 2.5-2.5 2.5s-2.5-1.1-2.5-2.5V2"/><path d="M8.5 2h7"/><path d="M14.5 16h-5"/>',
+    'scan-search':   '<path d="M2 9V2h7"/><path d="M2 15v7h7"/><path d="M15 2h7v7"/><path d="M15 22h7v-7"/><circle cx="12" cy="12" r="3"/><path d="m16 16-1.9-1.9"/>',
+    'shield-check':  '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+    'blocks':        '<rect width="7" height="7" x="14" y="3" rx="1"/><path d="M10 21V8a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1H3"/>',
+    'file-text':     '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+    'text-select':   '<path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/>',
+    'bot':           '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+    // Status
+    'circle-check':  '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+    'circle-alert':  '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
+    'circle-pause':  '<circle cx="12" cy="12" r="10"/><line x1="10" x2="10" y1="15" y2="9"/><line x1="14" x2="14" y1="15" y2="9"/>',
+    'loader':        '<path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="m16.2 16.2 2.9 2.9"/><path d="M12 18v4"/><path d="m4.9 19.1 2.9-2.9"/><path d="M2 12h4"/><path d="m4.9 4.9 2.9 2.9"/>',
+    // Actions
+    'play':          '<polygon points="6 3 20 12 6 21 6 3"/>',
+    'x':             '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    'send':          '<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/>',
+    'plus':          '<path d="M5 12h14"/><path d="M12 5v14"/>',
+    'ellipsis':      '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+    'copy':          '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+    'rotate-ccw':    '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+    // Navigation
+    'arrow-left':    '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+    'search':        '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+    'chevron-down':  '<path d="m6 9 6 6 6-6"/>',
+    'settings':      '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+    'terminal':      '<polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/>',
+    'eye':           '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
+    'mic':           '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>',
+    'bell':          '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+    // Extra
+    'pause':         '<rect width="4" height="16" x="6" y="4"/><rect width="4" height="16" x="14" y="4"/>',
+    'trash-2':       '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
+    'zap':           '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
+    'history':       '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+    'clipboard':     '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
+    'check-square':  '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/>',
+    'alert-triangle':'<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+    'puzzle':        '<path d="M19.439 7.85c-.049.322.059.648.289.878l1.568 1.568c.47.47.706 1.087.706 1.704s-.235 1.233-.706 1.704l-1.611 1.611a.98.98 0 0 1-.837.276c-.47-.07-.802-.48-.968-.925a2.501 2.501 0 1 0-3.214 3.214c.446.166.855.497.925.968a.979.979 0 0 1-.276.837l-1.61 1.61a2.404 2.404 0 0 1-1.705.707 2.402 2.402 0 0 1-1.704-.706l-1.568-1.568a1.026 1.026 0 0 0-.877-.29c-.493.074-.84.504-1.02.968a2.5 2.5 0 1 1-3.237-3.237c.464-.18.894-.527.967-1.02a1.026 1.026 0 0 0-.289-.877l-1.568-1.568A2.402 2.402 0 0 1 1.998 12c0-.617.236-1.234.706-1.704L4.23 8.77c.24-.24.581-.353.917-.303.515.077.877.528 1.073 1.01a2.5 2.5 0 1 0 3.259-3.259c-.482-.196-.933-.558-1.01-1.073-.05-.336.062-.676.303-.917l1.525-1.525A2.402 2.402 0 0 1 12 1.998c.617 0 1.234.236 1.704.706l1.568 1.568c.23.23.556.338.877.29.493-.074.84-.504 1.02-.968a2.5 2.5 0 1 1 3.237 3.237c-.464.18-.894.527-.967 1.02Z"/>',
+    'save':          '<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>',
+    'edit':          '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>',
+    'pin':           '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
+    'skull':         '<circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M8 20v2h8v-2"/><path d="m12.5 17-.5-1-.5 1h1z"/><path d="M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20"/>',
+    'refresh-cw':    '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/>',
+    'chart-bar':     '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 16h8"/><path d="M7 11h12"/><path d="M7 6h3"/>',
+    'git-branch':    '<line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>',
+    'wrench':        '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+    'brain':         '<path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M19.967 17.484A4 4 0 0 1 18 18"/>',
+    'info':          '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+    'check':         '<path d="M20 6 9 17l-5-5"/>',
+    'plug':          '<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a6 6 0 0 1-6 6 6 6 0 0 1-6-6V8Z"/>',
+    'package':       '<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+    'layout-grid':   '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
+    'git-merge':     '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/>',
+    'table':         '<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>',
+    'bookmark':      '<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>',
+    'file-code':     '<path d="M10 12.5 8 15l2 2.5"/><path d="m14 12.5 2 2.5-2 2.5"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/>',
+    'slash':         '<path d="M22 2 2 22"/>',
+    'columns':       '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/>',
+    'activity':      '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>',
+    'layers':        '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
+    'code':          '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+    'folder':        '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+    'folder-plus':   '<path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+    'globe':         '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
+    'webhook':       '<path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2"/><path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06"/><path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8"/>',
+    'message-circle':'<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+    'download':      '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+    'dollar-sign':   '<line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+    'x-circle':      '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
+};
+
+function icon(name, size = 16, className = '') {
+    const paths = ICONS[name];
+    if (!paths) return `<span class="icon-fallback ${className}" style="width:${size}px;height:${size}px;display:inline-flex;align-items:center;justify-content:center">?</span>`;
+    return `<svg class="lucide ${className}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+}
+
+// Role icon mapping: role key → Lucide icon name
+const ROLE_ICONS = {
+    frontend: 'paintbrush',
+    backend: 'server',
+    devops: 'rocket',
+    tester: 'test-tube',
+    reviewer: 'scan-search',
+    security: 'shield-check',
+    architect: 'blocks',
+    docs: 'file-text',
+    general: 'bot',
+};
+
+// ── State ──
+
+function safeParseJSON(key, fallback) {
+    try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); }
+    catch { return fallback; }
+}
+
+async function safeJson(resp, fallback = null) {
+    try { return await resp.json(); } catch { return fallback; }
+}
+
+const state = {
+    agents: new Map(),
+    config: {},
+    metrics: {},
+    projects: [],
+    workflows: [],
+    backends: {},
+    selectedProjectId: null, // null = all projects
+    selectedBranch: null, // null = all branches
+    focusedAgentId: null,
+    interactionAgentId: null,
+    view: 'grid', // grid | deep | spawn | palette | cheatsheet | history
+    connected: false,
+    synced: false,
+    selectedRole: 'general',
+    paletteIndex: 0,
+    cpuHistory: [],
+    costHistory: [],
+    notifications: [],
+    unreadCount: 0,
+    workflowRuns: new Map(),
+    conflicts: new Map(),
+    presets: [],
+    viewMode: localStorage.getItem('ashlr_view_mode') || 'grid',
+    pinnedAgents: new Set(safeParseJSON('ashlr_pinned', [])),
+    commandHistory: new Map(),
+    tableSortCol: 'name',
+    tableSortAsc: true,
+    statusFilter: 'all',
+    commandTargetId: null,
+    acIndex: -1,
+    extensions: { skills: [], mcp_servers: [], plugins: [], scanned_at: '' },
+    extTab: 'skills',
+    extFilter: '',
+    aqDismissedAt: 0,
+    insights: [],
+    taskQueue: [],
+    cardSort: localStorage.getItem('ashlr_card_sort') || 'priority',
+    cardOrder: safeParseJSON('ashlr_card_order', []),
+    notificationLog: [],
+    deepScrollPositions: new Map(), // agentId -> scrollTop
+    currentUser: null, // {id, email, display_name, role, org_id}
+    currentOrg: null,  // {id, name, slug}
+    authMode: 'login', // 'login' | 'register'
+    license: { tier: 'community', max_agents: 5, is_pro: false, features: [], expires_at: '' },
+    effectiveMaxAgents: 5,
+    // Wave 2: Focus mode + saved views
+    focusMode: localStorage.getItem('ashlr_focus_mode') === 'true',
+    savedViews: safeParseJSON('ashlr_saved_views', []),
+};
+
+const ROLE_INFO = {
+    frontend: { name: 'Frontend Engineer', iconKey: 'paintbrush', color: '#8B5CF6', desc: 'React, Vue, CSS, UI/UX' },
+    backend: { name: 'Backend Engineer', iconKey: 'server', color: '#3B82F6', desc: 'APIs, databases, auth' },
+    devops: { name: 'DevOps Engineer', iconKey: 'rocket', color: '#F97316', desc: 'CI/CD, Docker, infra' },
+    tester: { name: 'QA Engineer', iconKey: 'test-tube', color: '#22C55E', desc: 'Tests, coverage, E2E' },
+    reviewer: { name: 'Code Reviewer', iconKey: 'scan-search', color: '#EAB308', desc: 'Code review, best practices' },
+    security: { name: 'Security Auditor', iconKey: 'shield-check', color: '#EF4444', desc: 'Vuln scanning, hardening' },
+    architect: { name: 'Architect', iconKey: 'blocks', color: '#06B6D4', desc: 'System design, planning' },
+    docs: { name: 'Documentation', iconKey: 'file-text', color: '#A855F7', desc: 'READMEs, API docs, guides' },
+    general: { name: 'General', iconKey: 'bot', color: '#64748B', desc: 'All-purpose agent' },
+};
+
+// Helper: get role icon HTML from role key or agent data
+function roleIcon(roleOrAgent, size = 16) {
+    const role = typeof roleOrAgent === 'string' ? roleOrAgent : roleOrAgent?.role;
+    const info = ROLE_INFO[role];
+    const iconKey = ROLE_ICONS[role] || 'bot';
+    return icon(iconKey, size);
+}
+
+const TASK_PLACEHOLDERS = {
+    frontend: 'e.g., Build a responsive dashboard with React...',
+    backend: 'e.g., Create REST API endpoints for user management...',
+    security: 'e.g., Audit the auth module for vulnerabilities...',
+    tester: 'e.g., Write comprehensive unit tests for the payment flow...',
+    devops: 'e.g., Set up CI/CD pipeline with GitHub Actions...',
+    architect: 'e.g., Design the data model for the notification system...',
+    reviewer: 'e.g., Review the PR for the new billing feature...',
+    docs: 'e.g., Write API documentation for the v2 endpoints...',
+    general: 'What should this agent work on?',
+};
+
+// ── Auth + API Wrapper ──
+
+let authToken = localStorage.getItem('ashlr_auth_token') || '';
+
+async function apiFetch(url, options = {}) {
+    if (authToken) {
+        options.headers = options.headers || {};
+        if (typeof options.headers === 'object' && !(options.headers instanceof Headers)) {
+            options.headers['Authorization'] = `Bearer ${authToken}`;
+        }
+    }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    try {
+        const resp = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (resp.status === 401) {
+            showAuthLogin();
+            throw new Error('Unauthorized');
+        }
+        if (resp.status === 403) {
+            try {
+                const clone = resp.clone();
+                const body = await clone.json();
+                if (body.feature && body.current_plan) {
+                    const feat = body.feature.replace(/_/g, ' ');
+                    showToast(`${feat} requires a Pro license. Upgrade at Settings > License`, 'warning');
+                }
+            } catch (_) { /* not a license gate */ }
+        }
+        return resp;
+    } catch (e) {
+        clearTimeout(timeoutId);
+        if (e.name === 'AbortError') throw new Error('Request timed out');
+        throw e;
+    }
+}
+
+function showAuthLogin(mode) {
+    const el = document.getElementById('authLogin');
+    el.style.display = '';
+    document.getElementById('mainContent').style.opacity = '0.2';
+    document.getElementById('mainContent').style.pointerEvents = 'none';
+    if (mode === 'register') {
+        document.getElementById('authLoginForm').style.display = 'none';
+        document.getElementById('authRegisterForm').style.display = '';
+        state.authMode = 'register';
+        document.getElementById('regName')?.focus();
+    } else {
+        document.getElementById('authLoginForm').style.display = '';
+        document.getElementById('authRegisterForm').style.display = 'none';
+        state.authMode = 'login';
+        document.getElementById('authEmail')?.focus();
+    }
+}
+
+function hideAuthLogin() {
+    document.getElementById('authLogin').style.display = 'none';
+    document.getElementById('mainContent').style.opacity = '';
+    document.getElementById('mainContent').style.pointerEvents = '';
+}
+
+function setCurrentUser(user, org) {
+    state.currentUser = user;
+    state.currentOrg = org || null;
+    const menu = document.getElementById('userMenu');
+    if (user) {
+        menu.style.display = '';
+        const initials = user.display_name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+        document.getElementById('userAvatar').textContent = initials;
+        document.getElementById('userName').textContent = user.display_name;
+        const header = document.getElementById('userDropdownHeader');
+        header.textContent = user.email + (org ? ` \u00b7 ${org.name}` : '');
+        // Show team button for admins
+        document.getElementById('teamBtn').style.display = user.role === 'admin' ? '' : 'none';
+    } else {
+        menu.style.display = 'none';
+    }
+}
+
+function toggleUserMenu() {
+    const dd = document.getElementById('userDropdown');
+    dd.style.display = dd.style.display === 'none' ? '' : 'none';
+}
+// Close user menu on outside click
+document.addEventListener('click', (e) => {
+    const menu = document.getElementById('userMenu');
+    if (menu && !menu.contains(e.target)) {
+        document.getElementById('userDropdown').style.display = 'none';
+    }
+});
+
+async function doLogout() {
+    try { await apiFetch('/api/auth/logout', { method: 'POST' }); } catch (e) { showToast('Logout failed: ' + e.message, 'error'); }
+    state.currentUser = null;
+    state.currentOrg = null;
+    setCurrentUser(null, null);
+    showAuthLogin();
+}
+
+async function submitLogin() {
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value;
+    const errEl = document.getElementById('authError');
+    errEl.style.display = 'none';
+    if (!email || !password) { errEl.textContent = 'Email and password required'; errEl.style.display = ''; return; }
+    try {
+        const resp = await apiFetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            setCurrentUser(data.user, data.org);
+            hideAuthLogin();
+            if (socket.ws) socket.ws.close();
+            socket.connect();
+            showToast(`Welcome back, ${data.user.display_name}`, 'success');
+        } else {
+            errEl.textContent = data.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    } catch (e) {
+        errEl.textContent = 'Connection failed';
+        errEl.style.display = '';
+    }
+}
+
+async function submitRegister() {
+    const name = document.getElementById('regName').value.trim();
+    const email = document.getElementById('regEmail').value.trim();
+    const password = document.getElementById('regPassword').value;
+    const orgName = document.getElementById('regOrgName').value.trim();
+    const errEl = document.getElementById('regError');
+    errEl.style.display = 'none';
+    if (!name) { errEl.textContent = 'Name is required'; errEl.style.display = ''; return; }
+    if (!email || !email.includes('@')) { errEl.textContent = 'Valid email required'; errEl.style.display = ''; return; }
+    if (password.length < 8) { errEl.textContent = 'Password must be 8+ characters'; errEl.style.display = ''; return; }
+    try {
+        const resp = await apiFetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, display_name: name, org_name: orgName }),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            setCurrentUser(data.user, data.org);
+            hideAuthLogin();
+            if (socket.ws) socket.ws.close();
+            socket.connect();
+            showToast(`Welcome, ${data.user.display_name}! Your workspace is ready.`, 'success');
+        } else {
+            errEl.textContent = data.error || 'Registration failed';
+            errEl.style.display = '';
+        }
+    } catch (e) {
+        errEl.textContent = 'Connection failed';
+        errEl.style.display = '';
+    }
+}
+
+async function openTeamPanel() {
+    document.getElementById('userDropdown').style.display = 'none';
+    try {
+        const resp = await apiFetch('/api/auth/team');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const users = data.users || [];
+        showToast('Team: ' + users.map(u => u.display_name).join(', '), 'info');
+    } catch (e) {
+        showToast('Failed to load team members', 'error');
+    }
+}
+
+// Auth form event listeners
+document.getElementById('authLoginBtn')?.addEventListener('click', submitLogin);
+document.getElementById('authRegisterBtn')?.addEventListener('click', submitRegister);
+document.getElementById('authEmail')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitLogin(); });
+document.getElementById('authPassword')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitLogin(); });
+document.getElementById('regPassword')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitRegister(); });
+document.getElementById('regOrgName')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitRegister(); });
+
+// Check auth on startup
+(async () => {
+    try {
+        const resp = await apiFetch('/api/auth/status');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (!data.auth_required) return; // No auth needed
+        if (data.needs_setup) {
+            showAuthLogin('register');
+        } else if (data.user) {
+            setCurrentUser(data.user, null);
+        } else {
+            showAuthLogin('login');
+        }
+    } catch (e) { console.warn('Auth check failed:', e); }
+})();
+
+// ── Confirmation Modal ──
+
+function confirmAction(title, message, confirmText = 'Confirm', options = {}) {
+    return new Promise((resolve) => {
+        const overlay = document.getElementById('confirmOverlay');
+        const iconEl = document.getElementById('confirmIcon');
+        const titleEl = document.getElementById('confirmTitle');
+        const msgEl = document.getElementById('confirmMessage');
+        const okBtn = document.getElementById('confirmOk');
+        const cancelBtn = document.getElementById('confirmCancel');
+
+        iconEl.innerHTML = options.iconKey ? icon(options.iconKey, 20) : (options.icon || icon('alert-triangle', 20));
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+        okBtn.textContent = confirmText;
+        const isDanger = options.danger !== false;
+        okBtn.className = isDanger ? 'btn btn-danger' : 'btn btn-primary';
+        overlay.querySelector('.confirm-dialog').classList.toggle('danger', isDanger);
+
+        overlay.classList.add('active');
+
+        let resolved = false;
+        function cleanup(result) {
+            if (resolved) return;
+            resolved = true;
+            overlay.classList.remove('active');
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+            overlay.removeEventListener('click', onOverlay);
+            resolve(result);
+        }
+        function onOk() { cleanup(true); }
+        function onCancel() { cleanup(false); }
+        function onOverlay(e) { if (e.target === overlay) cleanup(false); }
+
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        overlay.addEventListener('click', onOverlay);
+    });
+}
+
+function promptInput(title, placeholder = '', options = {}) {
+    return new Promise((resolve) => {
+        const overlay = document.getElementById('promptInputOverlay');
+        const iconEl = document.getElementById('promptInputIcon');
+        const titleEl = document.getElementById('promptInputTitle');
+        const field = document.getElementById('promptInputField');
+        const okBtn = document.getElementById('promptInputOk');
+        const cancelBtn = document.getElementById('promptInputCancel');
+
+        iconEl.innerHTML = options.iconKey ? icon(options.iconKey, 20) : (options.icon || icon('clipboard', 20));
+        titleEl.textContent = title;
+        field.placeholder = placeholder;
+        field.value = options.defaultValue || '';
+        okBtn.textContent = options.confirmText || 'Save';
+
+        overlay.classList.add('active');
+        setTimeout(() => field.focus(), 50);
+
+        function cleanup(result) {
+            overlay.classList.remove('active');
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+            field.removeEventListener('keydown', onKey);
+            overlay.removeEventListener('click', onOverlay);
+            resolve(result);
+        }
+        function onOk() { const v = field.value.trim(); cleanup(v || null); }
+        function onCancel() { cleanup(null); }
+        function onKey(e) { if (e.key === 'Enter') onOk(); if (e.key === 'Escape') onCancel(); }
+        function onOverlay(e) { if (e.target === overlay) cleanup(null); }
+
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        field.addEventListener('keydown', onKey);
+        overlay.addEventListener('click', onOverlay);
+    });
+}
+
+// ── Loading State Utility ──
+
+async function withLoading(btn, asyncFn, loadingText = 'Saving...') {
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-spinner"></span>' + escapeHtml(loadingText);
+    try {
+        return await asyncFn();
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = original;
+    }
+}
+
+// ── Focus Trap Utility ──
+
+let _focusTrapEl = null;
+let _previousFocus = null;
+
+function trapFocus(container) {
+    _previousFocus = document.activeElement;
+    _focusTrapEl = container;
+    container.setAttribute('role', 'dialog');
+    container.setAttribute('aria-modal', 'true');
+    container.addEventListener('keydown', _focusTrapHandler);
+    // Focus first focusable element
+    const focusable = container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (focusable.length) focusable[0].focus();
+}
+
+function releaseFocus() {
+    if (_focusTrapEl) {
+        _focusTrapEl.removeEventListener('keydown', _focusTrapHandler);
+        _focusTrapEl.removeAttribute('aria-modal');
+        _focusTrapEl = null;
+    }
+    if (_previousFocus && _previousFocus.focus) {
+        _previousFocus.focus();
+        _previousFocus = null;
+    }
+}
+
+function _focusTrapHandler(e) {
+    if (e.key !== 'Tab') return;
+    const focusable = _focusTrapEl.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+}
+
+// ── ANSI Color Parser (supports 256-color + truecolor) ──
+
+const ANSI_COLORS = {
+    '30': '#4a4a4a', '31': '#ef4444', '32': '#22c55e', '33': '#eab308',
+    '34': '#3b82f6', '35': '#a855f7', '36': '#06b6d4', '37': '#e2e8f0',
+    '90': '#6b7280', '91': '#f87171', '92': '#4ade80', '93': '#facc15',
+    '94': '#60a5fa', '95': '#c084fc', '96': '#22d3ee', '97': '#ffffff',
+};
+
+// Build 256-color lookup table
+const ANSI_256 = (() => {
+    const t = [];
+    // 0-7: standard colors
+    t.push('#000000','#aa0000','#00aa00','#aa5500','#0000aa','#aa00aa','#00aaaa','#aaaaaa');
+    // 8-15: bright colors
+    t.push('#555555','#ff5555','#55ff55','#ffff55','#5555ff','#ff55ff','#55ffff','#ffffff');
+    // 16-231: 6x6x6 color cube
+    for (let r = 0; r < 6; r++) for (let g = 0; g < 6; g++) for (let b = 0; b < 6; b++) {
+        t.push(`#${[r,g,b].map(c => (c ? 55 + c * 40 : 0).toString(16).padStart(2,'0')).join('')}`);
+    }
+    // 232-255: 24-step grayscale
+    for (let i = 0; i < 24; i++) { const v = (8 + i * 10).toString(16).padStart(2, '0'); t.push(`#${v}${v}${v}`); }
+    return t;
+})();
+
+function ansiToHtml(text) {
+    let result = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    let openSpans = 0;
+    // Process SGR sequences
+    result = result.replace(/\x1b\[(\d+(?:;\d+)*)m/g, (_, codes) => {
+        const parts = codes.split(';');
+        let style = '';
+        let isReset = false;
+        let i = 0;
+        while (i < parts.length) {
+            const c = parts[i];
+            if (c === '0' || c === '') { isReset = true; i++; continue; }
+            if (c === '1') { style += 'font-weight:bold;'; i++; continue; }
+            if (c === '2') { style += 'opacity:0.7;'; i++; continue; }
+            if (c === '3') { style += 'font-style:italic;'; i++; continue; }
+            if (c === '4') { style += 'text-decoration:underline;'; i++; continue; }
+            if (c === '7') { style += 'filter:invert(1);'; i++; continue; }
+            if (c === '9') { style += 'text-decoration:line-through;'; i++; continue; }
+            if (c === '22') { style += 'font-weight:normal;'; i++; continue; }
+            if (c === '23') { style += 'font-style:normal;'; i++; continue; }
+            if (c === '24') { style += 'text-decoration:none;'; i++; continue; }
+            if (c === '27') { style += 'filter:none;'; i++; continue; }
+            if (c === '39') { style += 'color:inherit;'; i++; continue; }
+            if (c === '49') { style += 'background:inherit;'; i++; continue; }
+            // 256-color foreground: 38;5;N
+            if (c === '38' && parts[i+1] === '5' && parts[i+2] !== undefined) {
+                const idx = parseInt(parts[i+2]);
+                if (idx >= 0 && idx < 256) style += `color:${ANSI_256[idx]};`;
+                i += 3; continue;
+            }
+            // Truecolor foreground: 38;2;R;G;B
+            if (c === '38' && parts[i+1] === '2' && parts[i+4] !== undefined) {
+                style += `color:rgb(${parts[i+2]},${parts[i+3]},${parts[i+4]});`;
+                i += 5; continue;
+            }
+            // 256-color background: 48;5;N
+            if (c === '48' && parts[i+1] === '5' && parts[i+2] !== undefined) {
+                const idx = parseInt(parts[i+2]);
+                if (idx >= 0 && idx < 256) style += `background:${ANSI_256[idx]};`;
+                i += 3; continue;
+            }
+            // Truecolor background: 48;2;R;G;B
+            if (c === '48' && parts[i+1] === '2' && parts[i+4] !== undefined) {
+                style += `background:rgb(${parts[i+2]},${parts[i+3]},${parts[i+4]});`;
+                i += 5; continue;
+            }
+            // Standard foreground
+            if (ANSI_COLORS[c]) { style += `color:${ANSI_COLORS[c]};`; i++; continue; }
+            // Standard background
+            const bg = parseInt(c);
+            if (bg >= 40 && bg <= 47) { style += `background:${ANSI_COLORS[String(bg-10)] || ''};`; i++; continue; }
+            if (bg >= 100 && bg <= 107) { style += `background:${ANSI_COLORS[String(bg-10)] || ''};`; i++; continue; }
+            i++;
+        }
+        let out = '';
+        if (isReset && openSpans > 0) { out += '</span>'.repeat(openSpans); openSpans = 0; }
+        if (style) { out += `<span style="${style}">`; openSpans++; }
+        return out;
+    });
+    // Close any remaining open spans
+    if (openSpans > 0) result += '</span>'.repeat(openSpans);
+    // Strip remaining escape sequences (cursor movement, mode changes, etc.)
+    return result
+        .replace(/\x1b\[[^m]*m/g, '')
+        .replace(/\x1b\[\?[0-9;]*[a-zA-Z]/g, '')
+        .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+        .replace(/\x1b\][^\x07]*\x07/g, '')  // OSC sequences (title changes)
+        .replace(/\x1b[()][A-Z0-9]/g, '');    // Character set selection
+}
+
+// ── Syntax Highlighting for Code Blocks ──
+
+// Track code block state per agent for incremental rendering
+const _codeBlockState = new Map(); // agentId -> { inBlock: bool, language: string }
+
+function resetCodeBlockState(agentId) {
+    _codeBlockState.set(agentId, { inBlock: false, language: '' });
+}
+
+function getCodeBlockState(agentId) {
+    if (!_codeBlockState.has(agentId)) resetCodeBlockState(agentId);
+    return _codeBlockState.get(agentId);
+}
+
+// Detect if a line is a code fence (``` or ~~~)
+const CODE_FENCE_RE = /^(\s*)(```|~~~)(\w*)\s*$/;
+
+// Classify a line and return { html, className }
+function classifyTerminalLine(line, agentId) {
+    const st = getCodeBlockState(agentId);
+    const stripped = line.replace(/\x1b\[[0-9;]*m/g, '').replace(/\x1b\[[^m]*[a-zA-Z]/g, '');
+    const fenceMatch = stripped.match(CODE_FENCE_RE);
+
+    if (fenceMatch) {
+        if (!st.inBlock) {
+            st.inBlock = true;
+            st.language = fenceMatch[3] || '';
+            return { html: ansiToHtml(line), className: 'terminal-line code-fence' };
+        } else {
+            st.inBlock = false;
+            st.language = '';
+            return { html: ansiToHtml(line), className: 'terminal-line code-fence' };
+        }
+    }
+
+    if (st.inBlock) {
+        // Inside code block — apply syntax highlighting
+        const highlighted = highlightSyntax(ansiToHtml(line), st.language);
+        return { html: highlighted, className: 'terminal-line code-block' };
+    }
+
+    // Auto-highlight important lines
+    let cls = 'terminal-line';
+    if (/\b(error|exception|traceback|FAIL(ED)?|ERROR|panic|fatal)\b/i.test(stripped)) {
+        cls += ' hl-error';
+    } else if (/\b(passed|success(fully)?|✓|✔|PASS|All \d+ tests? passed)\b/i.test(stripped)) {
+        cls += ' hl-success';
+    } else if (/\b(warn(ing)?|deprecat|WARN|caution)\b/i.test(stripped)) {
+        cls += ' hl-warning';
+    } else if (/\bgit (commit|push|merge)|committed|→ [a-f0-9]{7,}/i.test(stripped)) {
+        cls += ' hl-git';
+    }
+
+    // Smart truncation for very long lines
+    const TRUNC_THRESHOLD = 300;
+    if (stripped.length > TRUNC_THRESHOLD) {
+        const fullHtml = ansiToHtml(line);
+        const truncText = stripped.substring(0, TRUNC_THRESHOLD);
+        const truncHtml = ansiToHtml(line.substring(0, findRawIndex(line, TRUNC_THRESHOLD)));
+        cls += ' truncated';
+        const truncatedContent = `<span class="trunc-fade">${truncHtml}…</span><span class="trunc-full">${fullHtml}</span><span class="trunc-expand-btn" onclick="this.parentElement.classList.toggle('expanded');this.textContent=this.parentElement.classList.contains('expanded')?'▼ less':'▶ +${stripped.length - TRUNC_THRESHOLD} chars'">▶ +${stripped.length - TRUNC_THRESHOLD} chars</span>`;
+        return { html: truncatedContent, className: cls };
+    }
+    return { html: ansiToHtml(line), className: cls };
+}
+
+// Find the raw string index corresponding to N visible characters (skipping ANSI codes)
+function findRawIndex(raw, visibleCount) {
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\[[^m]*[a-zA-Z]/g;
+    let visible = 0;
+    let i = 0;
+    while (i < raw.length && visible < visibleCount) {
+        ansiRe.lastIndex = i;
+        const m = ansiRe.exec(raw);
+        if (m && m.index === i) {
+            i = m.index + m[0].length;
+        } else {
+            visible++;
+            i++;
+        }
+    }
+    return i;
+}
+
+// Lightweight regex-based syntax highlighter
+// Works on already-HTML-escaped text (from ansiToHtml)
+function highlightSyntax(html, lang) {
+    // Skip if line already has ANSI color spans (let ANSI colors take precedence)
+    if (html.includes('<span style="color:')) return html;
+
+    const l = (lang || '').toLowerCase();
+    const isPy = l === 'python' || l === 'py';
+    const isJS = l === 'javascript' || l === 'js' || l === 'typescript' || l === 'ts' || l === 'jsx' || l === 'tsx';
+    const isRust = l === 'rust' || l === 'rs';
+    const isGo = l === 'go' || l === 'golang';
+    const isHTML = l === 'html' || l === 'xml' || l === 'jsx' || l === 'tsx' || l === 'svg';
+    const isCSS = l === 'css' || l === 'scss' || l === 'less';
+    const isShell = l === 'bash' || l === 'sh' || l === 'zsh' || l === 'shell';
+    const isSQL = l === 'sql';
+    const isYaml = l === 'yaml' || l === 'yml';
+    const isJSON = l === 'json';
+
+    // Comments (must run first to avoid highlighting inside comments)
+    // Single-line comments
+    html = html.replace(/(^|\s)(\/\/[^\n]*)$/gm, '$1<span class="sh-cmt">$2</span>');
+    html = html.replace(/(^|\s)(#[^\n]*)$/gm, (m, pre, comment) => {
+        // Don't highlight # inside strings or if it's a hex color
+        if (pre.includes('"') || pre.includes("'") || /^#[0-9a-fA-F]{3,8}$/.test(comment)) return m;
+        return `${pre}<span class="sh-cmt">${comment}</span>`;
+    });
+
+    // Strings (double-quoted, single-quoted, backtick)
+    html = html.replace(/(&quot;|&apos;|`)((?:(?!\1).)*?)\1/g, '<span class="sh-str">$1$2$1</span>');
+    html = html.replace(/(["'])((?:(?!\1).)*?)\1/g, '<span class="sh-str">$1$2$1</span>');
+
+    // Numbers
+    html = html.replace(/\b(\d+\.?\d*(?:e[+-]?\d+)?)\b/g, '<span class="sh-num">$1</span>');
+
+    // Decorators (Python)
+    if (isPy) {
+        html = html.replace(/(@\w+)/g, '<span class="sh-dec">$1</span>');
+    }
+
+    // Keywords by language
+    let kwPattern;
+    if (isPy) {
+        kwPattern = /\b(def|class|return|if|elif|else|for|while|import|from|as|with|try|except|finally|raise|yield|async|await|pass|break|continue|in|not|and|or|is|None|True|False|self|lambda|global|nonlocal)\b/g;
+    } else if (isJS) {
+        kwPattern = /\b(function|const|let|var|return|if|else|for|while|do|switch|case|break|continue|class|extends|import|export|from|default|new|this|super|typeof|instanceof|async|await|yield|throw|try|catch|finally|true|false|null|undefined|void|of|in)\b/g;
+    } else if (isRust) {
+        kwPattern = /\b(fn|let|mut|const|struct|enum|impl|trait|pub|use|mod|self|super|crate|match|if|else|for|while|loop|break|continue|return|async|await|move|ref|where|type|true|false|Some|None|Ok|Err|unsafe|dyn|static|extern)\b/g;
+    } else if (isGo) {
+        kwPattern = /\b(func|var|const|type|struct|interface|map|chan|go|select|case|default|if|else|for|range|switch|return|break|continue|defer|package|import|true|false|nil|make|len|append|error)\b/g;
+    } else if (isSQL) {
+        kwPattern = /\b(SELECT|FROM|WHERE|INSERT|INTO|UPDATE|SET|DELETE|CREATE|TABLE|ALTER|DROP|INDEX|JOIN|LEFT|RIGHT|INNER|OUTER|ON|AND|OR|NOT|NULL|PRIMARY|KEY|FOREIGN|REFERENCES|ORDER|BY|GROUP|HAVING|LIMIT|OFFSET|AS|DISTINCT|UNION|EXISTS|IN|BETWEEN|LIKE|IS|COUNT|SUM|AVG|MAX|MIN|IF|THEN|ELSE|END|CASE|WHEN|INTEGER|TEXT|REAL|BLOB|DEFAULT|AUTOINCREMENT|UNIQUE|VALUES)\b/gi;
+    } else if (isShell) {
+        kwPattern = /\b(if|then|else|elif|fi|for|while|do|done|case|esac|in|function|return|exit|echo|export|source|local|readonly|set|unset|shift|cd|pwd|ls|grep|sed|awk|find|cat|mkdir|rm|cp|mv|chmod|chown|sudo|apt|brew|pip|npm|git|curl|wget|tar|kill|ps|true|false)\b/g;
+    } else if (isYaml) {
+        kwPattern = /\b(true|false|null|yes|no|on|off)\b/gi;
+    } else if (isJSON) {
+        kwPattern = /\b(true|false|null)\b/g;
+    } else {
+        // Generic: catch common keywords across languages
+        kwPattern = /\b(function|class|return|if|else|for|while|import|from|export|const|let|var|def|self|true|false|null|None|try|catch|except|finally|async|await|new|this|throw|yield)\b/g;
+    }
+
+    if (kwPattern) {
+        html = html.replace(kwPattern, '<span class="sh-kw">$1</span>');
+    }
+
+    // Type names (capitalized identifiers not at start of sentence for PascalCase types)
+    html = html.replace(/\b([A-Z][a-zA-Z0-9_]*)\b/g, (m, name) => {
+        // Skip if already inside a span
+        if (['None', 'True', 'False', 'Some', 'Ok', 'Err', 'SELECT', 'FROM', 'WHERE'].includes(name)) return m;
+        return `<span class="sh-type">${name}</span>`;
+    });
+
+    // Function calls: word followed by (
+    html = html.replace(/\b([a-z_]\w*)\s*\(/g, '<span class="sh-fn">$1</span>(');
+
+    // HTML/JSX tags
+    if (isHTML) {
+        html = html.replace(/&lt;(\/?)([\w-]+)/g, '&lt;$1<span class="sh-tag">$2</span>');
+        html = html.replace(/\s([\w-]+)=/g, ' <span class="sh-attr">$1</span>=');
+    }
+
+    // CSS property names
+    if (isCSS) {
+        html = html.replace(/^\s*([\w-]+)\s*:/gm, '  <span class="sh-attr">$1</span>:');
+    }
+
+    return html;
+}
+
+// ── Line-Level Linking ──
+
+function addLineNumber(div, lineIdx, agentId) {
+    const num = document.createElement('span');
+    num.className = 'terminal-line-num';
+    num.textContent = lineIdx + 1;
+    num.title = `Line ${lineIdx + 1} — Click to copy link`;
+    num.onclick = (e) => {
+        e.stopPropagation();
+        const hash = `#agent-${agentId}-line-${lineIdx + 1}`;
+        const url = window.location.origin + window.location.pathname + hash;
+        navigator.clipboard.writeText(url).then(() => {
+            showToast(`Copied link to line ${lineIdx + 1}`, 'success');
+        });
+        // Highlight the linked line
+        div.classList.add('line-linked');
+        setTimeout(() => div.classList.remove('line-linked'), 2000);
+        history.replaceState(null, '', hash);
+    };
+    div.prepend(num);
+    div.dataset.lineIdx = lineIdx;
+}
+
+function handleHashFragment() {
+    const hash = window.location.hash;
+    if (!hash) return;
+    const match = hash.match(/^#agent-(\w+)-line-(\d+)$/);
+    if (!match) return;
+    const agentId = match[1];
+    const lineNum = parseInt(match[2]);
+    // Open deep view for this agent and scroll to line
+    const agent = state.agents.get(agentId);
+    if (!agent) return;
+    openDeepView(agentId);
+    // Wait for render then scroll
+    setTimeout(() => {
+        const terminal = document.getElementById('deepTerminal');
+        if (!terminal) return;
+        const lines = terminal.querySelectorAll('.terminal-line');
+        const targetIdx = lineNum - 1;
+        if (targetIdx >= 0 && targetIdx < lines.length) {
+            lines[targetIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            lines[targetIdx].classList.add('line-linked');
+            setTimeout(() => lines[targetIdx].classList.remove('line-linked'), 3000);
+        }
+    }, 500);
+}
+
+// ── Output Minimap ──
+
+let _minimapTimer = null;
+
+function updateMinimap() {
+    const canvas = document.getElementById('outputMinimap');
+    const terminal = document.getElementById('deepTerminal');
+    if (!canvas || !terminal || state.view !== 'deep') return;
+
+    const agent = state.agents.get(state.focusedAgentId);
+    if (!agent) return;
+
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = 50 * dpr;
+    canvas.height = rect.height * dpr;
+    canvas.style.height = rect.height + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const W = 50, H = rect.height;
+
+    ctx.clearRect(0, 0, W, H);
+
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    if (!lines.length) return;
+
+    const lineH = Math.max(1, H / lines.length);
+    const maxLH = Math.min(lineH, 3);
+
+    // Color patterns
+    const errorRe = /error|exception|traceback|failed|fatal/i;
+    const toolRe = /Read\(|Edit\(|Write\(|Bash\(|Glob\(|Grep\(/;
+    const codeRe = /^(```|~~~)/;
+
+    for (let i = 0; i < lines.length; i++) {
+        const stripped = lines[i].replace(/\x1b\[[0-9;]*m/g, '');
+        const y = (i / lines.length) * H;
+        const textLen = Math.min(W, stripped.length * 0.5);
+
+        if (errorRe.test(stripped)) {
+            ctx.fillStyle = 'rgba(239,68,68,0.6)';
+        } else if (toolRe.test(stripped)) {
+            ctx.fillStyle = 'rgba(99,102,241,0.4)';
+        } else if (codeRe.test(stripped)) {
+            ctx.fillStyle = 'rgba(168,85,247,0.5)';
+        } else if (stripped.trim().length === 0) {
+            continue; // Skip blank lines
+        } else {
+            ctx.fillStyle = 'rgba(255,255,255,0.12)';
+        }
+        ctx.fillRect(2, y, Math.max(4, textLen), maxLH);
+    }
+
+    // Viewport indicator
+    const totalScrollH = terminal.scrollHeight || 1;
+    const viewTop = (terminal.scrollTop / totalScrollH) * H;
+    const viewH = (terminal.clientHeight / totalScrollH) * H;
+    ctx.fillStyle = 'rgba(99,102,241,0.15)';
+    ctx.fillRect(0, viewTop, W, Math.max(8, viewH));
+    ctx.strokeStyle = 'rgba(99,102,241,0.4)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, viewTop, W, Math.max(8, viewH));
+}
+
+function initMinimapClick() {
+    const canvas = document.getElementById('outputMinimap');
+    if (!canvas) return;
+    canvas.onclick = (e) => {
+        const terminal = document.getElementById('deepTerminal');
+        if (!terminal) return;
+        const rect = canvas.getBoundingClientRect();
+        const pct = (e.clientY - rect.top) / rect.height;
+        terminal.scrollTop = pct * (terminal.scrollHeight - terminal.clientHeight);
+    };
+}
+
+function startMinimapUpdates() {
+    stopMinimapUpdates();
+    updateMinimap();
+    initMinimapClick();
+    _minimapTimer = setInterval(updateMinimap, 1000);
+}
+
+function stopMinimapUpdates() {
+    if (_minimapTimer) { clearInterval(_minimapTimer); _minimapTimer = null; }
+}
+
+// ── Output Fold/Collapse ──
+
+const FOLD_MIN_LINES = 8;  // Minimum lines in a block to offer folding
+const FOLD_SHOW_LINES = 3;  // Lines to show when collapsed
+
+// Patterns that start a foldable block (tool results, file contents, long output)
+const FOLD_START_PATTERNS = [
+    /^\s*⎿\s/,                              // Claude Code tool result start
+    /^\s*│\s/,                               // Claude Code tool result continuation
+    /^\s*\d+\s*│/,                           // Line-numbered content (file read)
+    /^\s*\+{3}\s/,                           // Diff header
+    /^\s*-{3}\s/,                            // Diff header
+    /^@@\s/,                                 // Diff hunk header
+];
+
+const FOLD_CONT_PATTERNS = [
+    /^\s*│\s/,                               // Tool result lines
+    /^\s*⎿\s/,                               // Tool result end
+    /^\s*\d+\s*│/,                           // Line-numbered content
+    /^[+-]\s/,                               // Diff lines
+    /^\s{4,}/,                               // Indented block (4+ spaces)
+];
+
+function applyOutputFolding(container) {
+    const lines = container.querySelectorAll('.terminal-line');
+    if (lines.length < FOLD_MIN_LINES) return;
+
+    let blockStart = -1;
+    let blockLines = [];
+    let foldId = 0;
+
+    function closeBlock() {
+        if (blockLines.length < FOLD_MIN_LINES) {
+            blockStart = -1;
+            blockLines = [];
+            return;
+        }
+
+        const id = `fold-${Date.now()}-${foldId++}`;
+        const hiddenCount = blockLines.length - FOLD_SHOW_LINES;
+
+        // Show first FOLD_SHOW_LINES, collapse the rest
+        const toggleDiv = document.createElement('div');
+        toggleDiv.className = 'output-fold-toggle';
+        toggleDiv.textContent = `▶ Show ${hiddenCount} more lines`;
+        toggleDiv.dataset.foldId = id;
+        toggleDiv.onclick = function() {
+            const hidden = container.querySelector(`[data-fold-target="${id}"]`);
+            if (!hidden) return;
+            const expanded = hidden.classList.toggle('expanded');
+            this.textContent = expanded ? `▼ Hide ${hiddenCount} lines` : `▶ Show ${hiddenCount} more lines`;
+        };
+
+        // Wrap hidden lines
+        const hiddenWrapper = document.createElement('div');
+        hiddenWrapper.className = 'output-fold-hidden';
+        hiddenWrapper.dataset.foldTarget = id;
+
+        // Insert toggle after the visible lines
+        const insertAfter = blockLines[FOLD_SHOW_LINES - 1];
+        insertAfter.after(toggleDiv);
+        toggleDiv.after(hiddenWrapper);
+
+        // Move hidden lines into wrapper
+        for (let i = FOLD_SHOW_LINES; i < blockLines.length; i++) {
+            hiddenWrapper.appendChild(blockLines[i]);
+        }
+
+        blockStart = -1;
+        blockLines = [];
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const text = line.textContent || '';
+        const stripped = text.replace(/\x1b\[[0-9;]*m/g, '');
+
+        const isStart = FOLD_START_PATTERNS.some(p => p.test(stripped));
+        const isCont = FOLD_CONT_PATTERNS.some(p => p.test(stripped));
+
+        if (blockStart >= 0) {
+            if (isCont || isStart) {
+                blockLines.push(line);
+            } else {
+                closeBlock();
+            }
+        } else if (isStart) {
+            blockStart = i;
+            blockLines = [line];
+        }
+    }
+    // Close any remaining block
+    if (blockStart >= 0) closeBlock();
+}
+
+// ── WebSocket ──
+
+class AshlrSocket {
+    constructor() {
+        this.ws = null;
+        this.reconnectDelay = 1000;
+        this.maxDelay = 10000;
+        this.reconnectAttempts = 0;
+    }
+
+    connect() {
+        if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const tokenParam = authToken ? `?token=${encodeURIComponent(authToken)}` : '';
+        this.ws = new WebSocket(`${proto}//${location.host}/ws${tokenParam}`);
+
+        this.ws.onopen = () => {
+            state.connected = true;
+            state.synced = false;
+            this.reconnectDelay = 1000;
+            this.reconnectAttempts = 0;
+            const banner = document.getElementById('connectionBanner');
+            if (banner) { banner.classList.remove('active'); }
+            const bannerMsg = document.getElementById('connectionBannerMsg');
+            if (bannerMsg) bannerMsg.textContent = '';
+            // Toast shown after sync provides fleet summary
+            state._showSyncSummary = true;
+        };
+
+        this.ws.onmessage = (e) => {
+            this.reconnectDelay = 1000;
+            try {
+                const msg = JSON.parse(e.data);
+                this.handleMessage(msg);
+            } catch (err) {
+                console.error('WebSocket message handling error:', err);
+            }
+        };
+
+        this.ws.onclose = () => {
+            state.connected = false;
+            state.synced = false;
+            this.reconnectAttempts++;
+            const banner = document.getElementById('connectionBanner');
+            if (banner) {
+                banner.classList.add('active');
+                const msg = document.getElementById('connectionBannerMsg');
+                if (msg) {
+                    if (this.reconnectAttempts >= 10) {
+                        msg.textContent = 'Server unreachable — restart with ./start.sh and refresh';
+                    } else {
+                        msg.textContent = `Disconnected — reconnecting (attempt ${this.reconnectAttempts})...`;
+                    }
+                }
+            }
+            const jitter = this.reconnectDelay * (0.5 + Math.random());
+            this._reconnectTimer = setTimeout(() => this.connect(), jitter);
+            this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, this.maxDelay);
+        };
+
+        this.ws.onerror = (e) => {
+            console.warn('WebSocket error:', e);
+            showToast('WebSocket connection error', 'warning');
+        };
+    }
+
+    send(data) {
+        try {
+            if (this.ws?.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify(data));
+            } else {
+                showToast('Not connected — message not sent', 'warning');
+            }
+        } catch (e) {
+            console.warn('WebSocket send failed:', e.message);
+            showToast('Failed to send message', 'error');
+        }
+    }
+
+    handleMessage(data) {
+        try {
+            switch (data.type) {
+                case 'sync': handleSync(data); break;
+                case 'agent_update': handleAgentUpdate(data.agent); break;
+                case 'agent_output': handleAgentOutput(data); break;
+                case 'agent_removed': handleAgentRemoved(data.agent_id); break;
+                case 'metrics': handleMetrics(data); break;
+                case 'event': handleEvent(data); break;
+                case 'agent_message': handleAgentMessage(data.message); break;
+                case 'error': showToast(data.message || 'Server error', 'error'); break;
+                case 'agent_activity': {
+                    const actAgent = state.agents.get(data.agent_id);
+                    if (actAgent) {
+                        actAgent._activity = data.activity;
+                        actAgent._activityCounts = data.new_counts;
+                    }
+                    break;
+                }
+                case 'intelligence_alert': {
+                    if (data.insight) {
+                        if (!state.insights) state.insights = [];
+                        state.insights.unshift(data.insight);
+                        if (state.insights.length > 50) state.insights.pop();
+                        updateInsightsBadge();
+                        renderInsightsPanel();
+                        showToast(data.insight.message, data.insight.severity === 'critical' ? 'error' : data.insight.severity === 'warning' ? 'warning' : 'info');
+                    }
+                    break;
+                }
+                case 'pattern_alert': {
+                    const alertAgent = state.agents.get(data.agent_id);
+                    const agentLabel = alertAgent ? alertAgent.name : data.agent_name || data.agent_id;
+                    const isCritical = data.severity === 'critical';
+                    const truncLine = (data.line || '').substring(0, 120);
+                    showToast(
+                        `${isCritical ? 'CRITICAL' : 'Warning'}: ${data.label} on ${agentLabel}` +
+                        (truncLine ? ` — ${truncLine}` : ''),
+                        isCritical ? 'error' : 'warning'
+                    );
+                    if (isCritical) {
+                        playTone([220, 330], 0.2);
+                        sendBrowserNotification(
+                            `Pattern Alert: ${data.label}`,
+                            `Agent ${agentLabel}: ${truncLine}`,
+                            data.agent_id
+                        );
+                    }
+                    // Store in pattern alert history
+                    if (!state.patternAlerts) state.patternAlerts = [];
+                    state.patternAlerts.unshift({
+                        agent_id: data.agent_id,
+                        agent_name: agentLabel,
+                        severity: data.severity,
+                        label: data.label,
+                        line: data.line,
+                        timestamp: data.timestamp || new Date().toISOString(),
+                    });
+                    if (state.patternAlerts.length > 100) state.patternAlerts.pop();
+                    // Flash notification bell for pattern alerts
+                    document.getElementById('unreadDot')?.classList.add('active');
+                    break;
+                }
+                case 'queue_update': {
+                    state.taskQueue = data.queue || [];
+                    updateQueueBadge();
+                    break;
+                }
+                case 'command_parsed': {
+                    if (data.intent) {
+                        showToast(`Parsed: ${data.intent.action} (${Math.round(data.intent.confidence * 100)}% confidence)`, 'info');
+                    }
+                    break;
+                }
+                case 'agent_context_warning': {
+                    const ctxAgent = state.agents.get(data.agent_id);
+                    const ctxName = ctxAgent ? ctxAgent.name : data.agent_id;
+                    const ctxPct = data.context_pct ? Math.round(data.context_pct * 100) : '?';
+                    showToast(`${ctxName}: Context window at ${ctxPct}%`, 'warning');
+                    break;
+                }
+                case 'agent_context_auto_paused': {
+                    const apAgent = state.agents.get(data.agent_id);
+                    const apName = apAgent ? apAgent.name : data.agent_id;
+                    showToast(`${apName}: Auto-paused (context limit reached)`, 'warning');
+                    break;
+                }
+                case 'workflow_stage_stalled': {
+                    showToast(`Workflow stage stalled: ${data.stage_name || data.stage_id || 'unknown'}`, 'warning');
+                    break;
+                }
+                case 'workflow_stage_hung': {
+                    showToast(`Workflow stage hung: ${data.stage_name || data.stage_id || 'unknown'}`, 'error');
+                    break;
+                }
+                case 'project_updated': {
+                    if (data.project) {
+                        const idx = state.projects.findIndex(p => p.id === data.project.id);
+                        if (idx >= 0) state.projects[idx] = data.project;
+                        else state.projects.push(data.project);
+                        renderProjectSelector();
+                    }
+                    break;
+                }
+                case 'license_update': {
+                    if (data.license) {
+                        state.license = data.license;
+                        state.effectiveMaxAgents = data.effective_max_agents || data.license.max_agents || 5;
+                        updateLicenseBadge();
+                        updateLicenseSettingsUI();
+                    }
+                    break;
+                }
+            }
+        } catch (e) {
+            console.error('WebSocket message handler error:', e, data);
+        }
+    }
+}
+
+const socket = new AshlrSocket();
+
+// ── Intelligence Status ──
+
+function updateIntelligenceStatus() {
+    const el = document.getElementById('intelligenceStatus');
+    if (!el) return;
+    const config = state.config || {};
+    const dot = el.querySelector('.intelligence-dot');
+    const label = el.querySelector('.intelligence-label');
+    const miniStatus = document.getElementById('aiMiniStatus');
+    const miniInsights = document.getElementById('aiMiniInsights');
+
+    el.style.display = '';
+
+    if (config.intelligence_enabled) {
+        dot.className = 'intelligence-dot connected';
+        el.classList.add('connected');
+        if (label) label.textContent = 'AI Active';
+        if (miniStatus) miniStatus.textContent = 'Connected to intelligence engine. Fleet analysis runs every 30s when multiple agents are active.';
+    } else {
+        dot.className = 'intelligence-dot disabled';
+        el.classList.remove('connected');
+        if (label) label.textContent = 'AI Off';
+        if (miniStatus) miniStatus.innerHTML = 'Set <code style="font-size:10px;padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">XAI_API_KEY</code> env variable to enable AI summaries, NLU commands, and fleet analysis.';
+    }
+
+    // Update mini insights preview
+    if (miniInsights && state.insights && state.insights.length > 0) {
+        const recent = state.insights.slice(0, 3);
+        miniInsights.innerHTML = recent.map(i =>
+            `<div class="ai-mini-insight">${escapeHtml(i.message || i.text || '').substring(0, 100)}</div>`
+        ).join('');
+    } else if (miniInsights) {
+        miniInsights.innerHTML = '<div class="ai-mini-insight" style="color:var(--text-tertiary);font-style:italic">No insights yet</div>';
+    }
+
+    // Update insight count badge
+    const countEl = document.getElementById('insightCount');
+    if (countEl && state.insights && state.insights.length > 0) {
+        countEl.textContent = state.insights.length;
+        countEl.style.display = '';
+    } else if (countEl) {
+        countEl.style.display = 'none';
+    }
+}
+
+// ── License UI ──
+
+function updateLicenseBadge() {
+    const badge = document.getElementById('planBadge');
+    if (!badge) return;
+    const lic = state.license || {};
+    badge.style.display = '';
+    if (lic.is_pro) {
+        badge.textContent = 'Pro';
+        badge.style.background = 'linear-gradient(135deg, #8B5CF6, #6D28D9)';
+        badge.style.color = '#fff';
+        badge.style.border = 'none';
+    } else {
+        badge.textContent = 'Community';
+        badge.style.background = 'var(--bg-elevated)';
+        badge.style.color = 'var(--text-tertiary)';
+        badge.style.border = '1px solid var(--border-subtle)';
+    }
+}
+
+function updateLicenseSettingsUI() {
+    const lic = state.license || {};
+    const badge = document.getElementById('settingsLicenseBadge');
+    const details = document.getElementById('settingsLicenseDetails');
+    const deactivateBtn = document.getElementById('btnDeactivateLicense');
+    const getProLink = document.getElementById('linkGetPro');
+    const maxNote = document.getElementById('setMaxAgentsNote');
+    const keyInput = document.getElementById('setLicenseKey');
+    const errEl = document.getElementById('licenseError');
+
+    if (badge) {
+        if (lic.is_pro) {
+            badge.textContent = 'Pro';
+            badge.style.background = 'linear-gradient(135deg, #8B5CF6, #6D28D9)';
+            badge.style.color = '#fff';
+        } else {
+            badge.textContent = 'Community';
+            badge.style.background = 'var(--bg-elevated)';
+            badge.style.color = 'var(--text-secondary)';
+        }
+    }
+    if (details) {
+        const parts = [];
+        parts.push(`Agent limit: ${state.effectiveMaxAgents}`);
+        if (lic.is_pro && lic.max_seats) parts.push(`Seats: ${lic.max_seats}`);
+        if (lic.is_pro && lic.expires_at) {
+            const exp = new Date(lic.expires_at);
+            const days = Math.ceil((exp - Date.now()) / 86400000);
+            parts.push(days > 0 ? `Expires in ${days} days` : 'Expired');
+        }
+        details.textContent = parts.join('  |  ');
+    }
+    if (deactivateBtn) deactivateBtn.style.display = lic.is_pro ? '' : 'none';
+    if (getProLink) getProLink.style.display = lic.is_pro ? 'none' : '';
+    if (maxNote) maxNote.textContent = lic.is_pro ? '' : `(Community limit: ${COMMUNITY_MAX_AGENTS})`;
+    if (keyInput) keyInput.value = '';
+    if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+}
+
+const COMMUNITY_MAX_AGENTS = 5;
+
+async function activateLicense() {
+    const keyInput = document.getElementById('setLicenseKey');
+    const errEl = document.getElementById('licenseError');
+    const key = (keyInput?.value || '').trim();
+    if (!key) { errEl.textContent = 'Please paste a license key'; errEl.style.display = ''; return; }
+    errEl.style.display = 'none';
+    try {
+        const resp = await apiFetch('/api/license/activate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ license_key: key }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            errEl.textContent = data.error || 'Activation failed';
+            errEl.style.display = '';
+            return;
+        }
+        state.license = data.license;
+        state.effectiveMaxAgents = data.effective_max_agents || data.license.max_agents;
+        updateLicenseBadge();
+        updateLicenseSettingsUI();
+        showToast('License activated! Welcome to Pro.', 'success');
+    } catch (e) {
+        errEl.textContent = e.message || 'Network error';
+        errEl.style.display = '';
+    }
+}
+
+async function deactivateLicense() {
+    const ok = await confirmAction('Deactivate License', 'Deactivate your Pro license? You will revert to Community (5 agents max).', 'Deactivate', { iconKey: 'key' });
+    if (!ok) return;
+    try {
+        const resp = await apiFetch('/api/license/deactivate', { method: 'DELETE' });
+        const data = await resp.json();
+        if (!resp.ok) { showToast(data.error || 'Deactivation failed', 'error'); return; }
+        state.license = data.license;
+        state.effectiveMaxAgents = data.effective_max_agents || COMMUNITY_MAX_AGENTS;
+        updateLicenseBadge();
+        updateLicenseSettingsUI();
+        showToast('License deactivated. Reverted to Community plan.', 'info');
+    } catch (e) {
+        showToast(e.message || 'Network error', 'error');
+    }
+}
+
+// ── Intelligence Insights Panel ──
+
+function toggleInsightsPanel() {
+    const panel = document.getElementById('insightsPanel');
+    if (panel.classList.contains('active')) {
+        closeInsightsPanel();
+    } else {
+        panel.classList.add('active');
+        fetchInsights();
+    }
+}
+
+function closeInsightsPanel() {
+    document.getElementById('insightsPanel').classList.remove('active');
+}
+
+async function fetchInsights() {
+    const body = document.getElementById('insightsBody');
+    body.innerHTML = '<div class="activity-empty" style="opacity:0.6">Loading insights...</div>';
+    try {
+        const resp = await apiFetch('/api/intelligence/insights');
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.insights) {
+                state.insights = data.insights;
+                updateInsightsBadge();
+                renderInsightsPanel();
+            }
+        }
+    } catch (e) { console.warn('Insights fetch failed:', e.message); }
+}
+
+function updateInsightsBadge() {
+    const countEl = document.getElementById('insightCount');
+    if (!countEl) return;
+    const unacked = (state.insights || []).filter(i => !i.acknowledged).length;
+    if (unacked > 0) {
+        countEl.style.display = '';
+        countEl.textContent = unacked;
+    } else {
+        countEl.style.display = 'none';
+    }
+}
+
+function renderInsightsPanel() {
+    const body = document.getElementById('insightsBody');
+    const insights = state.insights || [];
+    if (!insights.length) {
+        body.innerHTML = '<div class="activity-empty">No insights yet — the meta-agent analyzes your fleet every 30s when multiple agents are running</div>';
+        return;
+    }
+    body.innerHTML = insights.map(i => {
+        const agentNames = (i.agent_ids || []).map(id => {
+            const a = state.agents.get(id);
+            return a ? a.name : id;
+        }).join(', ');
+        return `<div class="insight-card ${i.severity || 'info'}${i.acknowledged ? ' acknowledged' : ''}">
+            <div class="insight-type">${i.insight_type || 'insight'} · ${i.severity || 'info'}</div>
+            <div class="insight-msg">${escapeHtml(i.message || '')}</div>
+            ${agentNames ? `<div class="insight-agents">Agents: ${escapeHtml(agentNames)}</div>` : ''}
+            <div class="insight-action">
+                ${i.suggested_action ? `<button class="btn-suggest" data-suggest="${escapeHtml(i.suggested_action)}">${escapeHtml(i.suggested_action.slice(0, 30))}</button>` : ''}
+                ${!i.acknowledged ? `<button class="btn-dismiss" data-insight-id="${escapeHtml(i.id)}">Dismiss</button>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+    // Wire suggest + dismiss buttons via event delegation (avoid inline onclick XSS)
+    body.querySelectorAll('[data-suggest]').forEach(btn => {
+        btn.addEventListener('click', () => showToast(btn.dataset.suggest, 'info'));
+    });
+    body.querySelectorAll('[data-insight-id]').forEach(btn => {
+        btn.addEventListener('click', () => acknowledgeInsight(btn.dataset.insightId));
+    });
+}
+
+async function acknowledgeInsight(insightId) {
+    try {
+        await apiFetch(`/api/intelligence/insights/${insightId}/ack`, { method: 'POST' });
+        const insight = (state.insights || []).find(i => i.id === insightId);
+        if (insight) insight.acknowledged = true;
+        updateInsightsBadge();
+        renderInsightsPanel();
+    } catch (e) { showToast('Failed to acknowledge insight', 'error'); }
+}
+
+// ── Message Handlers ──
+
+async function handleSync(data) {
+    state.synced = true;
+    const prevAgents = new Map(state.agents);
+    state.agents.clear();
+    (data.agents || []).forEach(a => {
+        const prev = prevAgents.get(a.id);
+        if (prev?._outputBuffer) a._outputBuffer = prev._outputBuffer;
+        if (prev?._outputHistory) a._outputHistory = prev._outputHistory;
+        if (prev?._healthHistory) a._healthHistory = prev._healthHistory;
+        if (prev?._progressive) a._progressive = prev._progressive;
+        state.agents.set(a.id, a);
+    });
+    state.config = data.config || {};
+    state.projects = data.projects || [];
+    state.workflows = data.workflows || [];
+    state.presets = data.presets || [];
+    state.backends = data.backends || {};
+    if (data.extensions) state.extensions = data.extensions;
+    state.taskQueue = data.queue || [];
+    if (data.license) {
+        state.license = data.license;
+        state.effectiveMaxAgents = data.effective_max_agents || data.license.max_agents || 5;
+    }
+    // Clean stale pinned agents that no longer exist
+    let pinsChanged = false;
+    state.pinnedAgents.forEach(id => {
+        if (!state.agents.has(id)) { state.pinnedAgents.delete(id); pinsChanged = true; }
+    });
+    if (pinsChanged) localStorage.setItem('ashlr_pinned', JSON.stringify([...state.pinnedAgents]));
+    if (state.config.demo_mode) document.getElementById('demoBadge').style.display = '';
+    // Show degraded-mode toast if DB unavailable
+    if (data.db_available === false) {
+        showToast('Database unavailable — running in degraded mode (no persistence)', 'warning');
+    }
+    renderProjectSelector();
+    restoreFilterState();
+    renderAgentGrid();
+    updateStatusFilterChips();
+    updateAmbientGradient();
+    updateGridLayout();
+    if (state.statusFilter !== 'all' || gridSearchQuery) {
+        filterAgentGrid(gridSearchQuery);
+    }
+    if (state.viewMode === 'table') renderAgentTable();
+    updateTabTitle();
+    updateAttentionBadge();
+    updateIntelligenceStatus();
+    updateLicenseBadge();
+    // Fetch active workflow runs
+    try {
+        const res = await apiFetch('/api/workflow-runs');
+        if (res.ok) {
+            const runs = await res.json();
+            state.workflowRuns.clear();
+            (Array.isArray(runs) ? runs : runs.data || []).forEach(r => state.workflowRuns.set(r.id, r));
+        }
+    } catch (e) { console.warn('Workflow runs fetch failed:', e.message); }
+
+    // Show fleet summary toast on connection
+    if (state._showSyncSummary) {
+        state._showSyncSummary = false;
+        const agents = [...state.agents.values()];
+        if (agents.length === 0) {
+            showToast('Connected to Ashlr — no agents running', 'success');
+        } else {
+            const working = agents.filter(a => ['working', 'planning', 'reading'].includes(a.status)).length;
+            const waiting = agents.filter(a => a.needs_input).length;
+            const errored = agents.filter(a => a.status === 'error').length;
+            const cost = agents.reduce((s, a) => s + (a.estimated_cost_usd || 0), 0);
+            const parts = [`${agents.length} agent${agents.length > 1 ? 's' : ''}`];
+            if (working > 0) parts.push(`${working} working`);
+            if (waiting > 0) parts.push(`${waiting} waiting`);
+            if (errored > 0) parts.push(`${errored} errored`);
+            if (cost > 0.01) parts.push(`$${cost.toFixed(2)} spent`);
+            showToast(`Connected — ${parts.join(', ')}`, waiting > 0 || errored > 0 ? 'warning' : 'success');
+        }
+    }
+
+    // Handle hash fragment linking after sync
+    if (window.location.hash.startsWith('#agent-')) {
+        setTimeout(handleHashFragment, 300);
+    }
+}
+
+let _lastAriaAnnounce = 0;
+let _fleetMilestones = { firstComplete: false, allComplete: false, firstError: false };
+
+function checkFleetMilestones(agent, prevStatus) {
+    const agents = [...state.agents.values()];
+    const activeAgents = agents.filter(a => !['idle', 'paused'].includes(a.status));
+
+    // First agent completion
+    if (agent.status === 'idle' && prevStatus === 'working' && !_fleetMilestones.firstComplete) {
+        _fleetMilestones.firstComplete = true;
+        showToast(`First agent complete: ${agent.name}`, 'success');
+        playTone([880, 1100], 0.15);
+    }
+
+    // All agents complete (check all agents, not just activeAgents which excludes idle)
+    if (agent.status === 'idle' || agent.status === 'error') {
+        const allDone = agents.every(a => a.status === 'idle' || a.status === 'error' || a.status === 'paused');
+        if (allDone && agents.length > 1 && !_fleetMilestones.allComplete) {
+            _fleetMilestones.allComplete = true;
+            const errorCount = agents.filter(a => a.status === 'error').length;
+            if (errorCount > 0) {
+                showToast(`Fleet complete — ${errorCount} agent${errorCount > 1 ? 's' : ''} with errors`, 'warning');
+            } else {
+                showToast('All agents complete!', 'success');
+                playTone([660, 880, 1100], 0.2);
+            }
+        }
+    }
+
+    // First error in fleet
+    if (agent.status === 'error' && prevStatus !== 'error' && !_fleetMilestones.firstError) {
+        _fleetMilestones.firstError = true;
+        showToast(`Error detected in ${agent.name}`, 'error');
+    }
+}
+
+function handleAgentUpdate(agent) {
+    const prev = state.agents.get(agent.id);
+    state.agents.set(agent.id, agent);
+
+    // Preserve output buffer and histories from previous state
+    if (prev?._outputBuffer) agent._outputBuffer = prev._outputBuffer;
+    if (prev?._outputHistory) agent._outputHistory = prev._outputHistory;
+    if (prev?._healthHistory) agent._healthHistory = prev._healthHistory;
+    // Track health score history (max 30 data points)
+    if (agent.health_score != null) {
+        if (!agent._healthHistory) agent._healthHistory = [];
+        agent._healthHistory.push(agent.health_score);
+        if (agent._healthHistory.length > 30) agent._healthHistory.shift();
+    }
+
+    // Announce critical status changes to screen readers (throttle: max 1 per 3s)
+    if (prev && prev.status !== agent.status && (agent.status === 'waiting' || agent.status === 'error')) {
+        const now = Date.now();
+        if (now - _lastAriaAnnounce > 3000) {
+            _lastAriaAnnounce = now;
+            const region = document.getElementById('liveRegion');
+            if (region) {
+                const msg = agent.status === 'waiting'
+                    ? `Agent ${agent.name} needs input`
+                    : `Agent ${agent.name} encountered an error`;
+                region.textContent = msg;
+            }
+        }
+    }
+
+    // Fleet milestone detection
+    if (prev && prev.status !== agent.status) {
+        checkFleetMilestones(agent, prev.status);
+    }
+
+    scheduleRender();
+    if (state.viewMode === 'table') renderAgentTable();
+    if (state.view === 'deep' && state.focusedAgentId === agent.id) updateDeepViewHeader(agent);
+    if (state._projectDetailId) {
+        updateProjectDetailContent(state._projectDetailId);
+        // Auto-close project panel if no agents remain in the project
+        const projAgents = [...state.agents.values()].filter(a => a.project_id === state._projectDetailId);
+        if (projAgents.length === 0) closeProjectDetail();
+    }
+    updateTabTitle();
+    updateAttentionBadge();
+    updateBranchFilter();
+}
+
+function handleAgentOutput(data) {
+    const agent = state.agents.get(data.agent_id);
+    if (!agent) return;
+    if (!agent._outputBuffer) agent._outputBuffer = [];
+    // Track timestamps per line index
+    if (!agent._outputTimestamps) agent._outputTimestamps = [];
+    const tsNow = Date.now();
+    const startIdx = agent._outputBuffer.length;
+    agent._outputBuffer.push(...data.lines);
+    for (let ti = 0; ti < data.lines.length; ti++) {
+        agent._outputTimestamps[startIdx + ti] = tsNow;
+    }
+    // Cap buffer at 10000 lines to prevent memory bloat
+    if (agent._outputBuffer.length > 10000) {
+        const trim = agent._outputBuffer.length - 10000;
+        agent._outputBuffer = agent._outputBuffer.slice(-10000);
+        agent._outputTimestamps = agent._outputTimestamps.slice(-10000);
+    }
+    // Track sparkline output history
+    if (!agent._outputHistory) agent._outputHistory = [];
+    agent._outputHistory.push(data.lines.length);
+    if (agent._outputHistory.length > 60) agent._outputHistory.shift();
+
+    if (state.view === 'deep' && state.focusedAgentId === data.agent_id) {
+        appendDeepOutput(data.lines);
+    }
+}
+
+function handleAgentRemoved(agentId) {
+    const card = cardElements.get(agentId);
+    if (card) {
+        card.classList.add('exiting');
+        setTimeout(() => {
+            card.remove();
+            cardElements.delete(agentId);
+        }, 300);
+    }
+    state.agents.delete(agentId);
+    state.conflicts.delete(agentId);
+    selectedAgents.delete(agentId);
+    _activityCache.delete(agentId);
+    state.commandHistory.delete(agentId);
+    state.deepScrollPositions.delete(agentId);
+    _codeBlockState.delete(agentId);
+    _outputMarks.delete(agentId);
+    _lastOutputLineCount.delete(agentId);
+    if (state.pinnedAgents.delete(agentId)) {
+        localStorage.setItem('ashlr_pinned', JSON.stringify([...state.pinnedAgents]));
+    }
+    // Clean up per-agent localStorage entries
+    localStorage.removeItem(`ashlr_annot_${agentId}`);
+    localStorage.removeItem(`ashlr_pinned_${agentId}`);
+    if (state.view === 'deep' && state.focusedAgentId === agentId) closeDeepView();
+    if (state.commandTargetId === agentId) clearCommandTarget();
+    if (state.interactionAgentId === agentId) closeInteraction();
+    // Close card menu if open for this agent
+    if (activeMenu) {
+        const card = document.querySelector(`.agent-card[data-agent-id="${agentId}"]`);
+        const menuEl = card?.querySelector('.card-menu');
+        if (menuEl && activeMenu === menuEl) { activeMenu.classList.remove('active'); activeMenu = null; }
+    }
+    // Auto-close project panel if this was the last agent in the project
+    if (state._projectDetailId) {
+        const projAgents = [...state.agents.values()].filter(a => a.project_id === state._projectDetailId);
+        if (projAgents.length === 0) closeProjectDetail();
+    }
+    setTimeout(() => { scheduleRender(); updateTabTitle(); updateAttentionBadge(); updateBulkUI(); }, 350);
+}
+
+function handleMetrics(data) {
+    state.metrics = data;
+    const cpu = data.cpu_pct || 0;
+    const ramPct = data.memory?.pct || 0;
+
+    // CPU
+    const cpuEl = document.getElementById('metricCpu');
+    if (cpuEl) {
+        cpuEl.textContent = `${cpu}%`;
+        cpuEl.className = 'metric-value ' + (cpu > 80 ? 'red' : cpu > 50 ? 'yellow' : 'green');
+    }
+
+    // RAM
+    const ramEl = document.getElementById('metricRam');
+    if (ramEl) {
+        ramEl.textContent = `${ramPct}%`;
+        ramEl.className = 'metric-value ' + (ramPct > 85 ? 'red' : ramPct > 60 ? 'yellow' : 'green');
+    }
+
+    // Agents
+    document.getElementById('metricAgents').textContent = `${data.agents_active || 0}/${data.agents_total || 0}`;
+
+    // Cost — aggregate from active agents with fleet burn rate
+    const agents = [...state.agents.values()];
+    const totalCost = agents.reduce((sum, a) => sum + (a.estimated_cost_usd || 0), 0);
+    const costEl = document.getElementById('metricCost');
+    costEl.textContent = totalCost < 1 ? `$${totalCost.toFixed(2)}` : `$${totalCost.toFixed(1)}`;
+    const fleetBurnRate = agents.reduce((sum, a) => sum + (a.cost_burn_rate?.cost_per_min || 0), 0);
+    if (fleetBurnRate > 0) {
+        costEl.title = `Fleet burn: $${fleetBurnRate.toFixed(4)}/min ($${(fleetBurnRate * 60).toFixed(2)}/hr)`;
+    } else {
+        costEl.title = 'Total estimated cost';
+    }
+
+    // CPU sparkline
+    state.cpuHistory.push(cpu);
+    if (state.cpuHistory.length > 60) state.cpuHistory.shift();
+    drawSparkline();
+
+    // Cost sparkline
+    state.costHistory.push(totalCost);
+    if (state.costHistory.length > 60) state.costHistory.shift();
+    drawCostSparkline();
+
+    // Fleet health score
+    updateFleetHealthScore(agents);
+
+    // Update metrics dropdown if open
+    updateMetricsDropdown();
+}
+
+function updateFleetHealthScore(agents) {
+    const el = document.getElementById('metricHealthScore');
+    const wrap = document.getElementById('metricFleetHealth');
+    if (!el || !wrap) return;
+    if (agents.length === 0) { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+    // Score components (each 0-100, weighted)
+    let scores = [];
+    for (const a of agents) {
+        let s = 100;
+        // Penalize error status
+        if (a.status === 'error') s -= 50;
+        // Penalize high context usage
+        const ctx = a.context_pct || 0;
+        if (ctx > 0.9) s -= 30;
+        else if (ctx > 0.7) s -= 15;
+        else if (ctx > 0.5) s -= 5;
+        // Penalize waiting (needs attention)
+        if (a.status === 'waiting' || a.needs_input) s -= 15;
+        // Penalize paused
+        if (a.status === 'paused') s -= 10;
+        // Penalize low health score from server
+        const hs = a.health_score;
+        if (typeof hs === 'number' && hs < 50) s -= 20;
+        else if (typeof hs === 'number' && hs < 75) s -= 10;
+        // Clamp
+        scores.push(Math.max(0, Math.min(100, s)));
+    }
+    const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+    el.textContent = avg + '%';
+    // Color class
+    el.className = 'metric-value fleet-health-value ' +
+        (avg >= 90 ? 'excellent' : avg >= 70 ? 'good' : avg >= 50 ? 'fair' : 'poor');
+    // Tooltip with breakdown
+    const errCount = agents.filter(a => a.status === 'error').length;
+    const waitCount = agents.filter(a => a.status === 'waiting' || a.needs_input).length;
+    const highCtx = agents.filter(a => (a.context_pct || 0) > 0.7).length;
+    let tip = `Fleet Health: ${avg}%`;
+    if (errCount) tip += ` | ${errCount} error`;
+    if (waitCount) tip += ` | ${waitCount} waiting`;
+    if (highCtx) tip += ` | ${highCtx} high context`;
+    wrap.title = tip;
+}
+
+function handleEvent(data) {
+    const evtType = data.event;
+    const msg = data.message || '';
+
+    addNotification(evtType, msg, data.agent_id);
+
+    switch (evtType) {
+        case 'agent_spawned':
+            showToast(msg, 'success');
+            playTone([660], 0.1);
+            break;
+        case 'agent_killed':
+            showToast(msg, 'info');
+            playTone([330], 0.15);
+            break;
+        case 'agent_needs_input':
+            showToast(msg, 'warning');
+            playTone([440, 550], 0.12);
+            sendBrowserNotification('Agent needs input', msg, data.agent_id, 'agent_needs_input');
+            break;
+        case 'agent_error':
+            showToast(msg, 'error');
+            playTone([220], 0.3);
+            sendBrowserNotification('Agent error', msg, data.agent_id, 'agent_error');
+            break;
+        case 'agent_completed':
+            showToast(msg, 'success');
+            playTone([440, 550, 660], 0.1);
+            sendBrowserNotification('Agent completed', msg, data.agent_id, 'agent_completed');
+            break;
+        case 'fleet_multi_error':
+            showToast(msg, 'error');
+            playTone([220, 165, 110], 0.2);
+            sendBrowserNotification('Fleet alert: Multiple errors', msg);
+            break;
+        case 'agent_restarted':
+            showToast(msg, 'info');
+            playTone([440, 660], 0.1);
+            break;
+        case 'agent_restart_exhausted':
+            showToast(msg, 'error');
+            playTone([220, 165], 0.2);
+            sendBrowserNotification('Agent restart failed', msg, data.agent_id, 'agent_restart_exhausted');
+            break;
+        case 'agent_stale_warning':
+            showToast(msg || 'Agent output stale', 'warning');
+            break;
+        case 'agent_stale':
+            showToast(msg || 'Agent marked stale', 'error');
+            sendBrowserNotification('Agent stale', msg, data.agent_id);
+            break;
+        case 'agent_stall_restarted':
+            showToast(msg || 'Agent auto-restarted after stall', 'info');
+            playTone([440, 660], 0.1);
+            break;
+        case 'agent_auto_approved':
+            showToast(msg || 'Agent auto-approved', 'success');
+            playTone([550, 660], 0.08);
+            break;
+        case 'agent_health_auto_paused':
+            showToast(msg || 'Agent auto-paused (health critical)', 'warning');
+            playTone([330, 220], 0.15);
+            sendBrowserNotification('Agent auto-paused', msg, data.agent_id, 'agent_error');
+            break;
+        case 'agent_reaped':
+            showToast(msg || 'Idle agent removed', 'info');
+            playTone([330, 220], 0.1);
+            break;
+        case 'workflow_started':
+            showToast(msg || 'Workflow started', 'success');
+            playTone([440, 550, 660], 0.08);
+            fetchWorkflowRun(data.metadata?.workflow_run_id);
+            break;
+        case 'workflow_completed':
+            showToast(msg || 'Workflow completed', 'success');
+            playTone([660, 880], 0.1);
+            updateWorkflowRunStatus(data.metadata?.workflow_run_id, 'completed');
+            break;
+        case 'workflow_failed':
+            showToast(msg || 'Workflow failed', 'error');
+            playTone([220, 165], 0.2);
+            sendBrowserNotification('Workflow failed', msg);
+            updateWorkflowRunStatus(data.metadata?.workflow_run_id, 'failed');
+            break;
+        case 'workflow_agent_spawned':
+            showToast(msg || 'Pipeline agent started', 'info');
+            fetchWorkflowRun(data.metadata?.workflow_run_id);
+            break;
+        case 'file_conflict':
+            showToast(msg || 'File conflict detected', 'warning');
+            playTone([440, 330], 0.15);
+            sendBrowserNotification('File conflict', msg);
+            trackConflict(data);
+            break;
+        case 'agent_handoff':
+            showToast(msg || 'Agent handoff', 'info');
+            playTone([550, 660], 0.08);
+            break;
+        case 'bg_task_crash':
+            showToast(`Background task "${data.task}" crashed (restart #${data.restart})`, 'warning');
+            playTone([330, 220], 0.15);
+            break;
+        case 'agent_followup_suggestion': {
+            const meta = data.metadata || {};
+            showToast(msg, 'info');
+            playTone([550, 660, 880], 0.08);
+            addNotification('followup_suggestion', msg, data.agent_id);
+            // Store suggestion for spawn dialog pre-fill
+            state._lastFollowup = meta;
+            break;
+        }
+    }
+}
+
+// ── Utilities ──
+
+function debounce(fn, delay) {
+    let timer;
+    return function(...args) { clearTimeout(timer); timer = setTimeout(() => fn.apply(this, args), delay); };
+}
+
+// ── Render Scheduling ──
+
+let renderScheduled = false;
+function scheduleRender() {
+    if (!renderScheduled) {
+        renderScheduled = true;
+        requestAnimationFrame(() => {
+            renderScheduled = false;
+            renderAgentGrid();
+            updateProjectMetricsBadge();
+            updateStatusFilterChips();
+            updateAmbientGradient();
+            updateGridLayout();
+            updateFleetStatus();
+            // Re-apply filter after render (renderAgentGrid resets card visibility)
+            if (state.statusFilter !== 'all' || gridSearchQuery) {
+                filterAgentGrid(gridSearchQuery);
+            }
+        });
+    }
+}
+
+function updateFleetStatus() {
+    const el = document.getElementById('metricFleetStatus');
+    const textEl = document.getElementById('metricFleetText');
+    if (state.agents.size === 0) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    const counts = {};
+    for (const [, agent] of state.agents) {
+        counts[agent.status] = (counts[agent.status] || 0) + 1;
+    }
+    const parts = [];
+    if (counts.working) parts.push(`${counts.working}W`);
+    if (counts.planning) parts.push(`${counts.planning}P`);
+    if (counts.waiting) parts.push(`${counts.waiting}!`);
+    if (counts.error) parts.push(`${counts.error}E`);
+    if (counts.idle) parts.push(`${counts.idle}I`);
+    if (counts.spawning) parts.push(`${counts.spawning}S`);
+    textEl.textContent = parts.join(' ');
+    // Color based on worst status
+    if (counts.error) textEl.style.color = 'var(--danger)';
+    else if (counts.waiting) textEl.style.color = 'var(--orange)';
+    else textEl.style.color = 'var(--text-secondary)';
+}
+
+// ── Agent Card Grid ──
+
+const cardElements = new Map();
+let cardStaggerCount = 0;
+
+function updateFleetSummary() {
+    const el = document.getElementById('fleetSummary');
+    if (!el) return;
+    const agents = [...state.agents.values()];
+    if (agents.length === 0) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    const working = agents.filter(a => ['working', 'planning', 'reading'].includes(a.status)).length;
+    const waiting = agents.filter(a => a.needs_input || a.status === 'waiting').length;
+    const errored = agents.filter(a => a.status === 'error').length;
+    const idle = agents.filter(a => ['idle', 'paused', 'complete'].includes(a.status)).length;
+    const totalCost = agents.reduce((s, a) => s + (a.estimated_cost_usd || 0), 0);
+    const totalTokens = agents.reduce((s, a) => s + (a.tokens_input || 0) + (a.tokens_output || 0), 0);
+    const healthScores = agents.filter(a => a.health_score > 0).map(a => a.health_score);
+    const avgHealth = healthScores.length ? healthScores.reduce((s, h) => s + h, 0) / healthScores.length : 0;
+
+    document.querySelector('#fsAgents .fs-value').textContent = agents.length;
+    const workingEl = document.querySelector('#fsWorking .fs-value');
+    workingEl.textContent = working;
+    workingEl.style.color = working > 0 ? 'var(--accent)' : 'var(--text-tertiary)';
+    const waitingEl = document.querySelector('#fsWaiting .fs-value');
+    waitingEl.textContent = waiting;
+    waitingEl.style.color = waiting > 0 ? 'var(--orange)' : 'var(--text-tertiary)';
+    document.querySelector('#fsCost .fs-value').textContent = totalCost > 0 ? `$${totalCost.toFixed(3)}` : '$0';
+    const tokStr = totalTokens > 1000000 ? `${(totalTokens / 1000000).toFixed(1)}M` : totalTokens > 1000 ? `${(totalTokens / 1000).toFixed(1)}K` : `${totalTokens}`;
+    document.querySelector('#fsTokens .fs-value').textContent = tokStr;
+    const hEl = document.querySelector('#fsHealth .fs-value');
+    hEl.textContent = `${Math.round(avgHealth * 100)}%`;
+    hEl.style.color = avgHealth >= 0.8 ? 'var(--success)' : avgHealth >= 0.6 ? 'var(--warning)' : 'var(--danger)';
+
+    // Average context usage
+    const ctxValues = agents.filter(a => a.context_pct > 0).map(a => a.context_pct);
+    const avgCtx = ctxValues.length ? ctxValues.reduce((s, c) => s + c, 0) / ctxValues.length : 0;
+    const ctxEl = document.querySelector('#fsContext .fs-value');
+    if (ctxEl) {
+        ctxEl.textContent = `${Math.round(avgCtx * 100)}%`;
+        ctxEl.style.color = avgCtx >= 0.8 ? 'var(--danger)' : avgCtx >= 0.5 ? 'var(--warning)' : 'var(--text-secondary)';
+    }
+
+    // Total output rate
+    const totalRate = agents.reduce((s, a) => s + (a.output_rate || 0), 0);
+    const rateEl = document.querySelector('#fsOutputRate .fs-value');
+    if (rateEl) rateEl.textContent = Math.round(totalRate);
+
+    // Fleet uptime (oldest agent)
+    const uptimeEl = document.querySelector('#fsUptime .fs-value');
+    if (uptimeEl) {
+        const oldest = agents.filter(a => a.created_at).sort((a, b) => new Date(a.created_at) - new Date(b.created_at))[0];
+        if (oldest) {
+            const sec = (Date.now() - new Date(oldest.created_at).getTime()) / 1000;
+            if (sec >= 3600) uptimeEl.textContent = `${Math.floor(sec/3600)}h${Math.floor((sec%3600)/60)}m`;
+            else if (sec >= 60) uptimeEl.textContent = `${Math.floor(sec/60)}m`;
+            else uptimeEl.textContent = `${Math.floor(sec)}s`;
+        } else {
+            uptimeEl.textContent = '-';
+        }
+    }
+
+    // Status distribution bar
+    const total = agents.length;
+    const bar = document.getElementById('fsStatusBar');
+    const segments = [
+        { count: working, color: 'var(--accent)' },
+        { count: waiting, color: 'var(--orange)' },
+        { count: errored, color: 'var(--danger)' },
+        { count: idle, color: 'var(--text-disabled)' },
+    ].filter(s => s.count > 0);
+    bar.innerHTML = segments.map(s => {
+        const pct = Math.max(2, (s.count / total) * 100);
+        return `<div style="width:${pct}%;background:${s.color}"></div>`;
+    }).join('');
+}
+
+function renderAgentGrid() {
+    const grid = document.getElementById('agentGrid');
+    const emptyState = document.getElementById('emptyState');
+    updateCommandTarget();
+    updateFleetSummary();
+    updateConflictBanner();
+
+    if (state.agents.size === 0) {
+        if (!state.connected) {
+            emptyState.innerHTML = '<div style="text-align:center;padding:80px 20px">' +
+                '<div style="font-size:32px;animation:skeleton-pulse 1.5s infinite">▣</div>' +
+                '<p style="color:var(--text-tertiary);margin-top:16px;font-size:14px">Connecting to Ashlr...</p></div>';
+        } else if (!state.synced) {
+            emptyState.innerHTML = '<div style="text-align:center;padding:80px 20px">' +
+                '<div style="font-size:32px;animation:skeleton-pulse 1.5s infinite">▣</div>' +
+                '<p style="color:var(--text-tertiary);margin-top:16px;font-size:14px">Syncing fleet state...</p></div>';
+        } else if (!emptyState.querySelector('.empty-illustration')) {
+            emptyState.innerHTML = EMPTY_STATE_HTML;
+        }
+        emptyState.style.display = '';
+        cardElements.forEach(el => el.remove());
+        cardElements.clear();
+        if (!document.getElementById('newAgentCard')) grid.appendChild(createNewAgentCard());
+        return;
+    }
+
+    emptyState.style.display = 'none';
+
+    // Remove cards for deleted agents (that weren't already animated out)
+    for (const [id, el] of cardElements) {
+        if (!state.agents.has(id) && !el.classList.contains('exiting')) {
+            el.remove();
+            cardElements.delete(id);
+        }
+    }
+
+    // Update or create cards (filtered by project, branch, focus mode)
+    const newCard = document.getElementById('newAgentCard') || createNewAgentCard();
+    let idx = 0;
+    let focusHidden = 0;
+    const FOCUS_VISIBLE_STATUSES = new Set(['working', 'planning', 'reading', 'waiting', 'error']);
+    for (const [id, agent] of state.agents) {
+        // Project filter
+        if (state.selectedProjectId && agent.project_id !== state.selectedProjectId) {
+            const card = cardElements.get(id);
+            if (card && card.parentNode) card.remove();
+            continue;
+        }
+        // Branch filter
+        if (state.selectedBranch && agent.git_branch !== state.selectedBranch) {
+            const card = cardElements.get(id);
+            if (card && card.parentNode) card.remove();
+            continue;
+        }
+        // Focus mode: hide idle/paused/completed agents
+        if (state.focusMode && !FOCUS_VISIBLE_STATUSES.has(agent.status)) {
+            const card = cardElements.get(id);
+            if (card && card.parentNode) card.remove();
+            focusHidden++;
+            continue;
+        }
+        let card = cardElements.get(id);
+        if (!card) {
+            card = createAgentCard(agent);
+            card.style.animationDelay = `${Math.min(idx * 0.08, 1.5)}s`;
+            cardElements.set(id, card);
+        }
+        // Always insert before newAgentCard to maintain Map order (respects pin sort)
+        grid.insertBefore(card, newCard);
+        card.style.display = '';
+        updateAgentCard(card, agent);
+        idx++;
+    }
+
+    if (!newCard.parentNode) grid.appendChild(newCard);
+
+    // Focus mode banner
+    let focusBanner = document.getElementById('focusModeBanner');
+    if (state.focusMode) {
+        if (!focusBanner) {
+            focusBanner = document.createElement('div');
+            focusBanner.id = 'focusModeBanner';
+            focusBanner.style.cssText = 'max-width:1440px;margin:0 auto 8px;padding:6px 12px;background:var(--bg-surface);border:1px solid var(--accent);border-radius:var(--radius-sm);font-size:11px;color:var(--accent);display:flex;align-items:center;justify-content:space-between';
+            grid.parentNode.insertBefore(focusBanner, grid);
+        }
+        focusBanner.innerHTML = `<span>Focus Mode: ${focusHidden} agent${focusHidden !== 1 ? 's' : ''} hidden (idle/paused/completed)</span><button onclick="toggleFocusMode()" style="background:none;border:1px solid var(--accent);color:var(--accent);padding:2px 8px;border-radius:var(--radius-xs);cursor:pointer;font-size:10px;font-family:var(--font-sans)">Exit Focus</button>`;
+        focusBanner.style.display = '';
+    } else if (focusBanner) {
+        focusBanner.style.display = 'none';
+    }
+}
+
+function createNewAgentCard() {
+    const card = document.createElement('div');
+    card.className = 'new-agent-card';
+    card.id = 'newAgentCard';
+    card.onclick = openSpawnDialog;
+    card.innerHTML = '<div class="plus">+</div><div class="label">New Agent</div>';
+    return card;
+}
+
+function createAgentCard(agent) {
+    const card = document.createElement('div');
+    card.className = 'agent-card';
+    card.dataset.agentId = agent.id;
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('aria-label', `Agent ${agent.name}`);
+    card.oncontextmenu = (e) => {
+        e.preventDefault();
+        showContextMenu(agent.id, e.clientX, e.clientY);
+    };
+    card.onkeydown = (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if (document.getElementById('agentGrid').classList.contains('bulk-mode')) {
+                toggleAgentSelection(agent.id);
+            } else {
+                const ag = state.agents.get(agent.id);
+                if (ag && ag.needs_input) { openInteraction(agent.id); }
+                else { openDeepView(agent.id); }
+            }
+        }
+        if (e.key === 'm' || e.key === 'M') {
+            e.preventDefault();
+            const r = card.getBoundingClientRect();
+            showContextMenu(agent.id, r.right - 40, r.top + 30);
+        }
+        // Arrow key navigation between cards
+        if (['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp'].includes(e.key)) {
+            e.preventDefault();
+            const grid = document.getElementById('agentGrid');
+            const cards = [...grid.querySelectorAll('.agent-card:not([style*="display: none"])')];
+            const idx = cards.indexOf(card);
+            if (idx < 0) return;
+            const cols = Math.max(1, Math.round(grid.offsetWidth / (cards[0]?.offsetWidth || 300)));
+            let next = idx;
+            if (e.key === 'ArrowRight') next = Math.min(cards.length - 1, idx + 1);
+            else if (e.key === 'ArrowLeft') next = Math.max(0, idx - 1);
+            else if (e.key === 'ArrowDown') next = Math.min(cards.length - 1, idx + cols);
+            else if (e.key === 'ArrowUp') next = Math.max(0, idx - cols);
+            if (next !== idx) cards[next].focus();
+        }
+    };
+    card.innerHTML = `
+        <div class="card-select" data-action="select" data-agent-id="${agent.id}"></div>
+        <div class="card-header">
+            <span class="card-icon"></span>
+            <span class="card-conn-dot" data-tip="Connected"></span>
+            <span class="card-name"></span>
+            <span class="plan-mode-indicator">PLAN</span>
+            <span class="stream-mode-indicator" style="display:none;font-size:9px;background:var(--accent);color:#fff;padding:1px 5px;border-radius:4px;font-weight:600;letter-spacing:.5px">STREAM</span>
+            <span class="card-health" data-tip="Health" role="img" aria-label="Agent health"></span>
+            <span class="card-message-badge" aria-label="Unread messages"></span>
+            <span class="card-conflict-badge"></span>
+            <span class="card-files-badge"></span>
+            <span class="card-bookmarks-badge" style="display:none" data-tip="Bookmarked output lines"></span>
+            <span class="card-error-count-badge" style="display:none" data-tip="Error lines detected"></span>
+            <button class="card-menu-btn" data-action="menu" aria-haspopup="true" aria-label="Agent actions menu">⋯</button>
+        </div>
+        <div class="card-info-row">
+            <span class="card-project-badge" style="display:none"></span>
+            <span class="card-backend-label"></span>
+            <span class="card-model-badge" style="display:none"></span>
+            <span class="card-tools-badge" style="display:none" data-tip="Tool permissions"></span>
+            <span class="card-branch-badge" data-tip="Git branch"></span>
+            <span class="card-workflow-dot" style="display:none" data-tip="Workflow group"></span>
+            <span class="card-pipeline-badge"></span>
+        </div>
+        <div class="agent-owner" style="display:none"></div>
+        <div class="card-dir" data-action="copy-dir" data-tip="Click to copy path"></div>
+        <div class="card-summary"></div>
+        <div class="card-last-action" style="display:none"></div>
+        <div class="card-last-file" style="display:none" data-tip="Last file touched"></div>
+        <div class="card-input-section">
+            <div class="card-input-row">
+                <div class="card-input-prompt"></div>
+                <div class="card-quick-actions"></div>
+                <button class="card-respond-btn" data-action="reply">Reply</button>
+            </div>
+        </div>
+        <div class="progress-bar" role="progressbar" aria-label="Task progress"><div class="progress-bar-fill"></div></div>
+        <div class="card-progress-text" style="display:none"></div>
+        <div class="card-mini-stats" style="display:none"></div>
+        <canvas class="card-sparkline" width="160" height="20"></canvas>
+        <canvas class="card-health-sparkline" width="80" height="14"></canvas>
+        <div class="context-bar-row"><div class="context-bar" role="progressbar" aria-label="Context window usage"><div class="context-bar-fill"></div></div><span class="context-pct-label low">0%</span><span class="context-warn-icon" data-tip="High context usage">&#9888;</span><span class="context-text"></span></div>
+        <span class="card-pin-indicator">${icon('pin', 12)}</span>
+        <div class="card-tags-row" style="display:none"></div>
+        <div class="card-footer">
+            <span class="status-badge"></span>
+            <span class="card-status-duration"></span>
+            <span class="card-cost-badge" style="display:none"></span>
+            <span class="card-line-count" style="display:none" data-tip="Total output lines"></span>
+            <span class="card-meta"></span>
+        </div>
+        <div class="card-hover-actions">
+            <button class="card-hover-btn" data-action="pause-resume" data-tip="Pause/Resume" aria-label="Pause or resume agent">${icon('pause', 12)}</button>
+            <button class="card-hover-btn" data-action="restart" data-tip="Restart" aria-label="Restart agent">${icon('refresh-cw', 12)}</button>
+            <button class="card-hover-btn" data-action="pin" data-tip="Pin to top" aria-label="Pin agent">${icon('pin', 12)}</button>
+            <button class="card-hover-btn" data-action="clone" data-tip="Clone agent" aria-label="Clone agent">${icon('copy', 12)}</button>
+            <button class="card-hover-btn danger" data-action="kill" data-tip="Kill agent" aria-label="Kill agent">${icon('x-circle', 12)}</button>
+        </div>
+        <div class="card-menu" role="menu">
+            <div class="card-menu-item" role="menuitem" data-action="deep-view">${icon('terminal', 14)} View Terminal</div>
+            <div class="card-menu-item" role="menuitem" data-action="edit">${icon('edit', 14)} Edit</div>
+            <div class="card-menu-item" role="menuitem" data-action="pause-resume">${icon('pause', 14)} Pause/Resume</div>
+            <div class="card-menu-item" role="menuitem" data-action="clone">${icon('copy', 14)} Clone</div>
+            <div class="card-menu-item" role="menuitem" data-action="pin">${icon('pin', 14)} Pin/Unpin</div>
+            <div class="card-menu-item" role="menuitem" data-action="compare">${icon('columns', 14)} Compare</div>
+            <div class="card-menu-item" role="menuitem" data-action="restart">${icon('refresh-cw', 14)} Restart</div>
+            <div class="card-menu-item" role="menuitem" data-action="retry">${icon('rotate-ccw', 14)} Retry with Changes</div>
+            <div class="card-menu-item danger" role="menuitem" data-action="kill">${icon('x-circle', 14)} Kill</div>
+        </div>
+    `;
+    // Cache element references to avoid 42 querySelector calls per update cycle
+    card._el = {
+        icon: card.querySelector('.card-icon'),
+        name: card.querySelector('.card-name'),
+        dir: card.querySelector('.card-dir'),
+        summary: card.querySelector('.card-summary'),
+        lastAction: card.querySelector('.card-last-action'),
+        lastFile: card.querySelector('.card-last-file'),
+        projectBadge: card.querySelector('.card-project-badge'),
+        owner: card.querySelector('.agent-owner'),
+        backendLabel: card.querySelector('.card-backend-label'),
+        workflowDot: card.querySelector('.card-workflow-dot'),
+        connDot: card.querySelector('.card-conn-dot'),
+        health: card.querySelector('.card-health'),
+        inputSection: card.querySelector('.card-input-section'),
+        inputPrompt: card.querySelector('.card-input-prompt'),
+        quickActions: card.querySelector('.card-quick-actions'),
+        respondBtn: card.querySelector('.card-respond-btn'),
+        progressBar: card.querySelector('.progress-bar'),
+        progressFill: card.querySelector('.progress-bar-fill'),
+        progressText: card.querySelector('.card-progress-text'),
+        miniStats: card.querySelector('.card-mini-stats'),
+        contextBar: card.querySelector('.context-bar'),
+        contextFill: card.querySelector('.context-bar-fill'),
+        contextPctLabel: card.querySelector('.context-pct-label'),
+        contextText: card.querySelector('.context-text'),
+        contextWarnIcon: card.querySelector('.context-warn-icon'),
+        messageBadge: card.querySelector('.card-message-badge'),
+        conflictBadge: card.querySelector('.card-conflict-badge'),
+        filesBadge: card.querySelector('.card-files-badge'),
+        bookmarksBadge: card.querySelector('.card-bookmarks-badge'),
+        errorCountBadge: card.querySelector('.card-error-count-badge'),
+        sparkline: card.querySelector('.card-sparkline'),
+        healthSparkline: card.querySelector('.card-health-sparkline'),
+        pipelineBadge: card.querySelector('.card-pipeline-badge'),
+        modelBadge: card.querySelector('.card-model-badge'),
+        toolsBadge: card.querySelector('.card-tools-badge'),
+        branchBadge: card.querySelector('.card-branch-badge'),
+        costBadge: card.querySelector('.card-cost-badge'),
+        lineCount: card.querySelector('.card-line-count'),
+        statusBadge: card.querySelector('.status-badge'),
+        statusDuration: card.querySelector('.card-status-duration'),
+        meta: card.querySelector('.card-meta'),
+        tagsRow: card.querySelector('.card-tags-row'),
+        planIndicator: card.querySelector('.plan-mode-indicator'),
+        streamIndicator: card.querySelector('.stream-mode-indicator'),
+    };
+    // Event delegation — handles all data-action clicks securely (no inline onclick)
+    card.addEventListener('click', (e) => {
+        const actionEl = e.target.closest('[data-action]');
+        if (!actionEl) return;
+        const action = actionEl.dataset.action;
+        const aid = card.dataset.agentId;
+        e.stopPropagation();
+        const actions = {
+            'select': () => toggleAgentSelection(aid, e),
+            'menu': () => toggleCardMenu(aid),
+            'copy-dir': () => copyWorkingDir(aid),
+            'reply': () => openInteraction(aid),
+            'pause-resume': () => pauseResumeAgent(aid),
+            'restart': () => restartAgent(aid),
+            'pin': () => togglePin(aid),
+            'clone': () => cloneAgent(aid),
+            'kill': () => killAgent(aid),
+            'deep-view': () => openDeepView(aid),
+            'edit': () => openEditAgent(aid),
+            'compare': () => openCompare(aid),
+            'retry': () => retryWithTask(aid),
+            'quick-approve': () => quickRespond(aid, 'yes'),
+            'quick-reject': () => quickRespond(aid, 'no'),
+        };
+        if (actions[action]) actions[action]();
+    });
+    // Drag-and-drop reordering
+    card.draggable = true;
+    card.addEventListener('dragstart', (e) => {
+        if (document.getElementById('agentGrid').classList.contains('bulk-mode')) { e.preventDefault(); return; }
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', agent.id);
+        _draggedAgentId = agent.id;
+        requestAnimationFrame(() => card.classList.add('dragging'));
+    });
+    card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        document.querySelectorAll('.agent-card.drag-over').forEach(c => c.classList.remove('drag-over'));
+        _draggedAgentId = null;
+    });
+    card.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (_draggedAgentId && _draggedAgentId !== agent.id) {
+            card.classList.add('drag-over');
+        }
+    });
+    card.addEventListener('dragleave', () => { card.classList.remove('drag-over'); });
+    card.addEventListener('drop', (e) => {
+        e.preventDefault();
+        card.classList.remove('drag-over');
+        const fromId = e.dataTransfer.getData('text/plain');
+        if (fromId && fromId !== agent.id) {
+            applyCardReorder(fromId, agent.id);
+        }
+    });
+    // Hover — subtle elevation + mini terminal preview
+    card.addEventListener('mouseenter', () => {
+        card.style.boxShadow = 'var(--shadow-md)';
+        card._previewTimer = setTimeout(() => { if (card.isConnected) showCardPreview(agent.id, card); }, 500);
+    });
+    card.addEventListener('mouseleave', () => {
+        card.style.boxShadow = '';
+        if (card._previewTimer) { clearTimeout(card._previewTimer); card._previewTimer = null; }
+        hideCardPreview();
+    });
+    card.addEventListener('click', (e) => {
+        // Skip if click was on a data-action element (handled by delegation above)
+        if (e.target.closest('[data-action]')) return;
+        if (document.getElementById('agentGrid').classList.contains('bulk-mode')) {
+            toggleAgentSelection(agent.id);
+            return;
+        }
+        openDeepView(agent.id);
+    });
+    return card;
+}
+
+let _draggedAgentId = null;
+
+function applyCardReorder(fromId, toId) {
+    // Build current order
+    const ids = [...state.agents.keys()];
+    const fromIdx = ids.indexOf(fromId);
+    const toIdx = ids.indexOf(toId);
+    if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
+    // Move fromId to toIdx position
+    ids.splice(fromIdx, 1);
+    ids.splice(toIdx, 0, fromId);
+    // Rebuild state.agents in new order
+    const reordered = new Map();
+    for (const id of ids) {
+        const agent = state.agents.get(id);
+        if (agent) reordered.set(id, agent);
+    }
+    state.agents = reordered;
+    // Save and switch to manual sort
+    state.cardOrder = ids;
+    localStorage.setItem('ashlr_card_order', JSON.stringify(ids));
+    if (state.cardSort !== 'manual') {
+        state.cardSort = 'manual';
+        localStorage.setItem('ashlr_card_sort', 'manual');
+        const sel = document.getElementById('cardSortSelect');
+        if (sel) sel.value = 'manual';
+        showToast('Switched to manual sort order', 'info');
+    }
+    scheduleRender();
+}
+
+function detectLastAction(agent) {
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    if (lines.length === 0) return null;
+    if (agent._lastActionLen === lines.length) return agent._lastActionCache;
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    let result = null;
+    const recent = lines.slice(-20);
+    for (let i = recent.length - 1; i >= 0; i--) {
+        const l = recent[i].replace(ansiRe, '').trim();
+        if (!l) continue;
+        let m;
+        if ((m = l.match(/\bEdit\("([^"]+)"\)/))) { result = `Edited ${m[1].split('/').pop()}`; break; }
+        if ((m = l.match(/\bWrite\("([^"]+)"\)/))) { result = `Wrote ${m[1].split('/').pop()}`; break; }
+        if ((m = l.match(/\bRead\("([^"]+)"\)/))) { result = `Reading ${m[1].split('/').pop()}`; break; }
+        if ((m = l.match(/\bBash\("([^"]{0,40})"\)/))) { result = `Running: ${m[1]}`; break; }
+        if ((m = l.match(/\bGrep\("([^"]+)"\)/))) { result = `Searching: ${m[1].slice(0, 30)}`; break; }
+        if ((m = l.match(/\bGlob\("([^"]+)"\)/))) { result = `Finding: ${m[1].slice(0, 30)}`; break; }
+        if (/\bgit commit/i.test(l)) { result = 'Git commit'; break; }
+        if (/\bgit push/i.test(l)) { result = 'Git push'; break; }
+        if (/\d+ passed/i.test(l)) { const p = l.match(/(\d+) passed/i); result = `Tests: ${p[1]} passed`; break; }
+        if (/\b(error|exception|FAIL)\b/i.test(l)) { result = 'Error detected'; break; }
+    }
+    agent._lastActionLen = lines.length;
+    agent._lastActionCache = result;
+    return result;
+}
+
+function detectProgressText(agent) {
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    if (lines.length === 0) return null;
+    if (agent._progressTextLen === lines.length) return agent._progressTextCache;
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    let result = null;
+    const recent = lines.slice(-30);
+    for (let i = recent.length - 1; i >= 0; i--) {
+        const l = recent[i].replace(ansiRe, '').trim();
+        if (!l) continue;
+        let m;
+        if ((m = l.match(/(\d+)\s+(?:of|\/)\s+(\d+)\s+(files?|steps?|items?|tests?|tasks?|modules?)/i))) {
+            result = `${m[1]}/${m[2]} ${m[3]}`; break;
+        }
+        if ((m = l.match(/(?:step\s+)?(\d+)\s*\/\s*(\d+)(?:\s+(?:complete|done|finished|processed))?/i))) {
+            const n = parseInt(m[1]), total = parseInt(m[2]);
+            if (total > 1 && total <= 1000 && n <= total) { result = `${n}/${total}`; break; }
+        }
+        if ((m = l.match(/(\d{1,3}(?:\.\d)?)%\s*(?:complete|done|progress)?/i))) {
+            const pct = parseFloat(m[1]);
+            if (pct >= 0 && pct <= 100) { result = `${Math.round(pct)}% complete`; break; }
+        }
+        if ((m = l.match(/(\d+)\s+passed(?:,\s*(\d+)\s+failed)?/i))) {
+            const passed = m[1], failed = m[2];
+            result = failed ? `${passed} passed, ${failed} failed` : `${passed} passed`; break;
+        }
+    }
+    agent._progressTextLen = lines.length;
+    agent._progressTextCache = result;
+    return result;
+}
+
+function detectToolCounts(agent) {
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    const len = lines.length;
+    if (len === 0) return null;
+    // Incremental scan: only process new lines since last call
+    const prevLen = agent._toolCountsLen || 0;
+    if (prevLen === len && agent._toolCountsCache) return agent._toolCountsCache;
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const counts = agent._toolCountsCache ? { ...agent._toolCountsCache } : { read: 0, edit: 0, write: 0, bash: 0, grep: 0, glob: 0 };
+    for (let i = prevLen; i < len; i++) {
+        const l = lines[i].replace(ansiRe, '');
+        if (/\bRead\s*\(/.test(l)) counts.read++;
+        if (/\bEdit\s*\(/.test(l)) counts.edit++;
+        if (/\bWrite\s*\(/.test(l)) counts.write++;
+        if (/\bBash\s*\(/.test(l)) counts.bash++;
+        if (/\bGrep\s*\(/.test(l)) counts.grep++;
+        if (/\bGlob\s*\(/.test(l)) counts.glob++;
+    }
+    agent._toolCountsCache = counts;
+    agent._toolCountsLen = len;
+    return counts;
+}
+
+function detectLastFile(agent) {
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    if (lines.length === 0) return null;
+    if (agent._lastFileLen === lines.length) return agent._lastFileCache;
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    let result = null;
+    const recent = lines.slice(-30);
+    for (let i = recent.length - 1; i >= 0; i--) {
+        const l = recent[i].replace(ansiRe, '').trim();
+        if (!l) continue;
+        let m;
+        if ((m = l.match(/\b(?:Edit|Write|Read)\("([^"]+)"\)/))) { result = m[1]; break; }
+        if ((m = l.match(/\b(?:Glob|Grep)\("[^"]*".*?"([^"]+)"\)/))) { result = m[1]; break; }
+        if ((m = l.match(/(?:^|\s)((?:\/[\w.-]+)+\.\w{1,10})\b/))) { result = m[1]; break; }
+    }
+    agent._lastFileLen = lines.length;
+    agent._lastFileCache = result;
+    return result;
+}
+
+function updateAgentCard(card, agent) {
+    const prevStatus = card.dataset.status;
+    if (prevStatus && prevStatus !== agent.status) {
+        card.classList.remove('status-transition');
+        void card.offsetWidth; // force reflow to restart animation
+        card.classList.add('status-transition');
+        card.dataset.statusSince = Date.now().toString();
+    }
+    if (!card.dataset.statusSince) card.dataset.statusSince = Date.now().toString();
+    card.dataset.status = agent.status;
+    card.dataset.planMode = agent.plan_mode ? 'true' : 'false';
+    card.dataset.outputMode = agent.output_mode || 'tmux';
+    card.dataset.activeOutput = (agent.output_rate && agent.output_rate > 0 && agent.status === 'working') ? 'true' : 'false';
+    const roleColor = agent.role_color || ROLE_INFO[agent.role]?.color || '#64748B';
+    card.style.borderLeftColor = roleColor;
+
+    card.dataset.roleColor = roleColor;
+
+    const el = card._el;
+    el.icon.innerHTML = roleIcon(agent.role, 16);
+    el.icon.style.background = `color-mix(in srgb, ${roleColor} 15%, transparent)`;
+    el.icon.style.color = roleColor;
+    el.name.textContent = agent.name;
+    el.name.title = agent.name;
+    if (el.streamIndicator) el.streamIndicator.style.display = agent.output_mode === 'stream-json' ? 'inline-block' : 'none';
+    el.dir.textContent = shortenPath(agent.working_dir);
+    el.summary.textContent = (agent.status === 'error' && agent.error_message)
+        ? agent.error_message
+        : (agent.summary || agent.task || 'Starting...');
+
+    // Last action indicator
+    const lastActionEl = el.lastAction;
+    if (lastActionEl) {
+        const lastAction = detectLastAction(agent);
+        if (lastAction) {
+            lastActionEl.textContent = lastAction;
+            lastActionEl.style.display = '';
+        } else {
+            lastActionEl.style.display = 'none';
+        }
+    }
+
+    // Last file badge
+    const lastFileEl = el.lastFile;
+    if (lastFileEl) {
+        const lastFile = detectLastFile(agent);
+        if (lastFile) {
+            const shortName = lastFile.split('/').pop();
+            lastFileEl.textContent = shortName;
+            lastFileEl.title = lastFile;
+            lastFileEl.style.display = '';
+            lastFileEl.onclick = (e) => {
+                e.stopPropagation();
+                openDeepView(agent.id);
+                setTimeout(() => switchDeepTab('activity'), 150);
+            };
+        } else {
+            lastFileEl.style.display = 'none';
+        }
+    }
+
+    // Project badge
+    const projBadge = el.projectBadge;
+    if (agent.project_id) {
+        const proj = state.projects.find(p => p.id === agent.project_id);
+        projBadge.textContent = proj?.name || agent.project_id;
+        projBadge.style.display = '';
+    } else {
+        projBadge.style.display = 'none';
+    }
+
+    // Owner badge
+    const ownerEl = el.owner;
+    if (ownerEl && agent.owner_name) {
+        ownerEl.textContent = agent.owner_name;
+        ownerEl.style.display = '';
+    } else if (ownerEl) {
+        ownerEl.style.display = 'none';
+    }
+
+    // Backend label
+    const backendLabel = el.backendLabel;
+    backendLabel.textContent = agent.backend || 'claude-code';
+
+    // Workflow group indicator
+    const wfDot = el.workflowDot;
+    if (agent.related_agents?.length) {
+        wfDot.style.display = '';
+        card.style.borderRightWidth = '2px';
+        card.style.borderRightColor = roleColor + '66';
+    } else {
+        wfDot.style.display = 'none';
+        card.style.borderRightWidth = '';
+        card.style.borderRightColor = '';
+    }
+
+    // Connection status dot
+    const connDot = el.connDot;
+    if (connDot) {
+        const isActive = ['working', 'planning', 'reading', 'waiting', 'spawning'].includes(agent.status);
+        const updatedAgo = agent.updated_at ? (Date.now() - new Date(agent.updated_at).getTime()) / 1000 : 999;
+        if (agent.status === 'error' || updatedAgo > 120) {
+            connDot.className = 'card-conn-dot dead';
+            connDot.title = 'Disconnected / Error';
+        } else if (updatedAgo > 30 && !isActive) {
+            connDot.className = 'card-conn-dot stale';
+            connDot.title = 'Stale (no updates)';
+        } else {
+            connDot.className = 'card-conn-dot';
+            connDot.title = 'Connected';
+        }
+    }
+
+    // Health score indicator
+    const healthEl = el.health;
+    const hs = agent.health_score ?? 1.0;
+    healthEl.className = 'card-health ' + (hs >= 0.8 ? 'excellent' : hs >= 0.6 ? 'good' : hs >= 0.4 ? 'fair' : 'poor');
+    const healthDetails = [
+        `Health: ${Math.round(hs * 100)}%`,
+        agent.error_count ? `${agent.error_count} errors` : null,
+        agent.total_output_lines ? `${agent.total_output_lines} output lines` : null,
+        agent.restart_count ? `${agent.restart_count} restarts` : null,
+        agent.time_to_first_output ? `First output: ${agent.time_to_first_output.toFixed(1)}s` : null,
+    ].filter(Boolean).join(' · ');
+    healthEl.title = healthDetails;
+
+    // Input prompt with inline quick-response buttons
+    const inputSection = el.inputSection;
+    if (agent.needs_input && agent.input_prompt) {
+        inputSection.style.display = 'block';
+        el.inputPrompt.textContent = agent.input_prompt;
+        const quickActions = el.quickActions;
+        const respondBtn = el.respondBtn;
+        const prompt = (agent.input_prompt || '').toLowerCase();
+        const isYesNo = /\b(yes|no|y\/n)\b/.test(prompt) || /\?\s*$/.test(prompt);
+        const isApprove = /\b(approve|proceed|confirm|allow|accept)\b/.test(prompt) || (agent.plan_mode && agent.status === 'waiting');
+        if (isYesNo || isApprove) {
+            const aid = agent.id;
+            if (isApprove) {
+                quickActions.innerHTML = `<button class="card-quick-btn approve" data-action="quick-approve">Approve</button><button class="card-quick-btn reject" data-action="quick-reject">Reject</button>`;
+            } else {
+                quickActions.innerHTML = `<button class="card-quick-btn approve" data-action="quick-approve">Yes</button><button class="card-quick-btn reject" data-action="quick-reject">No</button>`;
+            }
+            quickActions.style.display = 'flex';
+        } else {
+            quickActions.innerHTML = '';
+            quickActions.style.display = 'none';
+        }
+    } else {
+        inputSection.style.display = 'none';
+    }
+
+    // Progress bar with phase colors
+    const progPct = Math.round((agent.progress_pct || 0) * 100);
+    const progBar = el.progressBar;
+    const progFill = el.progressFill;
+    progFill.style.transform = `scaleX(${progPct / 100})`;
+    progBar.setAttribute('aria-valuenow', progPct);
+    progBar.setAttribute('aria-valuemin', '0');
+    progBar.setAttribute('aria-valuemax', '100');
+    // Phase-based color
+    // Use server-provided phase if available, fallback to status-based mapping
+    const phaseMap = { planning: 'phase-planning', reading: 'phase-reading', implementing: 'phase-implementing', working: 'phase-implementing', testing: 'phase-testing', idle: 'phase-complete', complete: 'phase-complete' };
+    const phase = agent.phase || agent.status;
+    progFill.className = 'progress-bar-fill ' + (phaseMap[phase] || '');
+
+    // Progress text from output parsing
+    const progTextEl = el.progressText;
+    if (progTextEl) {
+        const progText = detectProgressText(agent);
+        if (progText) {
+            progTextEl.textContent = progText;
+            progTextEl.style.display = '';
+        } else {
+            progTextEl.style.display = 'none';
+        }
+    }
+
+    // Mini-stats row — tool invocation counts from output
+    const miniStatsEl = el.miniStats;
+    if (miniStatsEl) {
+        const counts = detectToolCounts(agent);
+        if (counts && Object.values(counts).some(v => v > 0)) {
+            const parts = [];
+            if (counts.read) parts.push(`R:${counts.read}`);
+            if (counts.edit) parts.push(`E:${counts.edit}`);
+            if (counts.write) parts.push(`W:${counts.write}`);
+            if (counts.bash) parts.push(`B:${counts.bash}`);
+            if (counts.grep) parts.push(`G:${counts.grep}`);
+            if (counts.glob) parts.push(`Gl:${counts.glob}`);
+            miniStatsEl.innerHTML = parts.map(p => `<span class="mini-stat has-val">${p}</span>`).join('');
+            miniStatsEl.style.display = 'flex';
+        } else {
+            miniStatsEl.style.display = 'none';
+        }
+    }
+
+    // Context bar — shows % remaining (like Claude Code)
+    const usedPct = Math.round((agent.context_pct || 0) * 100);
+    const remainPct = Math.max(0, 100 - usedPct);
+    // Color based on remaining: green=plenty, yellow=getting low, red=critical
+    const ctxLevel = remainPct > 50 ? 'low' : remainPct > 20 ? 'medium' : 'high';
+    const ctxBar = el.contextBar;
+    const fill = el.contextFill;
+    fill.style.transform = `scaleX(${Math.max(usedPct, 1) / 100})`;
+    fill.className = 'context-bar-fill ' + ctxLevel;
+    ctxBar.setAttribute('aria-valuenow', remainPct);
+    ctxBar.setAttribute('aria-valuemin', '0');
+    ctxBar.setAttribute('aria-valuemax', '100');
+    // Percentage remaining label — always visible
+    const pctLabel = el.contextPctLabel;
+    if (pctLabel) {
+        pctLabel.textContent = `${remainPct}%`;
+        pctLabel.className = 'context-pct-label ' + ctxLevel;
+    }
+    // Token count text — always visible
+    const ctxText = el.contextText;
+    const ctxWarn = el.contextWarnIcon;
+    if (ctxText) {
+        const ctxWindow = agent.context_window || 200000;
+        const ctxWindowK = Math.round(ctxWindow / 1000);
+        const usedTokens = Math.round((agent.context_pct || 0) * ctxWindow);
+        const remainTokens = ctxWindow - usedTokens;
+        const remainK = (remainTokens / 1000).toFixed(1);
+        ctxText.textContent = `${remainK}K / ${ctxWindowK}K left`;
+        ctxText.className = 'context-text visible' + (remainPct <= 20 ? ' warning' : '');
+        ctxBar.title = `${remainPct}% remaining — ~${remainTokens.toLocaleString()} of ${ctxWindow.toLocaleString()} tokens left`;
+    }
+    if (ctxWarn) {
+        ctxWarn.className = 'context-warn-icon' + (remainPct <= 20 ? ' visible' : '');
+    }
+    // Context warning toasts (only fire once per threshold per agent)
+    if (!card._ctxWarned80 && remainPct <= 20 && remainPct > 10) {
+        card._ctxWarned80 = true;
+        showToast(`${agent.name}: Context at ${usedPct}% — consider compacting or restarting`, 'warning');
+    }
+    if (!card._ctxWarned90 && remainPct <= 10) {
+        card._ctxWarned90 = true;
+        showToast(`${agent.name}: Context nearly full (${usedPct}%) — restart recommended`, 'error');
+    }
+
+    // Message badge
+    const msgBadge = el.messageBadge;
+    if (msgBadge) {
+        if (agent.unread_messages > 0) {
+            msgBadge.textContent = agent.unread_messages;
+            msgBadge.classList.add('active');
+        } else {
+            msgBadge.classList.remove('active');
+        }
+    }
+
+    // Conflict badge
+    const conflictBadge = el.conflictBadge;
+    if (conflictBadge) {
+        const agentConflicts = state.conflicts.get(agent.id);
+        if (agentConflicts && agentConflicts.size > 0) {
+            conflictBadge.innerHTML = `${icon('alert-triangle', 12)} ${agentConflicts.size}`;
+            conflictBadge.title = `File conflicts: ${[...agentConflicts].join(', ')}`;
+            conflictBadge.classList.add('active');
+        } else {
+            conflictBadge.classList.remove('active');
+        }
+    }
+
+    // Files touched badge
+    const filesBadge = el.filesBadge;
+    if (agent.files_touched > 0) {
+        filesBadge.textContent = `${agent.files_touched} file${agent.files_touched !== 1 ? 's' : ''}`;
+        filesBadge.style.display = '';
+    } else {
+        filesBadge.style.display = 'none';
+    }
+
+    // Bookmarks badge
+    const bmBadge = el.bookmarksBadge;
+    if (bmBadge) {
+        const bmCount = agent.bookmarks?.length || 0;
+        if (bmCount > 0) {
+            bmBadge.textContent = `★ ${bmCount}`;
+            bmBadge.style.display = '';
+            bmBadge.onclick = (e) => { e.stopPropagation(); openDeepView(agent.id); setTimeout(() => switchDeepTab('terminal'), 100); setTimeout(() => toggleBookmarksPanel(), 200); };
+        } else {
+            bmBadge.style.display = 'none';
+        }
+    }
+
+    // Error count badge (cached by buffer length)
+    const errBadge = el.errorCountBadge;
+    if (errBadge) {
+        const lines = agent._outputBuffer || agent.output_lines || [];
+        let errCount = 0;
+        if (agent._errCountLen !== lines.length) {
+            const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+            const tail = lines.slice(-200);
+            for (const l of tail) {
+                const s = l.replace(ansiRe, '');
+                if (/\b(error|exception|traceback|FAIL(ED)?|ERROR|panic|fatal)\b/i.test(s)) errCount++;
+            }
+            agent._errCountLen = lines.length;
+            agent._errCountCache = errCount;
+        } else {
+            errCount = agent._errCountCache || 0;
+        }
+        if (errCount > 0) {
+            errBadge.textContent = `${errCount} err${errCount > 1 ? 's' : ''}`;
+            errBadge.style.display = '';
+            errBadge.onclick = (e) => {
+                e.stopPropagation();
+                openDeepView(agent.id);
+                setTimeout(() => {
+                    const searchInput = document.getElementById('deepSearchInput');
+                    if (searchInput) { searchInput.value = 'error|exception|traceback|FAIL'; deepSearch(); }
+                }, 200);
+            };
+        } else {
+            errBadge.style.display = 'none';
+        }
+    }
+
+    // Sparkline (A3)
+    const sparkCanvas = el.sparkline;
+    if (sparkCanvas && agent._outputHistory?.length > 1) {
+        const ctx = sparkCanvas.getContext('2d');
+        const w = sparkCanvas.width, h = sparkCanvas.height;
+        ctx.clearRect(0, 0, w, h);
+        const data = agent._outputHistory;
+        const maxVal = Math.max(1, ...data);
+        const step = w / Math.max(1, data.length - 1);
+        ctx.beginPath();
+        ctx.moveTo(0, h - (data[0] / maxVal) * h);
+        for (let i = 1; i < data.length; i++) {
+            ctx.lineTo(i * step, h - (data[i] / maxVal) * h);
+        }
+        ctx.strokeStyle = roleColor;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        // Fill below
+        ctx.lineTo((data.length - 1) * step, h);
+        ctx.lineTo(0, h);
+        ctx.closePath();
+        ctx.fillStyle = roleColor + '33';
+        ctx.fill();
+    }
+
+    // Health trend sparkline
+    const healthSparkCanvas = el.healthSparkline;
+    if (healthSparkCanvas && agent._healthHistory?.length > 2) {
+        const ctx2 = healthSparkCanvas.getContext('2d');
+        const w2 = healthSparkCanvas.width, h2 = healthSparkCanvas.height;
+        ctx2.clearRect(0, 0, w2, h2);
+        const hData = agent._healthHistory;
+        const step2 = w2 / Math.max(1, hData.length - 1);
+        // Draw threshold line at 0.6
+        ctx2.strokeStyle = 'rgba(255,255,255,0.08)';
+        ctx2.lineWidth = 0.5;
+        ctx2.beginPath();
+        ctx2.moveTo(0, h2 * 0.4);
+        ctx2.lineTo(w2, h2 * 0.4);
+        ctx2.stroke();
+        // Draw health line with gradient
+        ctx2.beginPath();
+        ctx2.moveTo(0, h2 - hData[0] * h2);
+        for (let i = 1; i < hData.length; i++) {
+            ctx2.lineTo(i * step2, h2 - hData[i] * h2);
+        }
+        const lastVal = hData[hData.length - 1];
+        ctx2.strokeStyle = lastVal >= 0.7 ? '#22C55E' : lastVal >= 0.4 ? '#EAB308' : '#EF4444';
+        ctx2.lineWidth = 1.5;
+        ctx2.stroke();
+    } else if (healthSparkCanvas) {
+        healthSparkCanvas.getContext('2d').clearRect(0, 0, healthSparkCanvas.width, healthSparkCanvas.height);
+    }
+
+    // Pin indicator (E4)
+    card.classList.toggle('pinned', state.pinnedAgents.has(agent.id));
+
+    // Pipeline position badge
+    const pipelineBadge = el.pipelineBadge;
+    if (pipelineBadge) {
+        if (agent.workflow_run_id) {
+            const run = state.workflowRuns.get(agent.workflow_run_id);
+            if (run && run.agent_ids) {
+                const pos = run.agent_ids.indexOf(agent.id) + 1;
+                const total = run.agent_ids.length;
+                pipelineBadge.innerHTML = `${icon('git-merge', 12)} ${pos}/${total}`;
+                pipelineBadge.classList.add('active');
+            } else {
+                pipelineBadge.classList.remove('active');
+            }
+        } else {
+            pipelineBadge.classList.remove('active');
+        }
+    }
+
+    // Model badge
+    const modelBadge = el.modelBadge;
+    if (modelBadge) {
+        if (agent.model) {
+            const shortModel = agent.model.replace(/^claude-/, '').replace(/-\d{8}$/, '');
+            modelBadge.textContent = shortModel;
+            modelBadge.style.display = '';
+        } else {
+            modelBadge.style.display = 'none';
+        }
+    }
+
+    // Tools permission badge
+    const toolsBadge = el.toolsBadge;
+    if (toolsBadge) {
+        if (agent.tools_allowed && agent.tools_allowed.length > 0) {
+            toolsBadge.innerHTML = `${icon('shield-check', 12)} ${agent.tools_allowed.length}`;
+            toolsBadge.title = `Allowed tools: ${agent.tools_allowed.join(', ')}`;
+            toolsBadge.className = 'card-tools-badge restricted';
+            toolsBadge.style.display = '';
+        } else {
+            toolsBadge.style.display = 'none';
+        }
+    }
+
+    // Git branch badge
+    const branchBadge = el.branchBadge;
+    if (branchBadge) {
+        if (agent.git_branch) {
+            branchBadge.innerHTML = `${icon('git-branch', 10)} ${escapeHtml(agent.git_branch)}`;
+            branchBadge.title = `Branch: ${agent.git_branch}`;
+            branchBadge.style.display = '';
+        } else {
+            branchBadge.style.display = 'none';
+        }
+    }
+
+    // Cost badge — show health score if available, otherwise cost
+    const costBadge = el.costBadge;
+    if (costBadge) {
+        if (typeof agent.health_score === 'number') {
+            const hp = Math.round(agent.health_score * 100);
+            const hpColor = hp >= 80 ? 'var(--success)' : hp >= 50 ? 'var(--orange)' : 'var(--danger)';
+            costBadge.style.display = '';
+            costBadge.style.color = hpColor;
+            costBadge.textContent = `♥ ${hp}%`;
+            costBadge.title = `Health: ${hp}%`;
+        } else if (agent.estimated_cost_usd > 0) {
+            const cost = agent.estimated_cost_usd;
+            const budget = state.config.cost_budget_usd || 0;
+            if (budget > 0) {
+                const budgetPct = Math.min(100, Math.round((cost / budget) * 100));
+                costBadge.textContent = `$${cost.toFixed(2)} / $${budget.toFixed(2)}`;
+                costBadge.style.color = budgetPct >= 90 ? 'var(--danger)' : budgetPct >= 70 ? 'var(--orange)' : '';
+            } else {
+                costBadge.textContent = cost >= 1 ? `$${cost.toFixed(2)}` : `$${cost.toFixed(3)}`;
+            }
+            costBadge.style.display = '';
+        } else {
+            costBadge.style.display = 'none';
+        }
+    }
+
+    // Line count badge
+    const lineCountBadge = el.lineCount;
+    if (lineCountBadge) {
+        const totalLines = agent.total_output_lines || (agent._outputBuffer || []).length;
+        if (totalLines > 0) {
+            lineCountBadge.textContent = totalLines >= 1000 ? `${(totalLines / 1000).toFixed(1)}k ln` : `${totalLines} ln`;
+            lineCountBadge.style.display = '';
+        } else {
+            lineCountBadge.style.display = 'none';
+        }
+    }
+
+    // Status badge — plan-mode aware text
+    const badge = el.statusBadge;
+    if (agent.plan_mode && agent.status === 'planning') {
+        badge.textContent = 'planning...';
+    } else if (agent.plan_mode && agent.status === 'waiting') {
+        badge.textContent = 'plan ready';
+    } else {
+        badge.textContent = agent.status;
+    }
+    badge.className = `status-badge ${agent.status}`;
+    badge.setAttribute('aria-label', `Status: ${badge.textContent}`);
+
+    // Status duration — show how long agent has been in current status
+    const durEl = el.statusDuration;
+    if (durEl && card.dataset.statusSince) {
+        const durSec = (Date.now() - parseInt(card.dataset.statusSince)) / 1000;
+        if (durSec >= 10) {
+            let durText;
+            if (durSec >= 3600) durText = `${Math.floor(durSec/3600)}h${Math.floor((durSec%3600)/60)}m`;
+            else if (durSec >= 60) durText = `${Math.floor(durSec/60)}m${Math.floor(durSec%60)}s`;
+            else durText = `${Math.floor(durSec)}s`;
+            durEl.textContent = durText;
+            durEl.className = 'card-status-duration';
+            if (agent.status === 'waiting' || agent.status === 'error') {
+                if (durSec > 300) durEl.classList.add('danger');
+                else if (durSec > 120) durEl.classList.add('warn');
+            }
+        } else {
+            durEl.textContent = '';
+        }
+    }
+
+    // Meta: memory + time + output rate + cost + health + files
+    const meta = el.meta;
+    const metaParts = [];
+    if (agent.restart_count > 0) metaParts.push(`↻${agent.restart_count}`);
+    if (agent.model) {
+        const shortModel = agent.model.replace(/^claude-/, '').replace(/-\d{8}$/, '').replace(/^grok-/, 'grok ');
+        metaParts.push(shortModel);
+    }
+    if (agent.memory_mb) metaParts.push(`${Math.round(agent.memory_mb)}MB`);
+    if (agent.output_rate) metaParts.push(`${Math.round(agent.output_rate)}l/m`);
+    if (agent.estimated_cost_usd > 0.001) metaParts.push(`$${agent.estimated_cost_usd.toFixed(2)}`);
+    if (agent.files_touched > 0) metaParts.push(`${agent.files_touched} files`);
+    // Tool & file ops from structured parser
+    if (agent.tool_invocations_count > 0) metaParts.push(`${agent.tool_invocations_count} tools`);
+    if (agent.file_operations_count > 0 && !agent.files_touched) metaParts.push(`${agent.file_operations_count} ops`);
+    // Test results
+    if (agent.last_test_result) {
+        const tr = agent.last_test_result;
+        if (tr.failed > 0) metaParts.push(`<span style="color:var(--danger)">${tr.passed}✓ ${tr.failed}✗</span>`);
+        else if (tr.passed > 0) metaParts.push(`<span style="color:var(--success)">${tr.passed}✓</span>`);
+    }
+    // Uptime
+    if (agent.created_at) {
+        const elapsed = (Date.now() - new Date(agent.created_at).getTime()) / 1000;
+        if (elapsed > 3600) metaParts.push(`${Math.floor(elapsed/3600)}h${Math.floor((elapsed%3600)/60)}m`);
+        else if (elapsed > 60) metaParts.push(`${Math.floor(elapsed/60)}m`);
+    }
+    metaParts.push(timeAgo(agent.updated_at || agent.created_at));
+    meta.innerHTML = metaParts.map(p => `<span>${p}</span>`).join('');
+
+    // Tags row
+    const tagsRow = el.tagsRow;
+    if (tagsRow) {
+        const tags = agent.tags || [];
+        if (tags.length > 0) {
+            tagsRow.style.display = 'flex';
+            tagsRow.innerHTML = tags.slice(0, 5).map(t => `<span class="agent-tag-chip" style="font-size:9px;padding:1px 5px">${escapeHtml(t)}</span>`).join('');
+            if (tags.length > 5) tagsRow.innerHTML += `<span style="font-size:9px;color:var(--text-tertiary)">+${tags.length - 5}</span>`;
+        } else {
+            tagsRow.style.display = 'none';
+        }
+    }
+}
+
+function shortenPath(p) {
+    if (!p) return '';
+    return p.replace(/^\/Users\/\w+\//, '~/').replace(/^\/home\/\w+\//, '~/');
+}
+
+function copyWorkingDir(agentId) {
+    const agent = state.agents.get(agentId);
+    if (!agent?.working_dir) return;
+    navigator.clipboard.writeText(agent.working_dir).then(() => {
+        showToast(`Copied: ${shortenPath(agent.working_dir)}`, 'success');
+    }).catch(() => showToast('Failed to copy path', 'error'));
+}
+
+function timeAgo(isoOrDate) {
+    if (!isoOrDate) return '';
+    const t = isoOrDate instanceof Date ? isoOrDate.getTime() : new Date(isoOrDate).getTime();
+    const d = (Date.now() - t) / 1000;
+    if (d < 60) return `${Math.round(d)}s`;
+    if (d < 3600) return `${Math.round(d / 60)}m`;
+    if (d < 86400) return `${Math.round(d / 3600)}h`;
+    return `${Math.round(d / 86400)}d`;
+}
+
+// ── Card Menu ──
+
+let activeMenu = null;
+function toggleCardMenu(agentId) {
+    const card = document.querySelector(`.agent-card[data-agent-id="${agentId}"]`);
+    const menu = card?.querySelector('.card-menu');
+    if (!menu) return;
+    if (activeMenu && activeMenu !== menu) activeMenu.classList.remove('active');
+    menu.classList.toggle('active');
+    activeMenu = menu.classList.contains('active') ? menu : null;
+}
+document.addEventListener('click', (e) => {
+    if (activeMenu) { activeMenu.classList.remove('active'); activeMenu = null; }
+    // Close context menu on any click
+    const ctxMenu = document.getElementById('contextMenu');
+    if (ctxMenu && ctxMenu.classList.contains('active') && !ctxMenu.contains(e.target)) {
+        ctxMenu.classList.remove('active');
+    }
+});
+
+// ── Context Menu (Right-Click) ──
+function showContextMenu(agentId, x, y) {
+    const menu = document.getElementById('contextMenu');
+    if (!menu) return;
+    const agent = state.agents.get(agentId);
+    if (!agent) return;
+    const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
+    const isPaused = agent.status === 'paused';
+
+    menu.dataset.agentId = agentId;
+    menu.innerHTML = `
+        <div class="context-menu-item" data-action="deep-view">${icon('eye', 14)} Open Deep View</div>
+        <div class="context-menu-item" data-action="compare">${icon('columns', 14)} Compare With...</div>
+        <div class="context-menu-item" data-action="split-view">${icon('layout-grid', 14)} Split View</div>
+        <div class="context-menu-item" data-action="clone">${icon('copy', 14)} Clone Agent</div>
+        <div class="context-menu-sep"></div>
+        <div class="context-menu-item" data-action="pause-resume">${icon(isPaused ? 'play' : 'circle-pause', 14)} ${isPaused ? 'Resume' : 'Pause'}</div>
+        <div class="context-menu-item" data-action="restart">${icon('refresh-cw', 14)} Restart</div>
+        <div class="context-menu-item" data-action="retry">${icon('rotate-ccw', 14)} Retry with Changes</div>
+        <div class="context-menu-sep"></div>
+        <div class="context-menu-item" data-action="pin">${icon('pin', 14)} ${agent.pinned ? 'Unpin' : 'Pin'}</div>
+        <div class="context-menu-item" data-action="copy-id">${icon('clipboard', 14)} Copy Agent ID</div>
+        <div class="context-menu-item" data-action="copy-json">${icon('code', 14)} Copy as JSON</div>
+        <div class="context-menu-sep"></div>
+        <div class="context-menu-item danger" data-action="kill">${icon('x', 14)} Kill Agent</div>
+    `;
+
+    // Position: ensure it doesn't go off-screen
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+    menu.classList.add('active');
+
+    // Adjust if off-screen
+    requestAnimationFrame(() => {
+        const rect = menu.getBoundingClientRect();
+        if (rect.right > window.innerWidth) menu.style.left = (x - rect.width) + 'px';
+        if (rect.bottom > window.innerHeight) menu.style.top = (y - rect.height) + 'px';
+    });
+}
+
+function hideContextMenu() {
+    const menu = document.getElementById('contextMenu');
+    if (menu) menu.classList.remove('active');
+}
+// Event delegation for context menu actions (no inline onclick)
+document.getElementById('contextMenu')?.addEventListener('click', (e) => {
+    const actionEl = e.target.closest('[data-action]');
+    if (!actionEl) return;
+    const menu = document.getElementById('contextMenu');
+    const aid = menu?.dataset.agentId;
+    if (!aid) return;
+    hideContextMenu();
+    const actions = {
+        'deep-view': () => openDeepView(aid),
+        'compare': () => openCompare(aid),
+        'split-view': () => openSplitView(aid),
+        'clone': () => cloneAgent(aid),
+        'pause-resume': () => pauseResumeAgent(aid),
+        'restart': () => restartAgent(aid),
+        'retry': () => retryWithTask(aid),
+        'pin': () => togglePin(aid),
+        'copy-id': () => { navigator.clipboard.writeText(aid); showToast('Agent ID copied', 'success'); },
+        'copy-json': () => { const a = state.agents.get(aid); if (a) navigator.clipboard.writeText(JSON.stringify(a, null, 2)); showToast('Agent JSON copied', 'success'); },
+        'kill': () => killAgent(aid),
+    };
+    if (actions[actionEl.dataset.action]) actions[actionEl.dataset.action]();
+});
+
+function showCardPreview(agentId, cardEl) {
+    const agent = state.agents.get(agentId);
+    if (!agent) return;
+    // Skip preview for idle/paused agents with no output
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    if (lines.length === 0) return;
+    const preview = document.getElementById('cardPreview');
+    if (!preview) return;
+    // Take last 6 lines, render via ansiToHtml
+    const tail = lines.slice(-6);
+    preview.innerHTML = tail.map(l => ansiToHtml(l)).join('\n');
+    // Position below the card
+    const rect = cardEl.getBoundingClientRect();
+    let top = rect.bottom + 6;
+    let left = rect.left;
+    // Clamp to viewport
+    const pw = 320, ph = 120;
+    if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+    if (left < 8) left = 8;
+    if (top + ph > window.innerHeight - 8) {
+        top = rect.top - ph - 6; // flip above
+    }
+    preview.style.top = top + 'px';
+    preview.style.left = left + 'px';
+    preview.classList.add('active');
+}
+
+function hideCardPreview() {
+    const preview = document.getElementById('cardPreview');
+    if (preview) preview.classList.remove('active');
+}
+
+async function killAgent(id) {
+    if (activeMenu) { activeMenu.classList.remove('active'); activeMenu = null; }
+    const agent = state.agents.get(id);
+    const name = agent?.name || id;
+    const ok = await confirmAction('Kill Agent', `Terminate "${name}"? This cannot be undone.`, 'Kill', { icon: icon('skull', 20), danger: true });
+    if (ok) {
+        socket.send({ type: 'kill', agent_id: id });
+        // Optimistic UI — immediately reflect killed state
+        if (agent) {
+            agent.status = 'killed';
+            const card = cardElements.get(id);
+            if (card) {
+                card.style.opacity = '0.5';
+                card.style.transition = 'opacity 0.3s ease';
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+function pauseResumeAgent(id) {
+    if (activeMenu) { activeMenu.classList.remove('active'); activeMenu = null; }
+    const a = state.agents.get(id);
+    if (!a) return;
+    socket.send({ type: a.status === 'paused' ? 'resume' : 'pause', agent_id: id });
+}
+
+// ── Spawn Dialog ──
+
+function validateSpawnDir(input) {
+    const hint = document.getElementById('spawnDirHint');
+    if (!hint) return;
+    const val = input.value.trim();
+    if (!val) { hint.style.display = 'none'; return; }
+    const valid = val.startsWith('~/') || val.startsWith('/tmp') || val.startsWith('/Users/') || val.startsWith('/home/');
+    hint.style.display = valid ? 'none' : 'block';
+    hint.textContent = valid ? '' : 'Path must be under ~/ or /tmp';
+}
+
+function openSpawnDialog() {
+    document.getElementById('spawnOverlay').classList.add('active');
+    state.view = 'spawn';
+
+    // Reset form fields (prevents stale data from clone)
+    document.getElementById('spawnName').value = '';
+    document.getElementById('spawnTask').value = '';
+    document.getElementById('spawnDir').value = '';
+    state.selectedRole = state.config.default_role || 'general';
+
+    const roleGrid = document.getElementById('roleGrid');
+    if (!roleGrid.children.length) {
+        let roleIdx = 0;
+        for (const [key, info] of Object.entries(ROLE_INFO)) {
+            roleIdx++;
+            const opt = document.createElement('div');
+            opt.className = 'role-option' + (key === state.selectedRole ? ' selected' : '');
+            opt.dataset.role = key;
+            opt.dataset.roleIdx = roleIdx;
+            opt.setAttribute('role', 'button');
+            opt.setAttribute('tabindex', '0');
+            opt.onkeydown = (e) => { if (e.key === 'Enter') opt.click(); };
+            const numBadge = roleIdx <= 9 ? `<span class="role-num-badge">${roleIdx}</span>` : '';
+            opt.innerHTML = `${numBadge}<div class="role-icon">${icon(info.iconKey || 'bot', 16)}</div><div class="role-name">${info.name.split(' ')[0]}</div><div class="role-desc">${info.desc}</div>`;
+            opt.onclick = () => {
+                roleGrid.querySelectorAll('.role-option').forEach(o => o.classList.remove('selected'));
+                opt.classList.add('selected');
+                state.selectedRole = key;
+                document.getElementById('spawnTask').placeholder = TASK_PLACEHOLDERS[key] || TASK_PLACEHOLDERS.general;
+            };
+            roleGrid.appendChild(opt);
+        }
+    }
+    // Reset role selection to default
+    roleGrid.querySelectorAll('.role-option').forEach(o => {
+        o.classList.toggle('selected', o.dataset.role === state.selectedRole);
+    });
+
+    // Load recent dirs
+    const datalist = document.getElementById('recentDirs');
+    datalist.innerHTML = '';
+    const recent = safeParseJSON('ashlr_recent_dirs', []);
+    recent.forEach(d => { const o = document.createElement('option'); o.value = d; datalist.appendChild(o); });
+
+    const dirInput = document.getElementById('spawnDir');
+    if (!dirInput.value) dirInput.value = state.config.default_working_dir || '~/Projects';
+
+    // Populate project selector
+    const projSel = document.getElementById('spawnProject');
+    projSel.innerHTML = '<option value="">None</option>';
+    state.projects.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name + (p.favorite ? ' \u2605' : '');
+        projSel.appendChild(opt);
+    });
+
+    // Project context pre-fill on selection
+    if (!projSel._contextHandler) {
+        projSel._contextHandler = true;
+        projSel.addEventListener('change', async () => {
+            const pid = projSel.value;
+            if (!pid) return;
+            try {
+                const resp = await apiFetch(`/api/projects/${pid}/context`);
+                if (!resp.ok) return;
+                const ctx = await resp.json();
+                const proj = ctx.project || {};
+                // Pre-fill working directory from project path
+                if (proj.path) document.getElementById('spawnDir').value = proj.path;
+                // Pre-fill backend from project defaults
+                if (proj.default_backend) {
+                    const bSel = document.getElementById('spawnBackend');
+                    if (bSel.querySelector(`option[value="${proj.default_backend}"]`)) bSel.value = proj.default_backend;
+                }
+                // Pre-fill model
+                if (proj.default_model) {
+                    const mSel = document.getElementById('spawnModel');
+                    if (mSel) mSel.value = proj.default_model;
+                }
+                // Pre-fill role
+                if (proj.default_role) {
+                    const roleGrid = document.getElementById('roleGrid');
+                    roleGrid.querySelectorAll('.role-option').forEach(o => {
+                        const match = o.dataset.role === proj.default_role;
+                        o.classList.toggle('selected', match);
+                        if (match) state.selectedRole = proj.default_role;
+                    });
+                }
+                // Show recent tasks from project as suggestions
+                const recentTasksList = document.getElementById('recentTasksList');
+                const projectTasks = ctx.recent_tasks || [];
+                if (projectTasks.length > 0) {
+                    recentTasksList.style.display = '';
+                    recentTasksList.innerHTML = projectTasks.slice(0, 8).map(t => {
+                        const shortTask = (t.task || '').length > 50 ? t.task.slice(0, 50) + '...' : (t.task || '');
+                        return `<span class="recent-task-chip" onclick="document.getElementById('spawnTask').value=this.dataset.task" data-task="${escapeHtml(t.task || '')}" data-tip="${escapeHtml(t.task || '')}">${escapeHtml(shortTask)}</span>`;
+                    }).join('');
+                }
+                // Reload fleet templates for selected project
+                loadFleetTemplates();
+            } catch (e) { /* non-critical */ }
+        });
+    }
+
+    // Load fleet templates on dialog open
+    loadFleetTemplates();
+
+    // Populate backend selector
+    const backendSel = document.getElementById('spawnBackend');
+    backendSel.innerHTML = '';
+    const backends = state.backends || state.config.backends || {};
+    for (const [key, info] of Object.entries(backends)) {
+        const opt = document.createElement('option');
+        opt.value = key;
+        const avail = info.available !== false;
+        opt.textContent = key + (avail ? '' : ' (not installed)');
+        opt.disabled = !avail;
+        backendSel.appendChild(opt);
+    }
+    backendSel.value = state.config.default_backend || 'claude-code';
+
+    // Show print mode toggle only for claude-code backend
+    const printModeRow = document.getElementById('printModeRow');
+    const updatePrintModeVisibility = () => {
+        if (printModeRow) printModeRow.style.display = backendSel.value === 'claude-code' ? '' : 'none';
+    };
+    if (!backendSel._pmHandlerAttached) {
+        backendSel._pmHandlerAttached = true;
+        backendSel.addEventListener('change', updatePrintModeVisibility);
+    }
+    updatePrintModeVisibility();
+
+    document.getElementById('spawnTask').placeholder = TASK_PLACEHOLDERS[state.selectedRole] || TASK_PLACEHOLDERS.general;
+
+    // Load recent tasks
+    const recentTasksList = document.getElementById('recentTasksList');
+    const recentTasks = safeParseJSON('ashlr_recent_tasks', []);
+    if (recentTasks.length > 0) {
+        recentTasksList.style.display = '';
+        recentTasksList.innerHTML = recentTasks.slice(0, 8).map(t => {
+            const shortTask = t.task.length > 50 ? t.task.slice(0, 50) + '...' : t.task;
+            return `<span class="recent-task-chip" onclick="document.getElementById('spawnTask').value=this.dataset.task" data-task="${escapeHtml(t.task)}" data-tip="${escapeHtml(t.task)}">${escapeHtml(shortTask)}</span>`;
+        }).join('');
+    } else {
+        recentTasksList.style.display = 'none';
+    }
+
+    // Load resumable sessions
+    loadResumeSessions();
+
+    // Reset resume mode
+    document.getElementById('resumeSessionId').value = '';
+    const spawnBtn = document.querySelector('.spawn-dialog .btn-primary');
+    if (spawnBtn) spawnBtn.innerHTML = 'Spawn Agent <span style="font-size:9px;opacity:0.6;margin-left:4px">\u2318\u21b5</span>';
+
+    setTimeout(() => document.getElementById('spawnTask').focus(), 100);
+    trapFocus(document.getElementById('spawnOverlay'));
+
+    // Keyboard navigation for role grid
+    if (!roleGrid._kbSetup) {
+        roleGrid._kbSetup = true;
+        roleGrid.addEventListener('keydown', (e) => {
+            const opts = Array.from(roleGrid.querySelectorAll('.role-option'));
+            const current = opts.findIndex(o => o === document.activeElement);
+            if (current === -1) return;
+            let next = -1;
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                next = (current + 1) % opts.length;
+            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                next = (current - 1 + opts.length) % opts.length;
+            }
+            if (next !== -1) {
+                e.preventDefault();
+                opts[next].focus();
+                opts[next].click();
+            }
+        });
+    }
+
+    // Cmd+Enter to spawn from anywhere in the form
+    const overlay = document.getElementById('spawnOverlay');
+    if (!overlay._cmdEnter) {
+        overlay._cmdEnter = true;
+        overlay.addEventListener('keydown', (e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                e.preventDefault();
+                spawnAgent();
+                return;
+            }
+            // Number keys 1-9 to select role (when not in text input)
+            if (!['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) && /^[1-9]$/.test(e.key)) {
+                const idx = parseInt(e.key);
+                const opt = roleGrid.querySelector(`.role-option[data-role-idx="${idx}"]`);
+                if (opt) { e.preventDefault(); opt.click(); }
+            }
+        });
+    }
+}
+
+function closeSpawnDialog() {
+    releaseFocus();
+    document.getElementById('spawnOverlay').classList.remove('active');
+    state.view = 'grid';
+}
+
+async function loadResumeSessions() {
+    const section = document.getElementById('resumeSessionsSection');
+    const list = document.getElementById('resumeSessionsList');
+    try {
+        const res = await apiFetch('/api/sessions/resumable?limit=10');
+        if (!res.ok) { section.style.display = 'none'; return; }
+        const data = await res.json();
+        const sessions = (data.sessions || []).filter(s => {
+            const b = state.backends?.[s.backend];
+            return !b || b.supports_session_resume !== false;
+        });
+        if (!sessions.length) { section.style.display = 'none'; return; }
+        section.style.display = '';
+        list.innerHTML = sessions.slice(0, 5).map(s => {
+            const roleInfo = ROLE_INFO[s.role] || ROLE_INFO.general;
+            const color = roleInfo.color;
+            const taskPreview = (s.task || '').length > 60 ? s.task.slice(0, 60) + '...' : (s.task || 'No task');
+            const dur = s.duration_sec ? formatDuration(s.duration_sec) : '';
+            const ago = s.completed_at ? timeAgo(new Date(s.completed_at)) : '';
+            return `<div class="resume-session-item" onclick="selectResumeSession('${s.id}')" data-session='${JSON.stringify(s).replace(/'/g, "&#39;")}'>
+                <div class="rs-icon" style="background:color-mix(in srgb, ${color} 15%, transparent);color:${color}">${roleIcon(s.role, 14)}</div>
+                <div class="rs-info"><div class="rs-name">${escapeHtml(s.name || s.role)}</div><div class="rs-task">${escapeHtml(taskPreview)}</div></div>
+                <div class="rs-meta">${dur ? dur + '<br>' : ''}${ago}</div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        section.style.display = 'none';
+    }
+}
+
+function selectResumeSession(sessionId) {
+    const item = document.querySelector(`.resume-session-item[onclick*="'${sessionId}'"]`);
+    if (!item) return;
+    const session = JSON.parse(item.dataset.session);
+
+    // Pre-fill spawn form
+    if (session.role) {
+        state.selectedRole = session.role;
+        document.querySelectorAll('#roleGrid .role-option').forEach(o => {
+            o.classList.toggle('selected', o.dataset.role === session.role);
+        });
+    }
+    if (session.working_dir) document.getElementById('spawnDir').value = session.working_dir;
+    if (session.task) document.getElementById('spawnTask').value = session.task;
+    if (session.name) document.getElementById('spawnName').value = session.name;
+    if (session.backend) document.getElementById('spawnBackend').value = session.backend;
+    if (session.model) document.getElementById('spawnModel').value = session.model;
+    if (session.project_id) document.getElementById('spawnProject').value = session.project_id;
+    if (session.plan_mode) document.getElementById('planModeToggle').classList.add('active');
+    else document.getElementById('planModeToggle').classList.remove('active');
+    if (session.tools_allowed && Array.isArray(session.tools_allowed)) {
+        document.getElementById('spawnTools').value = session.tools_allowed.join(',');
+    }
+
+    // Set resume session ID
+    document.getElementById('resumeSessionId').value = sessionId;
+    const spawnBtn = document.querySelector('.spawn-dialog .btn-primary');
+    if (spawnBtn) spawnBtn.innerHTML = 'Resume Agent <span style="font-size:9px;opacity:0.6;margin-left:4px">\u2318\u21b5</span>';
+
+    // Highlight selected item
+    document.querySelectorAll('.resume-session-item').forEach(el => el.style.borderColor = '');
+    item.style.borderColor = 'var(--accent)';
+
+    showToast('Session loaded — click Resume Agent to spawn', 'info');
+}
+
+function filterByBranch(branch) {
+    state.selectedBranch = branch || null;
+    renderAgentGrid();
+    saveFilterState();
+}
+
+function updateBranchFilter() {
+    const sel = document.getElementById('branchSelector');
+    const branches = new Set();
+    for (const agent of state.agents.values()) {
+        if (agent.git_branch) branches.add(agent.git_branch);
+    }
+    if (branches.size === 0) {
+        sel.style.display = 'none';
+        return;
+    }
+    sel.style.display = '';
+    const current = sel.value;
+    sel.innerHTML = '<option value="">All Branches</option>';
+    for (const b of [...branches].sort()) {
+        const opt = document.createElement('option');
+        opt.value = b;
+        opt.textContent = b;
+        sel.appendChild(opt);
+    }
+    sel.value = current;
+}
+
+const FLEET_PRESETS = {
+    'full-stack': {
+        label: 'Full Stack Team',
+        description: 'Frontend + Backend + Tester',
+        agents: [
+            { role: 'frontend', name: 'ui', task: 'Implement the frontend changes. Follow existing component patterns and styling conventions.' },
+            { role: 'backend', name: 'api', task: 'Implement the backend changes. Follow existing API patterns, add proper error handling.' },
+            { role: 'tester', name: 'tests', task: 'Write comprehensive tests for the frontend and backend changes once they are complete.' },
+        ],
+    },
+    'review-team': {
+        label: 'Review Team',
+        description: 'Code Review + Security Audit',
+        agents: [
+            { role: 'reviewer', name: 'review', task: 'Review the recent code changes for bugs, logic errors, and code quality issues.' },
+            { role: 'security', name: 'security', task: 'Perform a security audit of the recent changes. Check for vulnerabilities and auth issues.' },
+        ],
+    },
+    'build-and-test': {
+        label: 'Build & Test',
+        description: 'Backend + Tester + Reviewer',
+        agents: [
+            { role: 'backend', name: 'builder', task: 'Implement the requested feature following existing code patterns.' },
+            { role: 'tester', name: 'tester', task: 'Write tests for the feature once the builder agent completes implementation.' },
+            { role: 'reviewer', name: 'reviewer', task: 'Review all code changes after implementation and testing are complete.' },
+        ],
+    },
+    'docs-and-polish': {
+        label: 'Docs & Polish',
+        description: 'Docs + Architect review',
+        agents: [
+            { role: 'docs', name: 'docs', task: 'Update documentation to reflect recent changes. Add JSDoc, README updates, and API docs.' },
+            { role: 'architect', name: 'refactor', task: 'Review the codebase for refactoring opportunities. Improve code organization and reduce tech debt.' },
+        ],
+    },
+    'quality': {
+        label: 'Quality Check',
+        description: 'Tester + Reviewer + Security',
+        agents: [
+            { role: 'tester', name: 'tests', task: 'Write comprehensive tests covering edge cases, error scenarios, and integration points.' },
+            { role: 'reviewer', name: 'review', task: 'Review all code for bugs, logic errors, naming issues, and adherence to conventions.' },
+            { role: 'security', name: 'security', task: 'Audit the codebase for security vulnerabilities, injection risks, and auth issues.' },
+        ],
+    },
+};
+
+const SPAWN_TEMPLATES = {
+    review: { role: 'reviewer', task: 'Review the recent code changes for bugs, security issues, and code quality. Check for edge cases and suggest improvements.' },
+    tests: { role: 'tester', task: 'Write comprehensive tests for the recent code changes. Cover edge cases, error scenarios, and integration points.' },
+    bugfix: { role: 'backend', task: 'Investigate and fix the reported bug. Find the root cause, implement a fix, and verify it works correctly.' },
+    feature: { role: 'backend', task: 'Implement the requested feature. Follow existing code patterns and conventions. Include error handling.' },
+    security: { role: 'security', task: 'Perform a security audit of the codebase. Check for OWASP top 10 vulnerabilities, injection risks, and auth issues.' },
+    refactor: { role: 'architect', task: 'Refactor the specified code for better maintainability. Improve naming, reduce duplication, simplify complex logic.' },
+};
+
+function applyTemplate(templateKey) {
+    const tmpl = SPAWN_TEMPLATES[templateKey];
+    if (!tmpl) return;
+    // Set role
+    state.selectedRole = tmpl.role;
+    document.querySelectorAll('#roleGrid .role-option').forEach(o => {
+        o.classList.toggle('selected', o.dataset.role === tmpl.role);
+    });
+    // Set task
+    document.getElementById('spawnTask').value = tmpl.task;
+    document.getElementById('spawnTask').placeholder = TASK_PLACEHOLDERS[tmpl.role] || TASK_PLACEHOLDERS.general;
+    showToast(`Template applied: ${templateKey}`, 'info');
+}
+
+let _taskSuggestTimer = null;
+function debouncedTaskSuggestions() {
+    clearTimeout(_taskSuggestTimer);
+    _taskSuggestTimer = setTimeout(loadTaskSuggestions, 500);
+}
+
+async function loadTaskSuggestions() {
+    const task = document.getElementById('spawnTask')?.value?.trim();
+    const container = document.getElementById('taskSuggestions');
+    if (!container) return;
+    if (!task || task.length < 8) { container.style.display = 'none'; return; }
+    try {
+        const resp = await apiFetch(`/api/agents/suggestions?task=${encodeURIComponent(task)}`);
+        if (!resp.ok) { container.style.display = 'none'; return; }
+        const data = await resp.json();
+        const suggestions = data.suggestions || [];
+        if (suggestions.length === 0) { container.style.display = 'none'; return; }
+        let html = '<div class="task-suggestions-label">Similar Past Tasks</div>';
+        for (const s of suggestions) {
+            const roleName = ROLE_INFO[s.role]?.name || s.role;
+            const shortTask = (s.task || '').slice(0, 80);
+            const outcome = s.success ? 'success' : 'failure';
+            const label = s.success ? 'OK' : 'ERR';
+            const dur = s.duration_sec ? (s.duration_sec >= 3600 ? `${(s.duration_sec / 3600).toFixed(1)}h` : `${Math.round(s.duration_sec / 60)}m`) : '';
+            const cost = s.cost_usd > 0 ? ` · $${s.cost_usd.toFixed(2)}` : '';
+            html += `<div class="task-suggestion" data-sug-role="${escapeHtml(s.role)}" data-sug-task="${escapeHtml(s.task || '')}">`;
+            html += `<span class="task-suggestion-role">${escapeHtml(roleName)}</span>`;
+            html += `<span class="task-suggestion-task" data-tip="${escapeHtml(s.task || '')}">${escapeHtml(shortTask)}</span>`;
+            html += `<span class="task-suggestion-outcome ${outcome}">${label}${dur ? ' · ' + dur : ''}${cost}</span>`;
+            html += `</div>`;
+        }
+        container.innerHTML = html;
+        container.querySelectorAll('[data-sug-role]').forEach(el => {
+            el.addEventListener('click', () => applySuggestion(el.dataset.sugRole, el.dataset.sugTask));
+        });
+        container.style.display = 'block';
+    } catch { container.style.display = 'none'; }
+}
+
+function applySuggestion(role, task) {
+    state.selectedRole = role;
+    document.querySelectorAll('#roleGrid .role-option').forEach(o => {
+        o.classList.toggle('selected', o.dataset.role === role);
+    });
+    document.getElementById('spawnTask').value = task;
+    document.getElementById('taskSuggestions').style.display = 'none';
+    showToast('Applied suggestion', 'info');
+}
+
+async function spawnFleet(presetKey) {
+    const preset = FLEET_PRESETS[presetKey];
+    if (!preset) return;
+    if (!state.license?.is_pro) {
+        showToast('Fleet presets require a Pro license. Upgrade at Settings > License', 'warning');
+        return;
+    }
+    const workingDir = document.getElementById('spawnDir')?.value || state.config?.default_working_dir || '';
+    const projectId = document.getElementById('spawnProject')?.value || '';
+    const ok = await confirmAction(`Spawn ${preset.label}`, `Spawn ${preset.agents.length} agents: ${preset.description}?`, 'Spawn Fleet', { iconKey: 'rocket', danger: false });
+    if (!ok) return;
+    let spawned = 0;
+    for (const agentDef of preset.agents) {
+        try {
+            const res = await apiFetch('/api/agents', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    role: agentDef.role,
+                    name: agentDef.name,
+                    task: agentDef.task,
+                    working_dir: workingDir,
+                    project_id: projectId || undefined,
+                }),
+            });
+            if (res.ok) spawned++;
+        } catch (e) { console.warn('Fleet spawn failed for', agentDef.name, e); }
+    }
+    showToast(`Fleet "${preset.label}": ${spawned}/${preset.agents.length} agents spawned`, spawned === preset.agents.length ? 'success' : 'warning');
+    closeSpawnDialog();
+}
+
+function spawnFleetPreset(shortKey) {
+    const keyMap = { fullstack: 'full-stack', review: 'review-team', quality: 'quality' };
+    const presetKey = keyMap[shortKey] || shortKey;
+    closeSpawnDialog();
+    spawnFleet(presetKey);
+}
+
+async function loadFleetTemplates() {
+    try {
+        const projectId = document.getElementById('spawnProject')?.value || '';
+        const url = projectId ? `/api/fleet-templates?project_id=${projectId}` : '/api/fleet-templates';
+        const resp = await apiFetch(url);
+        if (!resp.ok) return;
+        const templates = await resp.json();
+        const section = document.getElementById('fleetTemplateSection');
+        const list = document.getElementById('fleetTemplateList');
+        if (!section || !list) return;
+        if (templates.length === 0) { section.style.display = 'none'; return; }
+        section.style.display = 'block';
+        list.innerHTML = '';
+        for (const t of templates) {
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-ghost btn-sm';
+            btn.style.cssText = 'font-size:10px;padding:3px 8px;border:1px solid var(--border-subtle)';
+            btn.textContent = `${t.name} (${(t.agents || []).length})`;
+            btn.onclick = () => deployFleetTemplate(t.id, t.name);
+            list.appendChild(btn);
+        }
+    } catch (e) { console.warn('Failed to load fleet templates:', e); }
+}
+
+async function deployFleetTemplate(templateId, templateName) {
+    const confirmed = await confirmAction('Deploy Template', `Deploy fleet template "${templateName}"?`, 'Deploy', { danger: false, iconKey: 'rocket' });
+    if (!confirmed) return;
+    const projectId = document.getElementById('spawnProject')?.value || '';
+    try {
+        const resp = await apiFetch(`/api/fleet-templates/${templateId}/deploy`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_id: projectId }),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            showToast(`Deployed ${data.spawned} agents from "${templateName}"`, 'success');
+            closeSpawnDialog();
+        } else {
+            showToast(data.error || 'Deploy failed', 'error');
+        }
+    } catch (e) { showToast('Deploy failed', 'error'); }
+}
+
+async function saveAsFleetTemplate() {
+    const agents = [...state.agents.values()].filter(a => a.status !== 'killed');
+    if (agents.length === 0) { showToast('No running agents to save', 'warning'); return; }
+    const name = prompt('Fleet template name:');
+    if (!name) return;
+    const agentSpecs = agents.map(a => ({
+        role: a.role || 'general',
+        task: a.task || '',
+        backend: a.backend || 'claude-code',
+        model: a.model || '',
+        name: a.name || '',
+    }));
+    try {
+        const resp = await apiFetch('/api/fleet-templates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name,
+                description: `Saved from running fleet (${agents.length} agents)`,
+                project_id: document.getElementById('spawnProject')?.value || '',
+                agents: agentSpecs,
+            }),
+        });
+        if (resp.ok) {
+            showToast(`Fleet template "${name}" saved`, 'success');
+            loadFleetTemplates();
+        } else {
+            const data = await resp.json();
+            showToast(data.error || 'Failed to save template', 'error');
+        }
+    } catch { showToast('Failed to save template', 'error'); }
+}
+
+async function queueFromSpawnDialog() {
+    const name = document.getElementById('spawnName').value.trim();
+    const dir = document.getElementById('spawnDir').value.trim();
+    const task = document.getElementById('spawnTask').value.trim();
+    const planMode = document.getElementById('planModeToggle').classList.contains('active');
+    const backend = document.getElementById('spawnBackend').value || undefined;
+
+    if (!task) { showToast('Task is required', 'warning'); return; }
+    await addToQueue(state.selectedRole, name || undefined, task, dir || undefined, planMode);
+    closeSpawnDialog();
+}
+
+async function spawnAgent() {
+    const name = document.getElementById('spawnName').value.trim();
+    const dir = document.getElementById('spawnDir').value.trim();
+    const task = document.getElementById('spawnTask').value.trim();
+    const planMode = document.getElementById('planModeToggle').classList.contains('active');
+    const printMode = document.getElementById('printModeToggle').classList.contains('active');
+    const projectId = document.getElementById('spawnProject').value || undefined;
+    const backend = document.getElementById('spawnBackend').value || undefined;
+
+    if (!task) {
+        showToast('Task is required', 'warning');
+        return;
+    }
+
+    const spawnBtn = document.querySelector('.spawn-dialog .btn-primary');
+    const origText = spawnBtn?.innerHTML;
+    if (spawnBtn) { spawnBtn.innerHTML = '<span class="btn-spinner"></span> Spawning...'; spawnBtn.disabled = true; }
+
+    // Remove prior error
+    document.querySelector('.spawn-dialog .spawn-error')?.remove();
+
+    try {
+        const model = document.getElementById('spawnModel')?.value || undefined;
+        const toolsRaw = document.getElementById('spawnTools')?.value?.trim();
+        const tools = toolsRaw ? toolsRaw.split(',').map(t => t.trim()).filter(Boolean) : undefined;
+        const resumeSessionId = document.getElementById('resumeSessionId')?.value;
+
+        let resp;
+        if (resumeSessionId) {
+            // Resume mode — call session resume endpoint
+            resp = await apiFetch(`/api/sessions/${resumeSessionId}/resume`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ task, plan_mode: planMode, model, tools }),
+            });
+        } else {
+            resp = await apiFetch('/api/agents', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    role: state.selectedRole,
+                    name: name || undefined,
+                    working_dir: dir || undefined,
+                    task,
+                    plan_mode: planMode,
+                    output_mode: printMode ? 'stream-json' : 'tmux',
+                    project_id: projectId,
+                    backend,
+                    model,
+                    tools,
+                }),
+            });
+        }
+        const data = await resp.json();
+        if (!resp.ok) {
+            const errEl = document.createElement('div');
+            errEl.className = 'spawn-error';
+            errEl.style.cssText = 'color:var(--danger);background:rgba(239,68,68,.1);padding:8px 12px;border-radius:8px;margin-top:8px;font-size:13px;border:1px solid rgba(239,68,68,.15)';
+            errEl.textContent = data.error || 'Spawn failed';
+            const actions = document.querySelector('.spawn-dialog .dialog-actions');
+            if (actions) actions.parentNode.insertBefore(errEl, actions);
+            return;
+        }
+
+        // Save dir to recent
+        if (dir) {
+            const recent = safeParseJSON('ashlr_recent_dirs', []);
+            const updated = [dir, ...recent.filter(d => d !== dir)].slice(0, 10);
+            localStorage.setItem('ashlr_recent_dirs', JSON.stringify(updated));
+        }
+        // Save task to recent
+        if (task) {
+            const recentTasks = safeParseJSON('ashlr_recent_tasks', []);
+            const updated = [{ task, role: state.selectedRole, dir }, ...recentTasks.filter(t => t.task !== task)].slice(0, 15);
+            localStorage.setItem('ashlr_recent_tasks', JSON.stringify(updated));
+        }
+
+        document.getElementById('spawnName').value = '';
+        document.getElementById('spawnTask').value = '';
+        document.getElementById('planModeToggle').classList.remove('active');
+        closeSpawnDialog();
+        showToast(`Agent spawned: ${data.agent?.name || name || 'new agent'}`, 'success');
+    } catch (err) {
+        const errEl = document.createElement('div');
+        errEl.className = 'spawn-error';
+        errEl.style.cssText = 'color:var(--danger);background:rgba(239,68,68,.1);padding:8px 12px;border-radius:8px;margin-top:8px;font-size:13px;border:1px solid rgba(239,68,68,.15)';
+        errEl.textContent = 'Network error — is the server running?';
+        const actions = document.querySelector('.spawn-dialog .dialog-actions');
+            if (actions) actions.parentNode.insertBefore(errEl, actions);
+    } finally {
+        if (spawnBtn) { spawnBtn.innerHTML = origText; spawnBtn.disabled = false; }
+    }
+}
+
+// ── Deep View ──
+
+let deepAutoScroll = true;
+let deepSearchMatches = [];
+let deepSearchIdx = -1;
+
+// ── xterm.js Manager ──
+const xtermManager = {
+    terminal: null,
+    fitAddon: null,
+    searchAddon: null,
+    webglAddon: null,
+    _resizeObserver: null,
+    _available: null, // null = unchecked, true/false after check
+
+    isAvailable() {
+        if (this._available !== null) return this._available;
+        this._available = typeof Terminal !== 'undefined' && typeof FitAddon !== 'undefined';
+        return this._available;
+    },
+
+    create(container) {
+        if (!this.isAvailable()) return false;
+        this.destroy(); // clean up any existing instance
+
+        const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+        this.terminal = new Terminal({
+            disableStdin: true,
+            cursorBlink: false,
+            cursorStyle: 'bar',
+            cursorInactiveStyle: 'none',
+            fontSize: 13,
+            fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+            lineHeight: 1.5,
+            scrollback: 15000,
+            convertEol: true,
+            allowProposedApi: true,
+            theme: isDark ? {
+                background: '#0D1520',
+                foreground: '#E2E8F0',
+                cursor: '#E2E8F0',
+                selectionBackground: 'rgba(99,102,241,0.35)',
+                selectionForeground: '#FFFFFF',
+                black: '#1E293B',
+                red: '#EF4444',
+                green: '#22C55E',
+                yellow: '#EAB308',
+                blue: '#3B82F6',
+                magenta: '#A855F7',
+                cyan: '#06B6D4',
+                white: '#E2E8F0',
+                brightBlack: '#475569',
+                brightRed: '#F87171',
+                brightGreen: '#4ADE80',
+                brightYellow: '#FDE047',
+                brightBlue: '#60A5FA',
+                brightMagenta: '#C084FC',
+                brightCyan: '#22D3EE',
+                brightWhite: '#F8FAFC',
+            } : {
+                background: '#F8FAFC',
+                foreground: '#1E293B',
+                cursor: '#1E293B',
+                selectionBackground: 'rgba(99,102,241,0.25)',
+                selectionForeground: '#000000',
+                black: '#CBD5E1',
+                red: '#DC2626',
+                green: '#16A34A',
+                yellow: '#CA8A04',
+                blue: '#2563EB',
+                magenta: '#9333EA',
+                cyan: '#0891B2',
+                white: '#1E293B',
+                brightBlack: '#94A3B8',
+                brightRed: '#EF4444',
+                brightGreen: '#22C55E',
+                brightYellow: '#EAB308',
+                brightBlue: '#3B82F6',
+                brightMagenta: '#A855F7',
+                brightCyan: '#06B6D4',
+                brightWhite: '#0F172A',
+            }
+        });
+
+        // Load addons
+        try {
+            this.fitAddon = new FitAddon.FitAddon();
+            this.terminal.loadAddon(this.fitAddon);
+        } catch (e) { console.warn('xterm fit addon failed:', e); }
+
+        try {
+            this.searchAddon = new SearchAddon.SearchAddon();
+            this.terminal.loadAddon(this.searchAddon);
+        } catch (e) { console.warn('xterm search addon failed:', e); }
+
+        try {
+            if (typeof WebLinksAddon !== 'undefined') {
+                this.terminal.loadAddon(new WebLinksAddon.WebLinksAddon());
+            }
+        } catch (e) { console.warn('xterm web-links addon failed:', e); }
+
+        // Open terminal in container
+        this.terminal.open(container);
+
+        // Try WebGL renderer for performance
+        try {
+            if (typeof WebglAddon !== 'undefined') {
+                this.webglAddon = new WebglAddon.WebglAddon();
+                this.webglAddon.onContextLoss(() => {
+                    this.webglAddon.dispose();
+                    this.webglAddon = null;
+                });
+                this.terminal.loadAddon(this.webglAddon);
+            }
+        } catch (e) { console.warn('xterm WebGL not available, using canvas:', e); }
+
+        // Fit to container
+        requestAnimationFrame(() => {
+            if (this.fitAddon) try { this.fitAddon.fit(); } catch(e) {}
+        });
+
+        // Auto-resize on container size change
+        this._resizeObserver = new ResizeObserver(() => {
+            if (this.fitAddon) try { this.fitAddon.fit(); } catch(e) {}
+        });
+        this._resizeObserver.observe(container);
+
+        return true;
+    },
+
+    write(data) {
+        if (this.terminal) this.terminal.write(data);
+    },
+
+    writeln(line) {
+        if (this.terminal) this.terminal.writeln(line);
+    },
+
+    writeLines(lines) {
+        if (!this.terminal) return;
+        // Batch write for performance
+        const data = lines.join('\r\n') + '\r\n';
+        this.terminal.write(data);
+    },
+
+    clear() {
+        if (this.terminal) { this.terminal.clear(); this.terminal.reset(); }
+    },
+
+    search(query) {
+        if (this.searchAddon && query) return this.searchAddon.findNext(query);
+        return false;
+    },
+
+    searchPrev(query) {
+        if (this.searchAddon && query) return this.searchAddon.findPrevious(query);
+        return false;
+    },
+
+    clearSearch() {
+        if (this.searchAddon) this.searchAddon.clearDecorations();
+    },
+
+    scrollToBottom() {
+        if (this.terminal) this.terminal.scrollToBottom();
+    },
+
+    isAtBottom() {
+        if (!this.terminal) return true;
+        const buf = this.terminal.buffer.active;
+        return buf.viewportY >= buf.baseY;
+    },
+
+    updateTheme() {
+        if (!this.terminal) return;
+        const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+        this.terminal.options.theme = isDark ? {
+            background: '#0D1520', foreground: '#E2E8F0',
+            selectionBackground: 'rgba(99,102,241,0.35)',
+            black: '#1E293B', red: '#EF4444', green: '#22C55E', yellow: '#EAB308',
+            blue: '#3B82F6', magenta: '#A855F7', cyan: '#06B6D4', white: '#E2E8F0',
+            brightBlack: '#475569', brightRed: '#F87171', brightGreen: '#4ADE80', brightYellow: '#FDE047',
+            brightBlue: '#60A5FA', brightMagenta: '#C084FC', brightCyan: '#22D3EE', brightWhite: '#F8FAFC',
+        } : {
+            background: '#F8FAFC', foreground: '#1E293B',
+            selectionBackground: 'rgba(99,102,241,0.25)',
+            black: '#CBD5E1', red: '#DC2626', green: '#16A34A', yellow: '#CA8A04',
+            blue: '#2563EB', magenta: '#9333EA', cyan: '#0891B2', white: '#1E293B',
+            brightBlack: '#94A3B8', brightRed: '#EF4444', brightGreen: '#22C55E', brightYellow: '#EAB308',
+            brightBlue: '#3B82F6', brightMagenta: '#A855F7', brightCyan: '#06B6D4', brightWhite: '#0F172A',
+        };
+    },
+
+    destroy() {
+        if (this._resizeObserver) { this._resizeObserver.disconnect(); this._resizeObserver = null; }
+        if (this.webglAddon) { try { this.webglAddon.dispose(); } catch(e) {} this.webglAddon = null; }
+        if (this.searchAddon) { this.searchAddon = null; }
+        if (this.fitAddon) { this.fitAddon = null; }
+        if (this.terminal) { this.terminal.dispose(); this.terminal = null; }
+    }
+};
+
+function openDeepView(agentId) {
+    const agent = state.agents.get(agentId);
+    if (!agent) return;
+
+    state.focusedAgentId = agentId;
+    state.view = 'deep';
+    const savedScrollPos = state.deepScrollPositions.get(agentId);
+    deepAutoScroll = savedScrollPos == null; // Auto-scroll only if no saved position
+    // Clear stale search/virtual terminal state from previous agent
+    deepSearchMatches = [];
+    deepSearchIdx = -1;
+    _virtualSearchMatches = [];
+    virtualTermData = [];
+    // Clear stale server search state from previous agent
+    const _prevTerminal = document.getElementById('deepTerminal');
+    if (_prevTerminal) _prevTerminal._origContent = null;
+
+    document.getElementById('deepView').classList.add('active');
+    updateDeepViewHeader(agent);
+    startDeepTimeTimer();
+    startMinimapUpdates();
+    startScrollSpeedTracking();
+    renderQuickReplies();
+
+    // Reset toolbar state (scroll position restore may override these)
+    document.getElementById('toolbarAutoScroll').classList.toggle('active', savedScrollPos == null);
+    document.getElementById('followIndicator').style.display = savedScrollPos == null ? '' : 'none';
+    document.getElementById('toolbarLineWrap').classList.remove('active');
+
+    // Update mark button state for this agent
+    const markBtn = document.getElementById('toolbarMark');
+    const markLine = getOutputMarkLine(agentId);
+    if (markLine >= 0) {
+        markBtn.classList.add('active');
+        markBtn.textContent = `⚑ Marked (${markLine})`;
+    } else {
+        markBtn.classList.remove('active');
+        markBtn.textContent = '⚑ Mark';
+    }
+
+    const terminal = document.getElementById('deepTerminal');
+    // Defensive: clean up scroll handler from previous agent before reuse
+    if (terminal._ashlrScrollHandler) {
+        terminal.removeEventListener('scroll', terminal._ashlrScrollHandler);
+        terminal._ashlrScrollHandler = null;
+    }
+    terminal.innerHTML = '';
+
+    const lines = agent._outputBuffer || [];
+    const useXterm = xtermManager.isAvailable();
+
+    if (useXterm) {
+        // ── xterm.js rendering path ──
+        terminal.style.whiteSpace = '';
+        terminal.style.wordWrap = '';
+        terminal.style.padding = '0';
+        terminal.style.overflow = 'hidden';
+        terminal.classList.add('xterm-active');
+        xtermManager.create(terminal);
+        if (lines.length) {
+            // Write all buffered output at once
+            xtermManager.terminal.write(lines.join('\r\n') + '\r\n');
+        } else {
+            xtermManager.terminal.writeln('\x1b[2m Loading output...\x1b[0m');
+            loadOutputChunk(agentId, 'initial').then(() => {
+                if (state.focusedAgentId !== agentId) return;
+                const freshAgent = state.agents.get(agentId);
+                if (!freshAgent) return;
+                const buf = freshAgent._outputBuffer || [];
+                if (!buf.length) return;
+                xtermManager.clear();
+                xtermManager.terminal.write(buf.join('\r\n') + '\r\n');
+                if (deepAutoScroll) xtermManager.scrollToBottom();
+            }).catch(e => console.warn('Deep view progressive load failed:', e.message));
+        }
+        if (deepAutoScroll) xtermManager.scrollToBottom();
+    } else {
+        // ── Legacy DOM rendering path ──
+        terminal.style.whiteSpace = 'pre-wrap';
+        terminal.style.wordWrap = 'break-word';
+        terminal.classList.remove('xterm-active');
+        if (lines.length) {
+            _addLoadMoreIndicator(terminal);
+            resetCodeBlockState(agentId);
+            if (_showTimestamps) terminal.classList.add('show-timestamps');
+            const tsMap = agent._outputTimestamps || [];
+            const frag = document.createDocumentFragment();
+            for (let li = 0; li < lines.length; li++) {
+                const cl = classifyTerminalLine(lines[li], agentId);
+                const div = document.createElement('div');
+                div.className = cl.className;
+                const ts = tsMap[li] ? `<span class="line-timestamp">${formatLineTimestamp(tsMap[li])}</span>` : '<span class="line-timestamp"></span>';
+                div.innerHTML = ts + cl.html;
+                addLineNumber(div, li, agentId);
+                frag.appendChild(div);
+            }
+            terminal.appendChild(frag);
+            const ps = _getProgressiveState(agent);
+            if (ps.loadedFrom < 0) {
+                const totalKnown = agent.total_output_lines || lines.length;
+                if (totalKnown > lines.length) {
+                    ps.total = totalKnown;
+                    ps.loadedFrom = totalKnown - lines.length;
+                    ps.hasMore = ps.loadedFrom > 0;
+                } else {
+                    ps.loadedFrom = 0;
+                    ps.total = lines.length;
+                    ps.hasMore = false;
+                }
+            }
+            _updateLoadMoreIndicator(agentId);
+            applyOutputFolding(terminal);
+        } else {
+            terminal.innerHTML = '<span style="color:var(--text-tertiary)">Loading output...</span>';
+            loadOutputChunk(agentId, 'initial').then(() => {
+                if (state.focusedAgentId !== agentId) return;
+                const freshAgent = state.agents.get(agentId);
+                if (!freshAgent) return;
+                const buf = freshAgent._outputBuffer || [];
+                if (!buf.length) return;
+                const termEl = document.getElementById('deepTerminal');
+                if (!termEl) return;
+                termEl.innerHTML = '';
+                _addLoadMoreIndicator(termEl);
+                resetCodeBlockState(agentId);
+                const frag = document.createDocumentFragment();
+                for (let li = 0; li < buf.length; li++) {
+                    const cl = classifyTerminalLine(buf[li], agentId);
+                    const div = document.createElement('div');
+                    div.className = cl.className;
+                    div.innerHTML = cl.html;
+                    addLineNumber(div, li, agentId);
+                    frag.appendChild(div);
+                }
+                termEl.appendChild(frag);
+                _updateLoadMoreIndicator(agentId);
+                applyOutputFolding(termEl);
+                scrollDeepToBottom();
+            }).catch(e => console.warn('Deep view progressive load failed:', e.message));
+        }
+    }
+    // Apply line annotations from localStorage
+    if (!useXterm) requestAnimationFrame(() => applyAnnotationsToTerminal());
+    // Load split notes if split pane is active
+    if (_splitPaneActive) { loadSplitNotes(); renderSplitAnnotations(); }
+
+    // Restore saved scroll position or scroll to bottom
+    if (useXterm) {
+        if (deepAutoScroll) xtermManager.scrollToBottom();
+    } else if (savedScrollPos != null) {
+        requestAnimationFrame(() => {
+            terminal.scrollTop = savedScrollPos;
+            deepAutoScroll = false;
+            document.getElementById('toolbarAutoScroll').classList.remove('active');
+            document.getElementById('followIndicator').style.display = 'none';
+        });
+    } else {
+        scrollDeepToBottom();
+    }
+
+    // Scroll handler — xterm.js manages its own scroll, legacy needs DOM handler
+    if (!useXterm) {
+    if (terminal._ashlrScrollHandler) terminal.removeEventListener('scroll', terminal._ashlrScrollHandler);
+    terminal._ashlrScrollHandler = () => {
+        const isBottom = terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 40;
+        deepAutoScroll = isBottom;
+        document.getElementById('jumpToBottom').classList.toggle('visible', !isBottom);
+        document.getElementById('toolbarAutoScroll').classList.toggle('active', isBottom);
+        document.getElementById('followIndicator').style.display = isBottom ? '' : 'none';
+        // Progressive load: trigger when scrolling near top
+        if (terminal.scrollTop < 100 && state.focusedAgentId && !_progressiveLoading) {
+            const ag = state.agents.get(state.focusedAgentId);
+            if (ag && _getProgressiveState(ag).hasMore) {
+                loadOutputChunk(state.focusedAgentId, 'older');
+            }
+        }
+    };
+    terminal.addEventListener('scroll', terminal._ashlrScrollHandler);
+    } // end if (!useXterm) scroll handler block
+
+    setTimeout(() => document.getElementById('deepInput').focus(), 100);
+
+    // Tab bar always visible (Activity tab available for all agents)
+    const tabBar = document.getElementById('deepTabBar');
+    tabBar.style.display = '';
+    // Set up scratchpad tab if agent has a project
+    const scratchpadPanel = document.getElementById('deepScratchpadPanel');
+    const activityPanel = document.getElementById('deepActivityPanel');
+    const tabScratchpad = document.getElementById('deepTabScratchpad');
+    if (agent.project_id) {
+        _scratchpadProjectId = agent.project_id;
+        tabScratchpad.style.display = '';
+    } else {
+        _scratchpadProjectId = null;
+        tabScratchpad.style.display = 'none';
+    }
+    // Show/hide interactive terminal tab (not available for stream-json agents)
+    const tabInteractive = document.getElementById('deepTabInteractive');
+    const interactivePanel = document.getElementById('deepInteractivePanel');
+    if (tabInteractive) tabInteractive.style.display = agent.output_mode === 'stream-json' ? 'none' : '';
+    if (interactivePanel) interactivePanel.style.display = 'none';
+    // Disconnect any previous interactive PTY session
+    disconnectInteractiveTerminal();
+
+    // Always reset to terminal tab
+    scratchpadPanel.style.display = 'none';
+    activityPanel.style.display = 'none';
+    terminal.style.display = '';
+    document.getElementById('terminalToolbar').style.display = '';
+    document.getElementById('deepTabTerminal').classList.add('active');
+    document.getElementById('deepTabActivity').classList.remove('active');
+    if (tabInteractive) tabInteractive.classList.remove('active');
+    tabScratchpad.classList.remove('active');
+}
+
+function updateDeepViewHeader(agent) {
+    if (!agent) return;
+    if (state.view !== 'deep') return;
+    const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
+    const iconEl = document.getElementById('deepIcon');
+    if (!iconEl) return;  // deep view not in DOM yet
+    iconEl.innerHTML = roleIcon(agent.role, 20);
+    document.getElementById('deepName').textContent = agent.name;
+    document.getElementById('deepRole').textContent = info.name;
+    document.getElementById('deepWorkDir').textContent = shortenPath(agent.working_dir);
+    document.getElementById('deepWorkDir').title = agent.working_dir || '';
+
+    const statusEl = document.getElementById('deepStatus');
+    statusEl.textContent = agent.status;
+    statusEl.style.color = { working: 'var(--accent)', planning: 'var(--warning)', waiting: 'var(--orange)', error: 'var(--danger)', paused: 'var(--text-tertiary)', reading: 'var(--accent)' }[agent.status] || 'var(--text-primary)';
+
+    // Phase
+    const phaseEl = document.getElementById('deepPhase');
+    phaseEl.textContent = agent.phase || '-';
+    const phaseColors = { planning: 'var(--warning)', reading: '#3B82F6', implementing: 'var(--success)', testing: 'var(--cyan)', complete: '#10B981' };
+    phaseEl.style.color = phaseColors[agent.phase] || 'var(--text-tertiary)';
+
+    const ctxUsedPct = Math.round((agent.context_pct || 0) * 100);
+    const ctxRemainPct = Math.max(0, 100 - ctxUsedPct);
+    const ctxWin = agent.context_window || 200000;
+    const ctxRemainTokens = Math.round((1 - (agent.context_pct || 0)) * ctxWin);
+    const ctxRemainK = (ctxRemainTokens / 1000).toFixed(1);
+    const ctxWinK = Math.round(ctxWin / 1000);
+    const deepCtxEl = document.getElementById('deepContext');
+    deepCtxEl.textContent = `${ctxRemainPct}% remaining — ${ctxRemainK}K / ${ctxWinK}K left`;
+    deepCtxEl.style.color = ctxRemainPct <= 20 ? 'var(--danger)' : ctxRemainPct <= 50 ? 'var(--warning)' : '#4ADE80';
+    // Update deep view context bar (fill = used portion)
+    const deepCtxFill = document.getElementById('deepContextFill');
+    if (deepCtxFill) {
+        deepCtxFill.style.width = `${Math.max(ctxUsedPct, 1)}%`;
+        const ctxGrad = ctxRemainPct <= 20 ? 'linear-gradient(90deg, #DC2626, #EF4444, #F87171)' :
+                         ctxRemainPct <= 50 ? 'linear-gradient(90deg, #D97706, #F59E0B, #FBBF24)' :
+                                              'linear-gradient(90deg, #059669, #22C55E, #4ADE80)';
+        deepCtxFill.style.background = ctxGrad;
+        deepCtxFill.style.boxShadow = ctxRemainPct <= 20 ? '0 0 8px rgba(239,68,68,0.4)' :
+                                       ctxRemainPct <= 50 ? '0 0 6px rgba(245,158,11,0.3)' :
+                                                            '0 0 4px rgba(34,197,94,0.25)';
+    }
+    document.getElementById('deepMemory').textContent = `${Math.round(agent.memory_mb || 0)} MB`;
+    // Line count — prefer server-side total which includes archived lines
+    const totalLines = agent.total_output_lines || (agent._outputBuffer || []).length;
+    const lineCountStr = totalLines > 1000 ? `${(totalLines / 1000).toFixed(1)}K lines` : `${totalLines} lines`;
+    document.getElementById('deepLineCount').textContent = totalLines > 0 ? lineCountStr : '';
+    document.getElementById('deepLineCount').title = totalLines > 0 ? `${totalLines.toLocaleString()} lines, ${(agent.total_output_chars || 0).toLocaleString()} chars` : '';
+
+    // Health score
+    const healthEl = document.getElementById('deepHealth');
+    const hs = agent.health_score ?? 1.0;
+    const hsPct = Math.round(hs * 100);
+    healthEl.textContent = `${hsPct}%`;
+    healthEl.style.color = hs >= 0.8 ? 'var(--success)' : hs >= 0.6 ? 'var(--warning)' : 'var(--danger)';
+
+    // Efficiency score
+    const effEl = document.getElementById('deepEfficiency');
+    if (effEl && agent.efficiency) {
+        const eff = agent.efficiency;
+        const effPct = Math.round(eff.score * 100);
+        effEl.textContent = `${effPct}%`;
+        effEl.style.color = eff.score >= 0.7 ? 'var(--success)' : eff.score >= 0.4 ? 'var(--warning)' : 'var(--danger)';
+        const parts = [`${eff.tools_per_min} tools/min`, `${eff.files_per_min} files/min`, `${eff.lines_per_min} lines/min`];
+        if (eff.error_rate > 0) parts.push(`${(eff.error_rate * 100).toFixed(1)}% error rate`);
+        parts.push(`Context efficiency: ${Math.round(eff.context_efficiency * 100)}%`);
+        effEl.title = parts.join(' · ');
+    }
+
+    if (agent.created_at) {
+        const secs = Math.round((Date.now() - new Date(agent.created_at).getTime()) / 1000);
+        const m = Math.floor(secs / 60), s = secs % 60;
+        document.getElementById('deepTime').textContent = `${m}m ${s}s`;
+    }
+
+    // Tokens + Cost
+    const tokIn = agent.tokens_input || 0;
+    const tokOut = agent.tokens_output || 0;
+    const tokTotal = tokIn + tokOut;
+    const tokEl = document.getElementById('deepTokens');
+    tokEl.textContent = tokTotal > 1000 ? `${(tokTotal / 1000).toFixed(1)}K` : `${tokTotal}`;
+    tokEl.title = `In: ${tokIn.toLocaleString()} · Out: ${tokOut.toLocaleString()}`;
+    const costEl = document.getElementById('deepCost');
+    const cost = agent.estimated_cost_usd || 0;
+    const costPrefix = agent.cost_is_estimated ? '~' : '';
+    costEl.textContent = cost > 0 ? `${costPrefix}$${cost.toFixed(4)}` : '-';
+    // Cost burn rate tooltip
+    const burn = agent.cost_burn_rate;
+    if (burn) {
+        const parts = [`$${burn.cost_per_min.toFixed(4)}/min`, `${burn.tokens_per_min.toLocaleString()} tok/min`];
+        if (burn.minutes_remaining != null) {
+            const mins = burn.minutes_remaining;
+            parts.push(mins > 60 ? `~${(mins / 60).toFixed(1)}h remaining` : `~${Math.round(mins)}m remaining`);
+        }
+        parts.push(`Uptime: ${burn.uptime_min.toFixed(1)}m`);
+        costEl.title = parts.join(' · ');
+        if (burn.minutes_remaining != null && burn.minutes_remaining < 10) {
+            costEl.style.color = 'var(--danger)';
+        } else if (burn.minutes_remaining != null && burn.minutes_remaining < 30) {
+            costEl.style.color = 'var(--warning)';
+        } else {
+            costEl.style.color = '';
+        }
+    } else {
+        costEl.title = '';
+        costEl.style.color = '';
+    }
+
+    // Tool invocations + file ops
+    const toolCountEl = document.getElementById('deepToolCount');
+    const toolCount = (agent.tool_invocations_count || 0);
+    const fileOpsCount = (agent.file_operations_count || 0);
+    if (toolCount > 0 || fileOpsCount > 0) {
+        const parts = [];
+        if (toolCount > 0) parts.push(`${toolCount} calls`);
+        if (fileOpsCount > 0) parts.push(`${fileOpsCount} files`);
+        toolCountEl.textContent = parts.join(', ');
+        toolCountEl.style.color = 'var(--text-secondary)';
+    } else {
+        toolCountEl.textContent = '-';
+        toolCountEl.style.color = '';
+    }
+
+    // Test results
+    const testEl = document.getElementById('deepTestResult');
+    if (agent.last_test_result) {
+        const tr = agent.last_test_result;
+        if (tr.failed > 0) {
+            testEl.textContent = `${tr.passed}✓ ${tr.failed}✗`;
+            testEl.style.color = 'var(--danger)';
+        } else {
+            testEl.textContent = `${tr.passed}✓${tr.skipped ? ` ${tr.skipped}⊘` : ''}`;
+            testEl.style.color = 'var(--success)';
+        }
+        testEl.title = `Total: ${tr.total || tr.passed + tr.failed + (tr.skipped || 0)}${tr.framework ? ' (' + tr.framework + ')' : ''}`;
+    } else {
+        testEl.textContent = '-';
+        testEl.style.color = '';
+        testEl.title = '';
+    }
+
+    // Character and word count (cached by buffer length)
+    const charEl = document.getElementById('deepCharCount');
+    const wordEl = document.getElementById('deepWordCount');
+    if (charEl && wordEl) {
+        const lines = agent._outputBuffer || agent.output_lines || [];
+        if (agent._charWordLen !== lines.length) {
+            const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+            let totalChars = 0, totalWords = 0;
+            for (const l of lines) {
+                const clean = l.replace(ansiRe, '');
+                totalChars += clean.length;
+                const words = clean.trim().split(/\s+/).filter(w => w);
+                totalWords += words.length;
+            }
+            agent._charWordLen = lines.length;
+            agent._cachedChars = totalChars;
+            agent._cachedWords = totalWords;
+        }
+        const tc = agent._cachedChars || 0, tw = agent._cachedWords || 0;
+        charEl.textContent = tc > 1000000 ? `${(tc / 1000000).toFixed(1)}M` : tc > 1000 ? `${(tc / 1000).toFixed(1)}K` : `${tc}`;
+        wordEl.textContent = tw > 1000000 ? `${(tw / 1000000).toFixed(1)}M` : tw > 1000 ? `${(tw / 1000).toFixed(1)}K` : `${tw}`;
+    }
+
+    // Output rate sparkline
+    const rateCanvas = document.getElementById('deepRateSparkline');
+    if (rateCanvas && agent._outputHistory?.length > 1) {
+        const ctx = rateCanvas.getContext('2d');
+        const w = rateCanvas.width, h = rateCanvas.height;
+        ctx.clearRect(0, 0, w, h);
+        const data = agent._outputHistory;
+        const maxVal = Math.max(1, ...data);
+        const step = w / Math.max(1, data.length - 1);
+        ctx.beginPath();
+        ctx.moveTo(0, h - (data[0] / maxVal) * h);
+        for (let i = 1; i < data.length; i++) {
+            ctx.lineTo(i * step, h - (data[i] / maxVal) * h);
+        }
+        const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
+        ctx.strokeStyle = info.color;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.lineTo((data.length - 1) * step, h);
+        ctx.lineTo(0, h);
+        ctx.closePath();
+        ctx.fillStyle = info.color + '22';
+        ctx.fill();
+    }
+
+    // Keywords from activity
+    const keywordsEl = document.getElementById('deepKeywords');
+    if (keywordsEl) {
+        const chips = [];
+        // Extract from server activity data
+        const act = agent._activity;
+        if (act) {
+            // Top files touched (deduped)
+            const fileCounts = {};
+            for (const f of (act.file_operations || [])) {
+                const short = (f.file_path || '').split('/').pop();
+                if (short) fileCounts[short] = (fileCounts[short] || 0) + 1;
+            }
+            Object.entries(fileCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 6)
+                .forEach(([name, count]) => {
+                    chips.push(`<span class="deep-keyword-chip file" data-tip="${count} ops">${name}</span>`);
+                });
+            // Top tools used (deduped)
+            const toolCounts = {};
+            for (const t of (act.tool_invocations || [])) {
+                if (t.tool) toolCounts[t.tool] = (toolCounts[t.tool] || 0) + 1;
+            }
+            Object.entries(toolCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 4)
+                .forEach(([tool, count]) => {
+                    chips.push(`<span class="deep-keyword-chip tool" data-tip="${count}x">${tool}</span>`);
+                });
+        } else {
+            // Fallback: extract from client-side activity cache
+            const cached = _activityCache.get(agent.id);
+            if (cached?.events?.length > 0) {
+                const catCounts = {};
+                const fileSet = new Set();
+                for (const ev of cached.events) {
+                    if (ev.cat) catCounts[ev.cat] = (catCounts[ev.cat] || 0) + 1;
+                    // Extract file names from desc
+                    const fm = ev.desc?.match(/[\w.-]+\.\w{1,6}/);
+                    if (fm) fileSet.add(fm[0]);
+                }
+                [...fileSet].slice(0, 6).forEach(f => {
+                    chips.push(`<span class="deep-keyword-chip file">${f}</span>`);
+                });
+                Object.entries(catCounts)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 4)
+                    .forEach(([cat, count]) => {
+                        chips.push(`<span class="deep-keyword-chip tool" data-tip="${count}x">${cat}</span>`);
+                    });
+            }
+        }
+        keywordsEl.innerHTML = chips.join('');
+    }
+
+    // Status timeline bar
+    const timelineBar = document.getElementById('statusTimelineBar');
+    if (timelineBar && agent.status_timeline?.length > 0) {
+        const statusBarColors = {
+            spawning: 'var(--text-tertiary)', planning: 'var(--warning)', working: 'var(--accent)',
+            reading: '#3B82F6', waiting: 'var(--orange)', error: 'var(--danger)',
+            idle: 'var(--text-disabled)', paused: 'var(--text-tertiary)', complete: 'var(--success)',
+        };
+        const totalDur = agent.status_timeline.reduce((s, e) => s + e.duration_sec, 0);
+        if (totalDur > 0) {
+            timelineBar.innerHTML = agent.status_timeline.map(seg => {
+                const pct = Math.max(1, (seg.duration_sec / totalDur) * 100);
+                const color = statusBarColors[seg.status] || 'var(--text-tertiary)';
+                const dur = seg.duration_sec >= 60 ? `${Math.round(seg.duration_sec / 60)}m` : `${Math.round(seg.duration_sec)}s`;
+                return `<div class="status-timeline-segment" style="width:${pct}%;background:${color}" title="${seg.status}: ${dur}"></div>`;
+            }).join('');
+        }
+    }
+
+    const pauseBtn = document.getElementById('deepPauseBtn');
+    pauseBtn.innerHTML = agent.status === 'paused' ? `${icon('play', 14)} Resume` : `${icon('circle-pause', 14)} Pause`;
+
+    // Prompt bar for waiting agents (hidden for stream-json agents — non-interactive)
+    const deepPromptBar = document.getElementById('deepPromptBar');
+    if (deepPromptBar) {
+        if (agent.output_mode === 'stream-json') {
+            deepPromptBar.innerHTML = '<span class="deep-prompt-text" style="opacity:0.5">Non-interactive (print mode) — structured output only</span>';
+            deepPromptBar.style.display = '';
+        } else if (agent.needs_input) {
+            const isPlan = agent.plan_mode;
+            const promptText = isPlan
+                ? (agent.input_prompt || 'Plan ready for review.')
+                : (agent.input_prompt || 'Agent is waiting for input.');
+            const approveLabel = isPlan ? 'Approve Plan' : 'Approve';
+            deepPromptBar.innerHTML =
+                '<span class="deep-prompt-text">' + escapeHtml(promptText) + '</span>' +
+                '<input type="text" class="deep-prompt-input" id="deepPromptInput" placeholder="Custom response..." onkeydown="if(event.key===\'Enter\'){sendDeepPromptCustom();event.preventDefault()}">' +
+                '<button class="btn btn-primary btn-sm" onclick="sendDeepPromptResponse(\'yes\')">' + approveLabel + '</button>' +
+                '<button class="btn btn-secondary btn-sm" onclick="sendDeepPromptResponse(\'no\')">Reject</button>' +
+                '<button class="btn btn-ghost btn-sm" onclick="sendDeepPromptCustom()" data-tip="Send custom response">Send</button>';
+            deepPromptBar.style.display = '';
+        } else {
+            deepPromptBar.style.display = 'none';
+        }
+    }
+
+    // Quick commands — highlight when agent waiting
+    const qcEl = document.getElementById('quickCommands');
+    if (qcEl) {
+        qcEl.classList.toggle('waiting', !!agent.needs_input);
+    }
+
+    // Activity heatmap
+    updateActivityHeatmap(agent);
+
+    // Error summary panel
+    updateErrorSummary(agent);
+
+    // Bookmark count badge
+    updateBookmarkBadge();
+}
+
+function updateActivityHeatmap(agent) {
+    const el = document.getElementById('activityHeatmap');
+    if (!el) return;
+    // Build time buckets from output history and activity cache
+    const BUCKETS = 40;
+    const lines = agent._outputBuffer || [];
+    if (lines.length < 20) { el.innerHTML = ''; return; }
+    // Cache: skip recomputation if buffer hasn't grown
+    if (agent._heatmapLen === lines.length && agent._heatmapHtml) {
+        el.innerHTML = agent._heatmapHtml;
+        return;
+    }
+    // Divide output into BUCKETS equal segments, count "activity" per segment
+    const segSize = Math.max(1, Math.ceil(lines.length / BUCKETS));
+    const buckets = [];
+    const errorRe = /\b(error|exception|traceback|fail(ed)?|FAIL|ERROR)\b/i;
+    const toolRe = /\b(Read|Edit|Write|Bash|Glob|Grep)\s*\(/i;
+    for (let b = 0; b < BUCKETS; b++) {
+        const start = b * segSize;
+        const end = Math.min(start + segSize, lines.length);
+        let activity = 0, errors = 0, tools = 0;
+        for (let i = start; i < end; i++) {
+            const l = lines[i] || '';
+            if (l.trim().length > 0) activity++;
+            if (errorRe.test(l)) errors++;
+            if (toolRe.test(l)) tools++;
+        }
+        buckets.push({ activity, errors, tools, lineCount: end - start });
+    }
+    const maxAct = Math.max(1, ...buckets.map(b => b.activity));
+    const cells = buckets.map((b, i) => {
+        const intensity = b.activity / maxAct;
+        const h = Math.max(2, Math.round(intensity * 18));
+        let color;
+        if (b.errors > 0) color = 'var(--danger)';
+        else if (b.tools > 2) color = 'var(--accent)';
+        else color = 'var(--success)';
+        const opacity = Math.max(0.15, intensity);
+        const lineRange = `Lines ${i * segSize + 1}-${Math.min((i + 1) * segSize, lines.length)}`;
+        const tip = `${lineRange}: ${b.activity} lines, ${b.tools} tools, ${b.errors} errors`;
+        return `<div class="hm-cell" style="height:${h}px;background:${color};opacity:${opacity}" title="${tip}"></div>`;
+    });
+    const html = cells.join('');
+    el.innerHTML = html;
+    agent._heatmapLen = lines.length;
+    agent._heatmapHtml = html;
+}
+
+let _newLinesSinceScroll = 0;
+let _scrollSpeedSamples = []; // timestamps + line counts
+let _scrollSpeedTimer = null;
+
+function startScrollSpeedTracking() {
+    _scrollSpeedSamples = [];
+    stopScrollSpeedTracking();
+    _scrollSpeedTimer = setInterval(updateScrollSpeedIndicator, 1000);
+}
+function stopScrollSpeedTracking() {
+    if (_scrollSpeedTimer) { clearInterval(_scrollSpeedTimer); _scrollSpeedTimer = null; }
+    const el = document.getElementById('scrollSpeedIndicator');
+    if (el) { el.style.display = 'none'; el.className = 'scroll-speed-indicator'; }
+}
+function trackOutputLines(count) {
+    const now = Date.now();
+    _scrollSpeedSamples.push({ t: now, n: count });
+    // Keep only last 10 seconds
+    const cutoff = now - 10000;
+    _scrollSpeedSamples = _scrollSpeedSamples.filter(s => s.t > cutoff);
+}
+function updateScrollSpeedIndicator() {
+    const el = document.getElementById('scrollSpeedIndicator');
+    if (!el) return;
+    const now = Date.now();
+    const cutoff = now - 5000;
+    const recent = _scrollSpeedSamples.filter(s => s.t > cutoff);
+    const totalLines = recent.reduce((s, r) => s + r.n, 0);
+    const lps = totalLines / 5; // lines per second (5s window)
+    if (lps < 0.5) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.textContent = lps >= 10 ? `${Math.round(lps)} ln/s` : `${lps.toFixed(1)} ln/s`;
+    el.className = 'scroll-speed-indicator' + (lps >= 20 ? ' very-fast' : lps >= 8 ? ' fast' : '');
+}
+
+function appendDeepOutput(lines) {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+
+    // ── xterm.js path: write raw lines directly ──
+    if (xtermManager.terminal) {
+        const wasAtBottom = xtermManager.isAtBottom();
+        xtermManager.terminal.write(lines.join('\r\n') + '\r\n');
+        trackOutputLines(lines.length);
+        if (wasAtBottom || deepAutoScroll) {
+            xtermManager.scrollToBottom();
+            deepAutoScroll = true;
+            _newLinesSinceScroll = 0;
+        } else {
+            _newLinesSinceScroll += lines.length;
+            const jumpBtn = document.getElementById('jumpToBottom');
+            if (jumpBtn) {
+                jumpBtn.textContent = `↓ ${_newLinesSinceScroll} new lines`;
+                jumpBtn.classList.add('visible');
+            }
+        }
+        return;
+    }
+
+    // ── Legacy DOM path ──
+    // Clear placeholder if present
+    if (terminal.querySelector('span[style*="text-dimmed"]') && terminal.children.length <= 1) terminal.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    const aid = state.focusedAgentId || '';
+    let existingCount = terminal.querySelectorAll('.terminal-line').length;
+    if (!deepAutoScroll && existingCount > 0 && lines.length > 0) {
+        const sep = document.createElement('div');
+        sep.className = 'capture-separator';
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        sep.innerHTML = `<span class="capture-sep-line"></span><span class="capture-sep-label">+${lines.length} lines at ${time}</span><span class="capture-sep-line"></span>`;
+        frag.appendChild(sep);
+    }
+    const tsNow = formatLineTimestamp(Date.now());
+    for (const line of lines) {
+        const cl = classifyTerminalLine(line, aid);
+        const div = document.createElement('div');
+        div.className = cl.className + (deepAutoScroll ? '' : ' new-highlight');
+        const tsHtml = `<span class="line-timestamp">${tsNow}</span>`;
+        div.innerHTML = tsHtml + cl.html;
+        addLineNumber(div, existingCount++, aid);
+        frag.appendChild(div);
+    }
+    terminal.appendChild(frag);
+    trackOutputLines(lines.length);
+    if (state.focusedAgentId) markNewLines(state.focusedAgentId);
+    if (_autoCollapseEnabled) applyAutoCollapse();
+    if (deepAutoScroll) {
+        terminal.scrollTop = terminal.scrollHeight;
+        _newLinesSinceScroll = 0;
+    } else {
+        _newLinesSinceScroll += lines.length;
+        const jumpBtn = document.getElementById('jumpToBottom');
+        if (jumpBtn) {
+            jumpBtn.textContent = `↓ ${_newLinesSinceScroll} new lines`;
+            jumpBtn.classList.add('visible');
+        }
+    }
+}
+
+function scrollDeepToBottom() {
+    if (xtermManager.terminal) {
+        xtermManager.scrollToBottom();
+    } else {
+        const t = document.getElementById('deepTerminal');
+        if (!t) return;
+        t.scrollTop = t.scrollHeight;
+    }
+    deepAutoScroll = true;
+    _newLinesSinceScroll = 0;
+    const jumpBtn = document.getElementById('jumpToBottom');
+    if (jumpBtn) {
+        jumpBtn.textContent = '↓ Jump to bottom';
+        jumpBtn.classList.remove('visible');
+    }
+}
+
+let _deepTimeTimer = null;
+
+function startDeepTimeTimer() {
+    stopDeepTimeTimer();
+    _deepTimeTimer = setInterval(() => {
+        if (!state.focusedAgentId || state.view !== 'deep') { stopDeepTimeTimer(); return; }
+        const agent = state.agents.get(state.focusedAgentId);
+        if (!agent?.created_at) return;
+        const secs = Math.round((Date.now() - new Date(agent.created_at).getTime()) / 1000);
+        const el = document.getElementById('deepTime');
+        if (el) {
+            if (secs >= 3600) {
+                el.textContent = `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
+            } else {
+                el.textContent = `${Math.floor(secs / 60)}m ${secs % 60}s`;
+            }
+        }
+    }, 1000);
+}
+
+function stopDeepTimeTimer() {
+    if (_deepTimeTimer) { clearInterval(_deepTimeTimer); _deepTimeTimer = null; }
+}
+
+function closeDeepView() {
+    stopDeepTimeTimer();
+    stopMinimapUpdates();
+    stopScrollSpeedTracking();
+    // Destroy xterm.js instance if active
+    xtermManager.destroy();
+    const terminal = document.getElementById('deepTerminal');
+    if (terminal) {
+        terminal.classList.remove('xterm-active');
+        terminal.style.padding = '';
+        terminal.style.overflow = '';
+    }
+    // Save scroll position for this agent (legacy only)
+    if (state.focusedAgentId && terminal && !terminal.classList.contains('xterm-active')) {
+        state.deepScrollPositions.set(state.focusedAgentId, terminal.scrollTop);
+    }
+    if (terminal && terminal._ashlrScrollHandler) {
+        terminal.removeEventListener('scroll', terminal._ashlrScrollHandler);
+        terminal._ashlrScrollHandler = null;
+    }
+    if (terminal && terminal._ashlrVScrollHandler) {
+        terminal.removeEventListener('scroll', terminal._ashlrVScrollHandler);
+        terminal._ashlrVScrollHandler = null;
+    }
+    document.getElementById('deepView').classList.remove('active', 'archived-view');
+    closeDeepSearch();
+    // Reset split pane grid template on close
+    const wrap = document.querySelector('.deep-terminal-wrap');
+    if (wrap) wrap.style.gridTemplateColumns = '';
+    state.focusedAgentId = null;
+    state.view = 'grid';
+    _cmdHistIdx = -1;
+    _cmdHistDraft = '';
+}
+
+function deepNavAgent(direction) {
+    const ids = [...state.agents.keys()];
+    if (ids.length < 2) return;
+    const currentIdx = ids.indexOf(state.focusedAgentId);
+    if (currentIdx === -1) return;
+    // Save scroll position before navigating away
+    const terminal = document.getElementById('deepTerminal');
+    if (state.focusedAgentId && terminal) {
+        state.deepScrollPositions.set(state.focusedAgentId, terminal.scrollTop);
+    }
+    const nextIdx = (currentIdx + direction + ids.length) % ids.length;
+    openDeepView(ids[nextIdx]);
+}
+
+let _cmdHistIdx = -1;
+let _cmdHistDraft = '';
+let _deepAcIndex = -1;
+
+function handleDeepInputKey(e) {
+    const input = document.getElementById('deepInput');
+    const agentId = state.focusedAgentId;
+    if (!agentId) return;
+
+    // Deep autocomplete navigation
+    const dac = document.getElementById('deepAutocomplete');
+    if (dac.classList.contains('active')) {
+        const items = dac.querySelectorAll('.command-ac-item');
+        if (e.key === 'ArrowDown') { e.preventDefault(); _deepAcIndex = Math.min(_deepAcIndex + 1, items.length - 1); items.forEach((el, i) => el.classList.toggle('selected', i === _deepAcIndex)); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); _deepAcIndex = Math.max(_deepAcIndex - 1, 0); items.forEach((el, i) => el.classList.toggle('selected', i === _deepAcIndex)); return; }
+        if (e.key === 'Tab' || e.key === 'Enter') {
+            e.preventDefault();
+            const sel = items[_deepAcIndex >= 0 ? _deepAcIndex : 0];
+            if (sel) selectDeepAcItem(sel);
+            return;
+        }
+        if (e.key === 'Escape') { e.preventDefault(); closeDeepAutocomplete(); return; }
+    }
+
+    const history = state.commandHistory.get(agentId) || [];
+    if (e.key === 'ArrowUp' && !e.shiftKey) {
+        e.preventDefault();
+        if (_cmdHistIdx === -1) _cmdHistDraft = input.value;
+        if (_cmdHistIdx < history.length - 1) { _cmdHistIdx++; input.value = history[history.length - 1 - _cmdHistIdx]; }
+    } else if (e.key === 'ArrowDown' && !e.shiftKey) {
+        e.preventDefault();
+        if (_cmdHistIdx > 0) { _cmdHistIdx--; input.value = history[history.length - 1 - _cmdHistIdx]; }
+        else if (_cmdHistIdx === 0) { _cmdHistIdx = -1; input.value = _cmdHistDraft; }
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendDeepPrompt();
+    }
+}
+
+function handleDeepInputInput(e) {
+    const val = e.target.value;
+    const slashMatch = val.match(/^\/([^\s]*)$/);
+    if (slashMatch) {
+        const query = slashMatch[1].toLowerCase();
+        const builtinMatches = COMMAND_SLASH_COMMANDS
+            .filter(c => c.cmd.includes(query))
+            .map(c => ({ icon: c.icon, name: '/' + c.cmd, hint: c.desc, value: c.cmd, type: 'command' }));
+        const skillMatches = (state.extensions.skills || [])
+            .filter(s => s.name.toLowerCase().includes(query))
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .slice(0, 10)
+            .map(s => ({ icon: icon('puzzle', 14), name: '/' + s.name, hint: s.description || s.source, value: s.name, type: 'skill' }));
+        const combined = [...builtinMatches, ...skillMatches];
+        if (combined.length) {
+            showDeepAutocomplete(combined);
+            return;
+        }
+    }
+    closeDeepAutocomplete();
+}
+
+function showDeepAutocomplete(items) {
+    const ac = document.getElementById('deepAutocomplete');
+    _deepAcIndex = 0;
+    ac.innerHTML = items.map((item, i) =>
+        `<div class="command-ac-item${i === 0 ? ' selected' : ''}" data-value="${escapeHtml(item.value)}" data-type="${item.type}" onclick="selectDeepAcItem(this)">` +
+        `<span class="ac-icon">${item.icon}</span>` +
+        `<span class="ac-name">${escapeHtml(item.name)}</span>` +
+        `<span class="ac-hint">${escapeHtml(item.hint)}</span></div>`
+    ).join('');
+    ac.classList.add('active');
+}
+
+function closeDeepAutocomplete() {
+    document.getElementById('deepAutocomplete').classList.remove('active');
+    _deepAcIndex = -1;
+}
+
+function selectDeepAcItem(el) {
+    const input = document.getElementById('deepInput');
+    const type = el.dataset.type;
+    const value = el.dataset.value;
+    if (type === 'skill') {
+        input.value = '/' + value + ' ';
+    } else if (type === 'command') {
+        input.value = '/' + value + ' ';
+    }
+    closeDeepAutocomplete();
+    input.focus();
+}
+
+function sendDeepPrompt() {
+    const input = document.getElementById('deepInput');
+    const msg = input.value.trim();
+    if (!msg || !state.focusedAgentId) return;
+    // Save to command history
+    if (!state.commandHistory.has(state.focusedAgentId)) state.commandHistory.set(state.focusedAgentId, []);
+    const hist = state.commandHistory.get(state.focusedAgentId);
+    hist.push(msg);
+    if (hist.length > 50) hist.shift();
+    _cmdHistIdx = -1;
+    _cmdHistDraft = '';
+    socket.send({ type: 'send', agent_id: state.focusedAgentId, message: msg });
+    input.value = '';
+    const terminal = document.getElementById('deepTerminal');
+    const div = document.createElement('div');
+    div.className = 'terminal-line';
+    div.innerHTML = `<span style="color:var(--accent);font-weight:bold">▶ ${escapeHtml(msg)}</span>`;
+    terminal.appendChild(div);
+    scrollDeepToBottom();
+}
+
+const DEFAULT_REPLY_TEMPLATES = [
+    { label: 'yes', message: 'yes' },
+    { label: 'no', message: 'no' },
+    { label: 'continue', message: 'continue' },
+    { label: 'explain', message: 'explain' },
+    { label: 'diff', message: 'show me the diff' },
+    { label: 'test', message: 'run the tests' },
+    { label: 'approve', message: 'looks good, proceed' },
+    { label: 'skip', message: 'skip this step' },
+    { label: 'revert', message: 'revert the changes' },
+    { label: 'commit', message: 'commit the changes' },
+];
+
+function getReplyTemplates() {
+    try {
+        const saved = localStorage.getItem('ashlr_reply_templates');
+        if (saved) return JSON.parse(saved);
+    } catch (e) { console.debug('Reply templates parse failed, using defaults'); }
+    return DEFAULT_REPLY_TEMPLATES;
+}
+
+function saveReplyTemplates(templates) {
+    localStorage.setItem('ashlr_reply_templates', JSON.stringify(templates));
+}
+
+function renderQuickReplies() {
+    const container = document.getElementById('quickCommands');
+    if (!container) return;
+    const templates = getReplyTemplates();
+    container.innerHTML = templates.map((t, i) =>
+        `<button class="qc-btn" data-qr-idx="${i}">${escapeHtml(t.label)}</button>`
+    ).join('') + `<button class="qc-btn" onclick="openReplyTemplateEditor()" data-tip="Edit templates" style="opacity:0.5">+</button>`;
+    container.querySelectorAll('[data-qr-idx]').forEach(btn => {
+        btn.addEventListener('click', () => quickSend(templates[parseInt(btn.dataset.qrIdx)].message));
+    });
+}
+
+function openReplyTemplateEditor() {
+    const templates = getReplyTemplates();
+    // Build a simple inline editor below the quick commands
+    const container = document.getElementById('quickCommands');
+    if (!container) return;
+    // Check if editor already open
+    if (document.getElementById('templateEditorInline')) { document.getElementById('templateEditorInline').remove(); return; }
+    const editor = document.createElement('div');
+    editor.id = 'templateEditorInline';
+    editor.style.cssText = 'position:absolute;bottom:calc(100% + 4px);left:0;right:0;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--radius-md);padding:10px;z-index:100;box-shadow:var(--shadow-lg);max-height:260px;overflow-y:auto';
+    editor.innerHTML = `<div style="font-size:11px;font-weight:700;color:var(--text-primary);margin-bottom:8px">Edit Quick Replies</div>
+        <div id="templateEditorList" style="display:flex;flex-direction:column;gap:4px">
+        ${templates.map((t, i) => `<div class="template-row" style="display:flex;gap:4px;align-items:center">
+            <input class="form-input" value="${escapeHtml(t.label)}" placeholder="Label" style="width:70px;font-size:10px;padding:3px 5px" data-field="label">
+            <input class="form-input" value="${escapeHtml(t.message)}" placeholder="Message" style="flex:1;font-size:10px;padding:3px 5px" data-field="message">
+            <button onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;padding:0 4px">✕</button>
+        </div>`).join('')}
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+            <button class="btn btn-secondary btn-sm" onclick="addTemplateRow()" style="font-size:10px;padding:2px 6px">+ Add</button>
+            <button class="btn btn-primary btn-sm" onclick="saveTemplateEdits()" style="font-size:10px;padding:2px 8px">Save</button>
+            <button class="btn btn-secondary btn-sm" onclick="resetReplyTemplates()" style="font-size:10px;padding:2px 6px">Reset</button>
+            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('templateEditorInline')?.remove()" style="font-size:10px;padding:2px 6px">Cancel</button>
+        </div>`;
+    container.parentElement.style.position = 'relative';
+    container.parentElement.appendChild(editor);
+}
+
+function addTemplateRow() {
+    const list = document.getElementById('templateEditorList');
+    if (!list) return;
+    const idx = list.children.length;
+    const row = document.createElement('div');
+    row.className = 'template-row';
+    row.style.cssText = 'display:flex;gap:6px;align-items:center';
+    row.innerHTML = `<input class="form-input" placeholder="Label" style="width:80px;font-size:11px;padding:4px 6px" data-idx="${idx}" data-field="label">
+        <input class="form-input" placeholder="Message" style="flex:1;font-size:11px;padding:4px 6px" data-idx="${idx}" data-field="message">
+        <button class="btn btn-ghost" onclick="this.parentElement.remove()" style="padding:2px 6px;font-size:10px;color:var(--danger)">✕</button>`;
+    list.appendChild(row);
+}
+
+function saveTemplateEdits() {
+    const list = document.getElementById('templateEditorList');
+    if (!list) return;
+    const templates = [];
+    for (const row of list.children) {
+        const labelInput = row.querySelector('[data-field="label"]');
+        const msgInput = row.querySelector('[data-field="message"]');
+        if (labelInput && msgInput && labelInput.value.trim() && msgInput.value.trim()) {
+            templates.push({ label: labelInput.value.trim(), message: msgInput.value.trim() });
+        }
+    }
+    saveReplyTemplates(templates);
+    document.getElementById('templateEditorInline')?.remove();
+    renderQuickReplies();
+    showToast('Reply templates saved', 'success');
+}
+
+function resetReplyTemplates() {
+    localStorage.removeItem('ashlr_reply_templates');
+    document.getElementById('templateEditorInline')?.remove();
+    renderQuickReplies();
+    showToast('Templates reset to defaults', 'info');
+}
+
+function quickSend(msg) {
+    if (!msg || !state.focusedAgentId) return;
+    const input = document.getElementById('deepInput');
+    input.value = msg;
+    sendDeepPrompt();
+}
+
+function deepPauseResume() {
+    if (!state.focusedAgentId) return;
+    pauseResumeAgent(state.focusedAgentId);
+}
+
+function toggleCopyDropdown(e) {
+    e.stopPropagation();
+    const dd = document.getElementById('copyFormatDropdown');
+    if (!dd) return;
+    const isActive = dd.classList.toggle('active');
+    if (isActive) {
+        const handler = (ev) => {
+            if (!dd.contains(ev.target) && !ev.target.closest('.copy-dropdown-wrap')) {
+                closeCopyDropdown();
+            }
+            document.removeEventListener('mousedown', handler);
+        };
+        setTimeout(() => document.addEventListener('mousedown', handler), 0);
+    }
+}
+
+function closeCopyDropdown() {
+    const dd = document.getElementById('copyFormatDropdown');
+    if (dd) dd.classList.remove('active');
+}
+
+function deepCopySelectedLines() {
+    const sel = window.getSelection();
+    const text = sel ? sel.toString() : '';
+    if (!text.trim()) {
+        showToast('No text selected — select lines first', 'warning');
+        return;
+    }
+    navigator.clipboard.writeText(text).then(() => showToast('Selection copied to clipboard', 'success'));
+}
+
+function deepCopyOutput() {
+    const terminal = document.getElementById('deepTerminal');
+    const text = terminal.innerText;
+    navigator.clipboard.writeText(text).then(() => showToast('Output copied to clipboard', 'success'));
+}
+
+function deepExportOutput() {
+    if (!state.focusedAgentId) return;
+    const a = document.createElement('a');
+    a.href = `/api/agents/${state.focusedAgentId}/output/export`;
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast('Downloading output log...', 'info');
+}
+
+function deepCopyMarkdown() {
+    if (!state.focusedAgentId) return;
+    const agent = state.agents.get(state.focusedAgentId);
+    if (!agent) return;
+    const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    // Strip ANSI codes for clean markdown
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const cleanLines = lines.map(l => l.replace(ansiRe, ''));
+    // Build markdown
+    let md = `# ${agent.name} (${info.name})\n\n`;
+    md += `**Status:** ${agent.status}  \n`;
+    md += `**Task:** ${agent.task || 'N/A'}  \n`;
+    if (agent.summary) md += `**Summary:** ${agent.summary}  \n`;
+    md += `**Context:** ${Math.round((agent.context_pct || 0) * 100)}%  \n`;
+    if (agent.estimated_cost_usd > 0) md += `**Cost:** $${agent.estimated_cost_usd.toFixed(4)}  \n`;
+    md += `\n## Output\n\n\`\`\`\n${cleanLines.join('\n')}\n\`\`\`\n`;
+    navigator.clipboard.writeText(md).then(() => {
+        showToast('Copied as markdown', 'success');
+    }).catch(() => {
+        showToast('Failed to copy', 'error');
+    });
+}
+
+function deepCopyRichHTML() {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const agent = state.agents.get(state.focusedAgentId);
+    const name = agent?.name || 'Agent';
+    // Build HTML with inline styles for rich paste
+    const lines = terminal.querySelectorAll('.terminal-line');
+    let html = `<div style="font-family:'JetBrains Mono',Menlo,monospace;font-size:12px;background:#0A0F1A;color:#EDEEF0;padding:12px;border-radius:8px;">`;
+    html += `<div style="font-size:11px;color:#8B919E;margin-bottom:8px;font-weight:600;">${escapeHtml(name)} — ${lines.length} lines</div>`;
+    for (const line of lines) {
+        if (line.classList.contains('dedup-collapsed') || line.classList.contains('tool-dimmed')) continue;
+        // Use innerHTML to preserve color spans
+        html += `<div style="padding:1px 0;white-space:pre-wrap;word-break:break-word;">${line.innerHTML}</div>`;
+    }
+    html += '</div>';
+    const plainText = terminal.innerText;
+    try {
+        const htmlBlob = new Blob([html], { type: 'text/html' });
+        const textBlob = new Blob([plainText], { type: 'text/plain' });
+        navigator.clipboard.write([
+            new ClipboardItem({ 'text/html': htmlBlob, 'text/plain': textBlob })
+        ]).then(() => showToast('Copied as rich HTML', 'success'));
+    } catch (e) {
+        // Fallback to plain text
+        navigator.clipboard.writeText(plainText).then(() => showToast('Copied as plain text (rich copy not supported)', 'info'));
+    }
+}
+
+async function deepExportJSON() {
+    if (!state.focusedAgentId) return;
+    const agent = state.agents.get(state.focusedAgentId);
+    if (!agent) return;
+    const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const lines = (agent._outputBuffer || agent.output_lines || []).map(l => l.replace(ansiRe, ''));
+    // Fetch structured activity data
+    let activity = agent._activity;
+    if (!activity) {
+        try {
+            const resp = await apiFetch(`/api/agents/${state.focusedAgentId}/activity`);
+            if (resp.ok) activity = await resp.json();
+        } catch (e) { /* ignore */ }
+    }
+    const exportData = {
+        meta: {
+            exported_at: new Date().toISOString(),
+            ashlr_version: 'Ashlr AO',
+        },
+        agent: {
+            id: agent.id,
+            name: agent.name,
+            role: agent.role,
+            role_name: info.name,
+            status: agent.status,
+            backend: agent.backend || 'claude-code',
+            task: agent.task || '',
+            summary: agent.summary || '',
+            working_dir: agent.working_dir || '',
+            project: agent.project_name || agent.project_id || '',
+            created_at: agent.created_at,
+            context_pct: agent.context_pct || 0,
+            memory_mb: agent.memory_mb || 0,
+            health_score: agent.health_score ?? 1.0,
+            tokens_input: agent.tokens_input || 0,
+            tokens_output: agent.tokens_output || 0,
+            estimated_cost_usd: agent.estimated_cost_usd || 0,
+            total_output_lines: agent.total_output_lines || lines.length,
+        },
+        activity: activity ? {
+            tool_invocations: (activity.tool_invocations || []).map(t => ({
+                tool: t.tool, args: t.args, result_status: t.result_status,
+            })),
+            file_operations: (activity.file_operations || []).map(f => ({
+                file_path: f.file_path, operation: f.operation,
+            })),
+            git_operations: activity.git_operations || [],
+            test_results: activity.test_results || [],
+        } : null,
+        status_timeline: agent.status_timeline || [],
+        output_lines: lines,
+    };
+    const json = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${agent.name}-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Exported as JSON', 'success');
+}
+
+// ── Error Summary ──
+const _errorRe = /\b(error|exception|traceback|fatal|fail(ed)?|panic|FAIL|ERROR|❌|✗)\b/i;
+
+function updateErrorSummary(agent) {
+    const panel = document.getElementById('deepErrorSummary');
+    if (!panel || !agent) return;
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    const ansiRe = /\x1b\[[0-9;]*m/g;
+    const errorLines = [];
+    for (let i = 0; i < lines.length; i++) {
+        const plain = lines[i].replace(ansiRe, '').trim();
+        if (plain && _errorRe.test(plain)) {
+            errorLines.push({ text: plain.slice(0, 200), lineIdx: i });
+        }
+    }
+    if (errorLines.length === 0) {
+        panel.style.display = 'none';
+        return;
+    }
+    panel.style.display = '';
+    document.getElementById('errorSummaryCount').textContent = errorLines.length;
+    const list = document.getElementById('errorSummaryList');
+    // Only update if count changed
+    if (list.dataset.count !== String(errorLines.length)) {
+        list.dataset.count = String(errorLines.length);
+        list.innerHTML = errorLines.slice(-20).map(e =>
+            `<div class="error-summary-line" data-tip="Line ${e.lineIdx + 1}" onclick="scrollToOutputLine(${e.lineIdx})">${escapeHtml(e.text)}</div>`
+        ).join('');
+    }
+}
+
+function toggleErrorSummary() {
+    const list = document.getElementById('errorSummaryList');
+    const toggle = document.getElementById('errorSummaryToggle');
+    const isOpen = list.style.display !== 'none';
+    list.style.display = isOpen ? 'none' : '';
+    toggle.classList.toggle('expanded', !isOpen);
+}
+
+function scrollToOutputLine(lineIdx) {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    // Virtual scroll mode
+    if (virtualTermData.length > 0 && document.getElementById('vtContent')) {
+        terminal.scrollTop = lineIdx * (virtualTermLineH || 18) - terminal.clientHeight / 3;
+        renderVirtualRange(terminal);
+    } else {
+        // Normal mode
+        const lines = terminal.querySelectorAll('.terminal-line');
+        if (lineIdx < lines.length) {
+            lines[lineIdx].scrollIntoView({ block: 'center' });
+            lines[lineIdx].style.background = 'rgba(239,68,68,0.15)';
+            setTimeout(() => { lines[lineIdx].style.background = ''; }, 2000);
+        }
+    }
+}
+
+// ── Bookmarks ──
+function toggleBookmarksPanel() {
+    const panel = document.getElementById('bookmarksPanel');
+    const isOpen = panel.style.display !== 'none';
+    panel.style.display = isOpen ? 'none' : 'flex';
+    document.getElementById('toolbarBookmarks').classList.toggle('active', !isOpen);
+    if (!isOpen) renderBookmarksList();
+}
+
+function renderBookmarksList() {
+    const container = document.getElementById('bookmarksList');
+    if (!state.focusedAgentId) { container.innerHTML = ''; return; }
+    const agent = state.agents.get(state.focusedAgentId);
+    if (!agent) { container.innerHTML = ''; return; }
+    const bookmarks = agent.bookmarks || [];
+    if (bookmarks.length === 0) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-tertiary);font-size:11px;padding:20px">No bookmarks yet. Select text in the terminal and click "+ Bookmark" to save.</div>';
+        return;
+    }
+    container.innerHTML = bookmarks.map(b => `
+        <div class="bookmark-item" onclick="jumpToBookmarkLine(${b.line})">
+            <div class="bookmark-label">${escapeHtml(b.label || `Line ${b.line}`)}</div>
+            <div class="bookmark-text">${escapeHtml(b.text)}</div>
+            <div class="bookmark-meta">
+                <span>Line ${b.line}</span>
+                <span class="bookmark-delete" onclick="event.stopPropagation();deleteBookmark('${b.id}')" data-tip="Remove">&times;</span>
+            </div>
+        </div>
+    `).join('');
+    updateBookmarkBadge();
+}
+
+function updateBookmarkBadge() {
+    const badge = document.getElementById('bookmarkCountBadge');
+    if (!badge) return;
+    const agent = state.agents.get(state.focusedAgentId);
+    const count = agent?.bookmarks?.length || 0;
+    badge.textContent = count;
+    badge.style.display = count > 0 ? '' : 'none';
+}
+
+async function addBookmarkFromSelection() {
+    if (!state.focusedAgentId) return;
+    const terminal = document.getElementById('deepTerminal');
+    const selection = window.getSelection();
+    let selectedText = selection ? selection.toString().trim() : '';
+    if (!selectedText) {
+        // Bookmark the last visible line
+        const agent = state.agents.get(state.focusedAgentId);
+        if (!agent) return;
+        const lines = agent._outputBuffer || agent.output_lines || [];
+        selectedText = lines.length > 0 ? lines[lines.length - 1] : '';
+    }
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const cleanText = selectedText.replace(ansiRe, '').substring(0, 200);
+    // Estimate line number
+    const agent = state.agents.get(state.focusedAgentId);
+    const lineNum = agent ? (agent._outputBuffer || agent.output_lines || []).length : 0;
+    const label = await promptInput('Bookmark Label', 'Optional label for this bookmark', {
+        iconKey: 'bookmark', confirmText: 'Save', defaultValue: ''
+    });
+    if (label === null) return; // cancelled
+    const res = await apiFetch(`/api/agents/${state.focusedAgentId}/bookmarks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ line: lineNum, text: cleanText, label: label || '' })
+    });
+    if (res && res.ok) {
+        const data = await safeJson(res, {});
+        if (data && data.bookmark) {
+            const agent = state.agents.get(state.focusedAgentId);
+            if (agent) {
+                if (!agent.bookmarks) agent.bookmarks = [];
+                agent.bookmarks.push(data.bookmark);
+            }
+        }
+        renderBookmarksList();
+        showToast('Bookmark added', 'success');
+    }
+}
+
+async function deleteBookmark(bookmarkId) {
+    if (!state.focusedAgentId) return;
+    try {
+        const resp = await apiFetch(`/api/agents/${state.focusedAgentId}/bookmarks/${bookmarkId}`, { method: 'DELETE' });
+        if (!resp.ok) { showToast('Failed to delete bookmark', 'error'); return; }
+    } catch (e) { showToast('Failed to delete bookmark', 'error'); return; }
+    const agent = state.agents.get(state.focusedAgentId);
+    if (agent) {
+        agent.bookmarks = (agent.bookmarks || []).filter(b => b.id !== bookmarkId);
+    }
+    renderBookmarksList();
+    showToast('Bookmark removed', 'info');
+}
+
+function jumpToBookmarkLine(lineNum) {
+    const terminal = document.getElementById('deepTerminal');
+    const lines = terminal.querySelectorAll('.terminal-line, span, div');
+    // Scroll to approximate position based on line number
+    const totalHeight = terminal.scrollHeight;
+    const agent = state.agents.get(state.focusedAgentId);
+    const totalLines = agent ? (agent._outputBuffer || agent.output_lines || []).length : 1;
+    const ratio = Math.min(1, lineNum / Math.max(1, totalLines));
+    terminal.scrollTop = ratio * totalHeight;
+}
+
+// ── Output Mark/Diff ──
+const _outputMarks = new Map(); // agentId -> line count at mark time
+
+function markOutputPosition() {
+    if (!state.focusedAgentId) return;
+    // Toggle: if already marked, clear it
+    if (_outputMarks.has(state.focusedAgentId)) {
+        clearOutputMark();
+        return;
+    }
+    const agent = state.agents.get(state.focusedAgentId);
+    if (!agent) return;
+    const lineCount = (agent._outputBuffer || agent.output_lines || []).length;
+    _outputMarks.set(state.focusedAgentId, lineCount);
+    const btn = document.getElementById('toolbarMark');
+    btn.classList.add('active');
+    btn.textContent = `⚑ Marked (${lineCount})`;
+    showToast(`Marked at line ${lineCount} — new output will be highlighted`, 'info');
+}
+
+function getOutputMarkLine(agentId) {
+    return _outputMarks.get(agentId) || -1;
+}
+
+function clearOutputMark() {
+    if (!state.focusedAgentId) return;
+    _outputMarks.delete(state.focusedAgentId);
+    const btn = document.getElementById('toolbarMark');
+    btn.classList.remove('active');
+    btn.textContent = '⚑ Mark';
+}
+
+async function deepKill() {
+    if (!state.focusedAgentId) return;
+    const killed = await killAgent(state.focusedAgentId);
+    if (killed) closeDeepView();
+}
+
+function sendDeepPromptResponse(msg) {
+    if (!state.focusedAgentId) return;
+    socket.send({ type: 'send', agent_id: state.focusedAgentId, message: msg });
+    showToast('Response sent', 'success');
+}
+
+function sendDeepPromptCustom() {
+    const input = document.getElementById('deepPromptInput');
+    const msg = input?.value?.trim();
+    if (!msg || !state.focusedAgentId) return;
+    socket.send({ type: 'send', agent_id: state.focusedAgentId, message: msg });
+    input.value = '';
+    showToast('Custom response sent', 'success');
+}
+
+async function restartAgent(id) {
+    if (activeMenu) { activeMenu.classList.remove('active'); activeMenu = null; }
+    const ok = await confirmAction('Restart Agent', `Restart "${state.agents.get(id)?.name || id}"?`, 'Restart', { icon: icon('refresh-cw', 20), danger: false });
+    if (!ok) return;
+    try {
+        const res = await apiFetch(`/api/agents/${id}/restart`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(`Agent restarted (attempt ${data.restart_count || '?'})`, 'success');
+        } else {
+            showToast(data.error || 'Failed to restart', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to restart agent', 'error');
+    }
+}
+
+async function retryWithTask(id) {
+    const agent = state.agents.get(id);
+    if (!agent) return;
+    if (activeMenu) { activeMenu.classList.remove('active'); activeMenu = null; }
+    const currentTask = agent.task || '';
+    const newTask = await promptInput('Modify task', 'Leave blank to retry as-is', { defaultValue: currentTask, confirmText: 'Retry', iconKey: 'refresh-cw' });
+    if (newTask === null) return; // cancelled
+    const taskChanged = newTask.trim() && newTask.trim() !== currentTask;
+    try {
+        const opts = { method: 'POST' };
+        if (taskChanged) {
+            opts.headers = { 'Content-Type': 'application/json' };
+            opts.body = JSON.stringify({ task: newTask.trim() });
+        }
+        const res = await apiFetch(`/api/agents/${id}/restart`, opts);
+        const data = await res.json();
+        if (res.ok) {
+            showToast(taskChanged ? 'Retrying with modified task' : 'Retrying agent', 'success');
+        } else {
+            showToast(data.error || 'Retry failed', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to retry agent', 'error');
+    }
+}
+
+function deepRestart() {
+    if (!state.focusedAgentId) return;
+    restartAgent(state.focusedAgentId);
+}
+
+function deepRetry() {
+    if (!state.focusedAgentId) return;
+    retryWithTask(state.focusedAgentId);
+}
+
+// ── Deep View Search ──
+
+let deepRegexMode = false;
+let deepCaseSensitive = false;
+
+function toggleDeepRegex() {
+    deepRegexMode = !deepRegexMode;
+    document.getElementById('deepRegexToggle').classList.toggle('active', deepRegexMode);
+    deepSearch();
+}
+
+function toggleDeepCase() {
+    deepCaseSensitive = !deepCaseSensitive;
+    document.getElementById('deepCaseToggle').classList.toggle('active', deepCaseSensitive);
+    deepSearch();
+}
+
+let deepServerSearch = false;
+
+function toggleServerSearch() {
+    deepServerSearch = !deepServerSearch;
+    document.getElementById('deepServerSearchToggle').classList.toggle('active', deepServerSearch);
+    const input = document.getElementById('deepSearchInput');
+    input.placeholder = deepServerSearch ? 'Server archive search...' : 'Search...';
+    deepSearch();
+}
+
+async function serverArchiveSearch(query) {
+    if (!state.focusedAgentId || !query) return;
+    const countEl = document.getElementById('deepSearchCount');
+    countEl.textContent = 'Searching...';
+    countEl.style.color = 'var(--text-tertiary)';
+    try {
+        const params = new URLSearchParams({
+            q: query,
+            regex: deepRegexMode ? 'true' : 'false',
+            context: '2',
+            limit: '200',
+        });
+        const res = await apiFetch(`/api/agents/${state.focusedAgentId}/output/search?${params}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const terminal = document.getElementById('deepTerminal');
+        if (!terminal) return;
+        if (data.matches && data.matches.length > 0) {
+            // Render server results as highlighted output in a results overlay
+            let html = `<div class="server-search-results" style="padding:8px;font-family:var(--font-mono);font-size:12px">`;
+            html += `<div style="color:var(--text-secondary);margin-bottom:8px;font-size:11px">${data.total_matches} matches in ${data.total_lines} lines (server archive)</div>`;
+            data.matches.forEach((m, i) => {
+                html += `<div style="margin-bottom:12px;border-left:2px solid var(--accent);padding-left:8px">`;
+                html += `<div style="color:var(--text-tertiary);font-size:10px;margin-bottom:2px">Line ${m.line_index}</div>`;
+                if (m.context) {
+                    m.context.forEach(cl => {
+                        const isMatch = cl === m.line;
+                        html += `<div style="color:${isMatch ? 'var(--text-primary)' : 'var(--text-tertiary)'};${isMatch ? 'background:rgba(99,102,241,0.15);padding:1px 4px;border-radius:2px' : ''}">${escapeHtml(cl)}</div>`;
+                    });
+                } else {
+                    html += `<div style="color:var(--text-primary);background:rgba(99,102,241,0.15);padding:1px 4px;border-radius:2px">${escapeHtml(m.line)}</div>`;
+                }
+                html += `</div>`;
+            });
+            html += `</div>`;
+            // Store original content and show results
+            if (!terminal._origContent) terminal._origContent = terminal.innerHTML;
+            terminal.innerHTML = html;
+            countEl.textContent = `${data.total_matches} server matches`;
+            countEl.style.color = '';
+        } else {
+            countEl.textContent = 'No server matches';
+            countEl.style.color = 'var(--danger)';
+        }
+    } catch (e) {
+        countEl.textContent = 'Search failed';
+        countEl.style.color = 'var(--danger)';
+        console.error('Server search error:', e);
+    }
+}
+
+let _activeOutputFilter = 'all';
+let _filteredVirtualData = null; // null = no filter, array = filtered lines
+
+const OUTPUT_FILTER_PATTERNS = {
+    errors: /\b(error|exception|traceback|fatal|fail(ed)?|panic|FAIL|ERROR)\b/i,
+    files: /\b(Read|Edit|Write|Glob|LS|NotebookEdit)\s*\(|File:|Created:|Modified:|Deleted:/i,
+    tools: /\b(Read|Edit|Write|Bash|Glob|Grep|Task|WebFetch|WebSearch|NotebookEdit|LS)\s*\(/i,
+    git: /\b(git\s+(commit|push|pull|checkout|merge|rebase|branch|diff|log|stash|add)|commit\s+[a-f0-9]{7})\b/i,
+    thinking: /\b(thinking|planning|analyzing|let me|I'll|I will|considering|approach)\b/i,
+    warnings: /\b(warn(ing)?|deprecat(ed|ion)|caution|notice|WARN)\b/i,
+    info: /\b(info|note|hint|tip|success(fully)?|complet(ed|ion)|done|pass(ed)?|✓|✔)\b/i,
+};
+
+function setOutputFilter(filter) {
+    _activeOutputFilter = filter;
+    // Update chip active states
+    document.querySelectorAll('.deep-filter-chip').forEach(chip => {
+        chip.classList.toggle('active', chip.dataset.filter === filter);
+    });
+    applyLogFilter();
+}
+
+function applyLogFilter() {
+    const filter = _activeOutputFilter;
+    const isVirtual = virtualTermData.length > 0 && document.getElementById('vtContent') !== null;
+
+    if (isVirtual) {
+        // Virtual scroll mode: filter the data array and re-render
+        if (filter === 'all') {
+            _filteredVirtualData = null;
+        } else {
+            const re = OUTPUT_FILTER_PATTERNS[filter];
+            if (!re) { _filteredVirtualData = null; return; }
+            _filteredVirtualData = [];
+            for (let i = 0; i < virtualTermData.length; i++) {
+                const plain = virtualTermData[i].replace(/\x1b\[[0-9;]*m/g, '');
+                if (re.test(plain)) _filteredVirtualData.push(virtualTermData[i]);
+            }
+        }
+        renderFilteredVirtual();
+    } else {
+        // Normal DOM mode
+        const terminal = document.getElementById('deepTerminal');
+        if (!terminal) return;
+        const lines = terminal.querySelectorAll('.terminal-line');
+        const re = filter !== 'all' ? OUTPUT_FILTER_PATTERNS[filter] : null;
+        lines.forEach(line => {
+            if (!re) { line.style.display = ''; return; }
+            line.style.display = re.test(line.textContent) ? '' : 'none';
+        });
+    }
+
+    // Update filter counts
+    updateFilterCounts();
+}
+
+function renderFilteredVirtual() {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const data = _filteredVirtualData || virtualTermData;
+    if (!data.length) {
+        const content = document.getElementById('vtContent');
+        if (content) content.innerHTML = '<div style="color:var(--text-tertiary);padding:20px;text-align:center;font-size:12px">No matching lines</div>';
+        document.getElementById('vtSpacer').style.height = '0';
+        document.getElementById('vtSpacerBottom').style.height = '0';
+        return;
+    }
+    const scrollTop = terminal.scrollTop;
+    const viewH = terminal.clientHeight;
+    const lineH = virtualTermLineH || 18;
+    const firstVisible = Math.max(0, Math.floor(scrollTop / lineH) - VIRTUAL_BUFFER);
+    const lastVisible = Math.min(data.length - 1, Math.ceil((scrollTop + viewH) / lineH) + VIRTUAL_BUFFER);
+    document.getElementById('vtSpacer').style.height = (firstVisible * lineH) + 'px';
+    document.getElementById('vtSpacerBottom').style.height = ((data.length - 1 - lastVisible) * lineH) + 'px';
+    const content = document.getElementById('vtContent');
+    const frag = document.createDocumentFragment();
+    const fAid = state.focusedAgentId || '';
+    resetCodeBlockState(fAid);
+    for (let i = firstVisible; i <= lastVisible; i++) {
+        const cl = classifyTerminalLine(data[i], fAid);
+        const div = document.createElement('div');
+        div.className = cl.className;
+        div.innerHTML = cl.html;
+        frag.appendChild(div);
+    }
+    content.innerHTML = '';
+    content.appendChild(frag);
+}
+
+function updateFilterCounts() {
+    if (!state.focusedAgentId) return;
+    const agent = state.agents.get(state.focusedAgentId);
+    if (!agent) return;
+    const lines = agent._outputBuffer || [];
+    if (lines.length < 10) return; // too few lines to bother counting
+    const counts = {};
+    for (const [key, re] of Object.entries(OUTPUT_FILTER_PATTERNS)) {
+        counts[key] = 0;
+    }
+    // Sample for performance (check every line up to 5000, then every 3rd)
+    const step = lines.length > 5000 ? 3 : 1;
+    for (let i = 0; i < lines.length; i += step) {
+        const plain = lines[i].replace(/\x1b\[[0-9;]*m/g, '');
+        for (const [key, re] of Object.entries(OUTPUT_FILTER_PATTERNS)) {
+            if (re.test(plain)) counts[key]++;
+        }
+    }
+    if (step > 1) {
+        for (const key of Object.keys(counts)) counts[key] = Math.round(counts[key] * step);
+    }
+    document.querySelectorAll('.deep-filter-chip').forEach(chip => {
+        const f = chip.dataset.filter;
+        if (f === 'all') return;
+        const count = counts[f] || 0;
+        const existing = chip.querySelector('.chip-count');
+        if (count > 0) {
+            const label = count > 999 ? `${(count / 1000).toFixed(1)}K` : `${count}`;
+            if (existing) { existing.textContent = label; }
+            else { chip.insertAdjacentHTML('beforeend', `<span class="chip-count">${label}</span>`); }
+        } else if (existing) {
+            existing.remove();
+        }
+    });
+}
+
+function openDeepSearch() {
+    document.getElementById('deepSearchBar').classList.add('active');
+    setTimeout(() => document.getElementById('deepSearchInput').focus(), 50);
+}
+
+function closeDeepSearch() {
+    document.getElementById('deepSearchBar').classList.remove('active');
+    document.getElementById('deepSearchInput').value = '';
+    clearSearchHighlights();
+    _restoreTerminalContent();
+    deepSearchMatches = [];
+    deepSearchIdx = -1;
+    // Reset output filter
+    setOutputFilter('all');
+}
+
+function _restoreTerminalContent() {
+    const terminal = document.getElementById('deepTerminal');
+    if (terminal && terminal._origContent) {
+        terminal.innerHTML = terminal._origContent;
+        terminal._origContent = null;
+    }
+}
+
+// Virtual scroll search state
+let _virtualSearchMatches = []; // [{lineIdx, charIdx, length}]
+
+function getSearchHistory() {
+    try { return JSON.parse(localStorage.getItem('ashlr_search_history') || '[]'); } catch (e) { return []; }
+}
+
+function addToSearchHistory(query) {
+    if (!query || query.length < 2) return;
+    let history = getSearchHistory();
+    history = history.filter(h => h !== query);
+    history.unshift(query);
+    if (history.length > 15) history = history.slice(0, 15);
+    localStorage.setItem('ashlr_search_history', JSON.stringify(history));
+}
+
+function showSearchHistory() {
+    const history = getSearchHistory();
+    if (history.length === 0) return;
+    let dd = document.getElementById('searchHistoryDropdown');
+    if (!dd) {
+        dd = document.createElement('div');
+        dd.id = 'searchHistoryDropdown';
+        dd.style.cssText = 'position:absolute;bottom:calc(100% + 2px);left:40px;right:40px;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--radius-md);padding:4px;z-index:100;box-shadow:var(--shadow-lg);max-height:200px;overflow-y:auto';
+        document.getElementById('deepSearchBar').appendChild(dd);
+    }
+    dd.innerHTML = history.map((h, i) =>
+        `<div class="search-history-item" data-sh-idx="${i}" style="padding:5px 8px;font-size:11px;color:var(--text-secondary);cursor:pointer;border-radius:var(--radius-sm);font-family:var(--font-mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(h)}</div>`
+    ).join('');
+    dd.querySelectorAll('[data-sh-idx]').forEach(el => {
+        el.addEventListener('mousedown', (e) => { e.preventDefault(); document.getElementById('deepSearchInput').value = history[parseInt(el.dataset.shIdx)]; hideSearchHistory(); deepSearch(); });
+        el.addEventListener('mouseenter', () => el.style.background = 'var(--bg-overlay)');
+        el.addEventListener('mouseleave', () => el.style.background = '');
+    });
+    dd.style.display = '';
+}
+
+function hideSearchHistory() {
+    const dd = document.getElementById('searchHistoryDropdown');
+    if (dd) dd.style.display = 'none';
+}
+
+function deepSearch() {
+    const query = document.getElementById('deepSearchInput').value;
+
+    // ── xterm.js search path ──
+    if (xtermManager.searchAddon) {
+        if (!query) { xtermManager.clearSearch(); document.getElementById('deepSearchCount').textContent = ''; return; }
+        clearTimeout(deepSearch._historyTimer);
+        deepSearch._historyTimer = setTimeout(() => addToSearchHistory(query), 1500);
+        hideSearchHistory();
+        const found = xtermManager.searchAddon.findNext(query, {
+            caseSensitive: deepCaseSensitive,
+            regex: deepRegexMode,
+            decorations: {
+                matchBackground: '#6366F140',
+                matchBorder: '#6366F180',
+                activeMatchBackground: '#6366F180',
+                activeMatchBorder: '#6366F1',
+            }
+        });
+        document.getElementById('deepSearchCount').textContent = found ? 'Found' : 'No matches';
+        document.getElementById('deepSearchCount').style.color = found ? '' : 'var(--danger)';
+        return;
+    }
+
+    // ── Legacy DOM search path ──
+    clearSearchHighlights();
+    _virtualSearchMatches = [];
+    if (!query) { document.getElementById('deepSearchCount').textContent = ''; _restoreTerminalContent(); return; }
+    // Save to history after a debounce
+    clearTimeout(deepSearch._historyTimer);
+    deepSearch._historyTimer = setTimeout(() => addToSearchHistory(query), 1500);
+    hideSearchHistory();
+
+    // Server-side archive search mode
+    if (deepServerSearch) {
+        clearTimeout(deepSearch._serverTimer);
+        deepSearch._serverTimer = setTimeout(() => serverArchiveSearch(query), 400);
+        return;
+    }
+
+    const terminal = document.getElementById('deepTerminal');
+    const flags = 'g' + (deepCaseSensitive ? '' : 'i');
+    let regex;
+    if (deepRegexMode) {
+        try { regex = new RegExp(query, flags); }
+        catch (e) {
+            document.getElementById('deepSearchCount').textContent = 'Invalid regex';
+            document.getElementById('deepSearchCount').style.color = 'var(--danger)';
+            return;
+        }
+    } else {
+        const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        regex = new RegExp(escaped, flags);
+    }
+
+    const isVirtual = virtualTermData.length > 0 && document.getElementById('vtContent') !== null;
+
+    if (isVirtual) {
+        // Search against full virtualTermData array instead of visible DOM
+        for (let i = 0; i < virtualTermData.length; i++) {
+            // Strip HTML/ANSI for plain text matching
+            const plain = virtualTermData[i].replace(/<[^>]*>/g, '').replace(/\x1b\[[0-9;]*m/g, '');
+            regex.lastIndex = 0;
+            let match;
+            while (match = regex.exec(plain)) {
+                _virtualSearchMatches.push({ lineIdx: i, charIdx: match.index, length: match[0].length });
+            }
+        }
+        deepSearchIdx = _virtualSearchMatches.length > 0 ? 0 : -1;
+        const countEl = document.getElementById('deepSearchCount');
+        if (_virtualSearchMatches.length > 0) {
+            countEl.textContent = `1 of ${_virtualSearchMatches.length}`;
+            countEl.style.color = '';
+            // Scroll to first match
+            _virtualSearchScrollTo(terminal, 0);
+        } else {
+            countEl.textContent = 'No matches';
+            countEl.style.color = 'var(--danger)';
+        }
+        // Store match count for navigation — use array-like object to prevent scrollIntoView crash
+        deepSearchMatches = new Array(_virtualSearchMatches.length).fill(null);
+        return;
+    }
+
+    // Non-virtual: TreeWalker to find text nodes only — preserves ANSI <span> tags
+    const walker = document.createTreeWalker(terminal, NodeFilter.SHOW_TEXT, null);
+    const textNodes = [];
+    let node;
+    while (node = walker.nextNode()) textNodes.push(node);
+
+    textNodes.forEach(textNode => {
+        const text = textNode.textContent;
+        if (!regex.test(text)) return;
+        regex.lastIndex = 0;
+        const frag = document.createDocumentFragment();
+        let lastIdx = 0;
+        let match;
+        while (match = regex.exec(text)) {
+            if (match.index > lastIdx) frag.appendChild(document.createTextNode(text.slice(lastIdx, match.index)));
+            const mark = document.createElement('mark');
+            mark.className = 'search-hl';
+            mark.style.cssText = '';
+            mark.textContent = match[0];
+            frag.appendChild(mark);
+            lastIdx = regex.lastIndex;
+        }
+        if (lastIdx < text.length) frag.appendChild(document.createTextNode(text.slice(lastIdx)));
+        textNode.parentNode.replaceChild(frag, textNode);
+    });
+
+    deepSearchMatches = terminal.querySelectorAll('.search-hl');
+    deepSearchIdx = deepSearchMatches.length > 0 ? 0 : -1;
+    const countEl = document.getElementById('deepSearchCount');
+    if (deepSearchMatches.length > 0) {
+        countEl.textContent = `${deepSearchIdx + 1} of ${deepSearchMatches.length}`;
+        countEl.style.color = '';
+    } else {
+        countEl.textContent = 'No matches';
+        countEl.style.color = 'var(--danger)';
+    }
+
+    if (deepSearchIdx >= 0) {
+        deepSearchMatches[0].scrollIntoView({ block: 'center' });
+        deepSearchMatches[0].classList.add('search-hl-current');
+    }
+}
+
+function _virtualSearchScrollTo(terminal, matchIdx) {
+    if (matchIdx < 0 || matchIdx >= _virtualSearchMatches.length) return;
+    const m = _virtualSearchMatches[matchIdx];
+    // Scroll terminal so the match line is visible
+    terminal.scrollTop = m.lineIdx * virtualTermLineH - terminal.clientHeight / 2;
+    // Re-render the virtual range then highlight the match in DOM
+    renderVirtualRange(terminal);
+    // Find and highlight the match in the now-visible content
+    const content = document.getElementById('vtContent');
+    if (!content) return;
+    const lines = content.querySelectorAll('.terminal-line');
+    const firstVisible = Math.max(0, Math.floor(terminal.scrollTop / virtualTermLineH) - VIRTUAL_BUFFER);
+    const domIdx = m.lineIdx - firstVisible;
+    if (domIdx >= 0 && domIdx < lines.length) {
+        // Highlight in the DOM line
+        const line = lines[domIdx];
+        const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT, null);
+        let pos = 0;
+        let textNode;
+        while (textNode = walker.nextNode()) {
+            const end = pos + textNode.textContent.length;
+            if (m.charIdx >= pos && m.charIdx < end) {
+                const offset = m.charIdx - pos;
+                const range = document.createRange();
+                range.setStart(textNode, Math.min(offset, textNode.textContent.length));
+                range.setEnd(textNode, Math.min(offset + m.length, textNode.textContent.length));
+                const mark = document.createElement('mark');
+                mark.className = 'search-hl';
+                mark.style.cssText = '';
+                try {
+                    range.surroundContents(mark);
+                    mark.scrollIntoView({ block: 'center' });
+                } catch (e) {
+                    // Range crosses element boundary (ANSI color spans) — scroll without highlighting
+                    const node = range.startContainer.parentElement;
+                    if (node) node.scrollIntoView({ block: 'center' });
+                }
+                break;
+            }
+            pos = end;
+        }
+    }
+}
+
+function clearSearchHighlights() {
+    const terminal = document.getElementById('deepTerminal');
+    terminal.querySelectorAll('.search-hl').forEach(m => {
+        m.replaceWith(document.createTextNode(m.textContent));
+    });
+    terminal.normalize();
+}
+
+function _updateCurrentSearchHighlight() {
+    // Remove current class from all, add to current
+    const terminal = document.getElementById('deepTerminal');
+    terminal.querySelectorAll('.search-hl-current').forEach(m => m.classList.remove('search-hl-current'));
+    if (_virtualSearchMatches.length === 0 && deepSearchMatches[deepSearchIdx]) {
+        deepSearchMatches[deepSearchIdx].classList.add('search-hl-current');
+    }
+    document.getElementById('deepSearchCount').textContent = `${deepSearchIdx + 1} of ${deepSearchMatches.length}`;
+}
+
+function deepSearchNext() {
+    if (xtermManager.searchAddon) {
+        const query = document.getElementById('deepSearchInput').value;
+        xtermManager.searchAddon.findNext(query, { caseSensitive: deepCaseSensitive, regex: deepRegexMode });
+        return;
+    }
+    if (deepSearchMatches.length === 0) return;
+    deepSearchIdx = (deepSearchIdx + 1) % deepSearchMatches.length;
+    if (_virtualSearchMatches.length > 0) {
+        _virtualSearchScrollTo(document.getElementById('deepTerminal'), deepSearchIdx);
+    } else if (deepSearchMatches[deepSearchIdx]?.scrollIntoView) {
+        deepSearchMatches[deepSearchIdx].scrollIntoView({ block: 'center' });
+    }
+    _updateCurrentSearchHighlight();
+}
+
+function deepSearchPrev() {
+    if (xtermManager.searchAddon) {
+        const query = document.getElementById('deepSearchInput').value;
+        xtermManager.searchAddon.findPrevious(query, { caseSensitive: deepCaseSensitive, regex: deepRegexMode });
+        return;
+    }
+    if (deepSearchMatches.length === 0) return;
+    deepSearchIdx = (deepSearchIdx - 1 + deepSearchMatches.length) % deepSearchMatches.length;
+    if (_virtualSearchMatches.length > 0) {
+        _virtualSearchScrollTo(document.getElementById('deepTerminal'), deepSearchIdx);
+    } else if (deepSearchMatches[deepSearchIdx]?.scrollIntoView) {
+        deepSearchMatches[deepSearchIdx].scrollIntoView({ block: 'center' });
+    }
+    _updateCurrentSearchHighlight();
+}
+
+function handleDeepSearchKey(e) {
+    if (e.key === 'Enter') { e.shiftKey ? deepSearchPrev() : deepSearchNext(); e.preventDefault(); }
+    if (e.key === 'Escape') closeDeepSearch();
+}
+
+// ── Inline Interaction ──
+
+function quickRespond(agentId, response) {
+    const agent = state.agents.get(agentId);
+    if (!agent) return;
+    socket.send({ type: 'send', agent_id: agentId, message: response });
+    showToast(`Sent "${response}" to ${agent.name}`, 'success');
+}
+
+let _waitingCycleIdx = -1;
+
+function cycleWaitingAgents() {
+    const waiting = [...state.agents.values()].filter(a => a.needs_input || a.status === 'waiting');
+    if (waiting.length === 0) { showToast('No agents waiting for input', 'info'); return; }
+    _waitingCycleIdx = (_waitingCycleIdx + 1) % waiting.length;
+    const agent = waiting[_waitingCycleIdx];
+    openInteraction(agent.id);
+    showToast(`Waiting agent ${_waitingCycleIdx + 1}/${waiting.length}: ${agent.name}`, 'info');
+}
+
+function openInteraction(agentId) {
+    const agent = state.agents.get(agentId);
+    if (!agent) return;
+    state.interactionAgentId = agentId;
+
+    const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
+    document.getElementById('interactionIcon').innerHTML = roleIcon(agent.role, 20);
+    document.getElementById('interactionName').textContent = agent.name;
+    document.getElementById('interactionInput').value = '';
+
+    const actionsEl = document.getElementById('interactionActions');
+    if (agent.plan_mode) {
+        // Plan-mode: show plan review actions
+        document.getElementById('interactionQuestion').textContent =
+            agent.input_prompt || 'Agent has prepared a plan. Review and approve or reject.';
+        actionsEl.innerHTML =
+            '<button class="btn btn-primary" onclick="sendInteraction(\'yes\')" style="flex:1">\u2713 Approve Plan</button>' +
+            '<button class="btn btn-secondary" onclick="sendInteraction(\'no, please revise\')" style="flex:1">\u270E Revise</button>' +
+            '<button class="btn btn-secondary" onclick="(function(){const id=state.interactionAgentId;closeInteraction();openDeepView(id);})()" style="flex:1">\uD83D\uDC41 View Plan</button>';
+    } else {
+        document.getElementById('interactionQuestion').textContent = agent.input_prompt || 'Agent is waiting for your response.';
+        // Smart buttons: detect yes/no pattern
+        const prompt = (agent.input_prompt || '').toLowerCase();
+        if (prompt.includes('yes/no') || prompt.includes('y/n') || prompt.includes('proceed') || prompt.includes('approve')) {
+            actionsEl.innerHTML = '<button class="btn btn-primary" onclick="sendInteraction(\'yes\')" style="flex:1">Yes, proceed</button><button class="btn btn-secondary" onclick="sendInteraction(\'no\')" style="flex:1">No</button>';
+        } else {
+            actionsEl.innerHTML = '<button class="btn btn-primary" onclick="sendInteraction(\'yes\')" style="flex:1">Approve</button><button class="btn btn-secondary" onclick="sendInteraction(\'no\')" style="flex:1">Reject</button>';
+        }
+    }
+
+    document.getElementById('interactionOverlay').classList.add('active');
+    trapFocus(document.getElementById('interactionOverlay'));
+}
+
+function closeInteraction() {
+    releaseFocus();
+    document.getElementById('interactionOverlay').classList.remove('active');
+    state.interactionAgentId = null;
+    const inp = document.getElementById('interactionInput');
+    if (inp) inp.value = '';
+}
+
+function sendInteraction(msg) {
+    if (!state.interactionAgentId) return;
+    const agentName = state.agents.get(state.interactionAgentId)?.name || state.interactionAgentId;
+    socket.send({ type: 'send', agent_id: state.interactionAgentId, message: msg });
+    showToast(`Response sent to ${escapeHtml(agentName)}`, 'success');
+    closeInteraction();
+}
+
+function sendCustomInteraction() {
+    const msg = document.getElementById('interactionInput').value.trim();
+    if (!msg || !state.interactionAgentId) return;
+    const agentName = state.agents.get(state.interactionAgentId)?.name || state.interactionAgentId;
+    socket.send({ type: 'send', agent_id: state.interactionAgentId, message: msg });
+    showToast(`Response sent to ${escapeHtml(agentName)}`, 'success');
+    closeInteraction();
+}
+
+// ── Workflow Run Tracking ──
+
+async function fetchWorkflowRun(runId) {
+    if (!runId) return;
+    try {
+        const res = await apiFetch(`/api/workflow-runs/${runId}`);
+        if (res.ok) {
+            const run = await res.json();
+            state.workflowRuns.set(run.id, run);
+            scheduleRender();
+        }
+    } catch (e) { console.warn('Workflow run fetch failed:', e.message); }
+}
+
+function updateWorkflowRunStatus(runId, status) {
+    if (!runId) return;
+    const run = state.workflowRuns.get(runId);
+    if (run) {
+        run.status = status;
+        scheduleRender();
+    }
+}
+
+// ── Conflict Tracking ──
+
+function trackConflict(data) {
+    const meta = data.metadata || {};
+    const agentId = meta.agent_id || data.agent_id;
+    const otherId = meta.other_agent_id;
+    const filePath = meta.file_path;
+    if (!filePath) return;
+    if (agentId) {
+        if (!state.conflicts.has(agentId)) state.conflicts.set(agentId, new Set());
+        state.conflicts.get(agentId).add(filePath);
+    }
+    if (otherId) {
+        if (!state.conflicts.has(otherId)) state.conflicts.set(otherId, new Set());
+        state.conflicts.get(otherId).add(filePath);
+    }
+    updateConflictBanner();
+    scheduleRender();
+}
+
+let _conflictBannerDismissed = false;
+
+function updateConflictBanner() {
+    const banner = document.getElementById('conflictBanner');
+    if (!banner || _conflictBannerDismissed) return;
+    // Clean up conflicts for agents that no longer exist
+    for (const [aid] of state.conflicts) {
+        if (!state.agents.has(aid)) state.conflicts.delete(aid);
+    }
+    if (state.conflicts.size === 0) { banner.style.display = 'none'; return; }
+    const totalFiles = new Set();
+    const agentNames = [];
+    state.conflicts.forEach((files, agentId) => {
+        files.forEach(f => totalFiles.add(f));
+        const agent = state.agents.get(agentId);
+        if (agent) agentNames.push(agent.name);
+    });
+    const text = `${totalFiles.size} file${totalFiles.size > 1 ? 's' : ''} in conflict across ${agentNames.length} agent${agentNames.length > 1 ? 's' : ''}: ${[...totalFiles].slice(0, 3).join(', ')}${totalFiles.size > 3 ? '...' : ''}`;
+    document.getElementById('conflictBannerText').textContent = text;
+    banner.style.display = '';
+}
+
+function dismissConflictBanner() {
+    document.getElementById('conflictBanner').style.display = 'none';
+    _conflictBannerDismissed = true;
+    // Reset after 2 minutes (in case new conflicts appear)
+    setTimeout(() => { _conflictBannerDismissed = false; }, 120000);
+}
+
+function showConflictSummary() {
+    if (state.conflicts.size === 0) { showToast('No active file conflicts', 'info'); return; }
+    const lines = [];
+    state.conflicts.forEach((files, agentId) => {
+        const agent = state.agents.get(agentId);
+        const name = agent?.name || agentId;
+        lines.push(`${name}: ${[...files].join(', ')}`);
+    });
+    showToast(`Conflicts:\n${lines.join('\n')}`, 'warning');
+}
+
+// ── Handoff UI ──
+
+function openHandoff() {
+    const agentId = state.focusedAgentId;
+    if (!agentId) return;
+    const select = document.getElementById('handoffTarget');
+    select.innerHTML = '';
+    state.agents.forEach((a, id) => {
+        if (id === agentId) return;
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = `${a.name} (${a.status})`;
+        select.appendChild(opt);
+    });
+    if (select.options.length === 0) { showToast('No other agents to hand off to', 'info'); return; }
+    document.getElementById('handoffFindings').value = '';
+    document.getElementById('handoffFiles').value = '';
+    document.getElementById('handoffOverlay').classList.add('active');
+}
+
+function closeHandoff() {
+    document.getElementById('handoffOverlay').classList.remove('active');
+}
+
+async function sendHandoff() {
+    const agentId = state.focusedAgentId;
+    const targetId = document.getElementById('handoffTarget').value;
+    const findings = document.getElementById('handoffFindings').value.trim();
+    const filesStr = document.getElementById('handoffFiles').value.trim();
+    const files = filesStr ? filesStr.split(',').map(f => f.trim()).filter(Boolean) : [];
+    if (!findings) { showToast('Key findings required', 'warning'); return; }
+    const btn = document.getElementById('handoffSendBtn');
+    await withLoading(btn, async () => {
+        try {
+            const res = await apiFetch(`/api/agents/${agentId}/handoff`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_agent_id: targetId, key_findings: findings, files_modified: files }),
+            });
+            if (res.ok) {
+                showToast('Handoff sent successfully', 'success');
+                closeHandoff();
+            } else {
+                const err = await res.json();
+                showToast(err.error || 'Handoff failed', 'error');
+            }
+        } catch (e) { showToast('Handoff failed: ' + e.message, 'error'); }
+    });
+}
+
+// ── Command Palette ──
+
+const PALETTE_ACTIONS = [
+    { icon: 'rocket', label: 'Spawn new agent', shortcut: '⌘N', action: () => { closePalette(); openSpawnDialog(); } },
+    { icon: 'zap', label: 'Run workflow...', shortcut: '', action: () => { closePalette(); openWorkflowRunner(); } },
+    { icon: 'edit', label: 'Edit workflows...', shortcut: '', action: () => { closePalette(); openWfEditor(); } },
+    { icon: 'settings', label: 'Settings...', shortcut: '⌘,', action: () => { closePalette(); openSettings(); } },
+    { icon: 'history', label: 'View history', shortcut: '', action: () => { closePalette(); openHistory(); } },
+    { icon: 'x', label: 'Kill agent...', shortcut: '', action: () => { closePalette(); promptKillPalette(); } },
+    { icon: 'pause', label: 'Pause all agents', shortcut: '', action: () => { closePalette(); pauseAll(); } },
+    { icon: 'play', label: 'Resume all agents', shortcut: '', action: () => { closePalette(); resumeAll(); } },
+    { icon: 'refresh-cw', label: 'Refresh state', shortcut: '', action: () => { closePalette(); socket.send({ type: 'sync_request' }); } },
+    { icon: 'check-square', label: 'Bulk select mode', shortcut: '', action: () => { closePalette(); toggleBulkMode(); } },
+    { icon: 'alert-triangle', label: 'Show conflicts', shortcut: '', action: () => { closePalette(); showConflictSummary(); } },
+    { icon: 'puzzle', label: 'Extensions...', shortcut: '⌘E', action: () => { closePalette(); openExtensionsPanel(); } },
+    { icon: 'brain', label: 'View intelligence insights', shortcut: '', action: () => { closePalette(); toggleInsightsPanel(); } },
+    { icon: 'activity', label: 'System metrics', shortcut: '', action: () => { closePalette(); toggleMetricsDropdown(); } },
+    { icon: 'message-square', label: 'Natural language command...', shortcut: '', action: () => { closePalette(); openNlCommand(); } },
+    { icon: 'list', label: 'View task queue', shortcut: '', action: () => { closePalette(); openQueuePanel(); } },
+    { icon: 'search', label: 'Search across all agents...', shortcut: '⌘⇧F', action: () => { closePalette(); openCrossAgentSearch(); } },
+    { icon: 'users', label: 'Spawn Full Stack Team', shortcut: '', action: () => { closePalette(); spawnFleet('full-stack'); } },
+    { icon: 'shield', label: 'Spawn Review Team', shortcut: '', action: () => { closePalette(); spawnFleet('review-team'); } },
+    { icon: 'layers', label: 'Spawn Build & Test', shortcut: '', action: () => { closePalette(); spawnFleet('build-and-test'); } },
+    { icon: 'columns', label: 'Compare two agents', shortcut: '', action: () => { closePalette(); openCompare(); } },
+    { icon: 'share-2', label: 'Collaboration graph', shortcut: '', action: () => { closePalette(); openCollabGraph(); } },
+    { icon: 'gantt-chart', label: 'Fleet timeline', shortcut: '', action: () => { closePalette(); openFleetTimeline(); } },
+];
+
+function openPalette() {
+    document.getElementById('paletteOverlay').classList.add('active');
+    state.view = 'palette';
+    state.paletteIndex = 0;
+    renderPaletteItems('');
+    const input = document.getElementById('paletteInput');
+    input.value = '';
+    setTimeout(() => input.focus(), 50);
+    trapFocus(document.getElementById('paletteOverlay'));
+}
+
+function closePalette() {
+    releaseFocus();
+    document.getElementById('paletteOverlay').classList.remove('active');
+    if (state.view === 'palette') state.view = 'grid';
+}
+
+function renderPaletteItems(query) {
+    const list = document.getElementById('paletteList');
+    list.innerHTML = '';
+
+    const allItems = [...PALETTE_ACTIONS];
+    for (const [id, agent] of state.agents) {
+        allItems.push(
+            { icon: roleIcon(agent.role, 14), label: `View: ${agent.name}`, shortcut: '', action: () => { closePalette(); openDeepView(id); }, section: 'agents' },
+            { icon: icon('x', 14), label: `Kill: ${agent.name}`, shortcut: '', action: () => { closePalette(); killAgent(id); }, section: 'agents' },
+        );
+        if (agent.status !== 'paused') {
+            allItems.push({ icon: icon('pause', 14), label: `Pause: ${agent.name}`, shortcut: '', action: () => { closePalette(); socket.send({ type: 'pause', agent_id: id }); }, section: 'agents' });
+        }
+    }
+
+    // Fuzzy filter
+    const lq = query.toLowerCase();
+    const filtered = lq ? allItems.filter(item => {
+        const label = item.label.toLowerCase();
+        let qi = 0;
+        for (let i = 0; i < label.length && qi < lq.length; i++) {
+            if (label[i] === lq[qi]) qi++;
+        }
+        return qi === lq.length;
+    }) : allItems;
+
+    // Group by section
+    let lastSection = '';
+    filtered.forEach((item, i) => {
+        if (item.section && item.section !== lastSection) {
+            const label = document.createElement('div');
+            label.className = 'palette-section-label';
+            label.textContent = item.section === 'agents' ? 'Agents' : item.section;
+            list.appendChild(label);
+            lastSection = item.section;
+        }
+
+        const el = document.createElement('div');
+        el.className = 'palette-item' + (i === state.paletteIndex ? ' selected' : '');
+
+        // Highlight matching chars
+        let labelHtml = item.label;
+        if (lq) {
+            let qi = 0, result = '';
+            for (let ci = 0; ci < item.label.length; ci++) {
+                const ch = item.label[ci].replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                if (qi < lq.length && item.label[ci].toLowerCase() === lq[qi]) {
+                    result += `<mark>${ch}</mark>`;
+                    qi++;
+                } else {
+                    result += ch;
+                }
+            }
+            labelHtml = result;
+        } else {
+            labelHtml = item.label.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        el.innerHTML = `
+            <span class="palette-item-icon">${resolveItemIcon(item, 16)}</span>
+            <span class="palette-item-label">${labelHtml}</span>
+            ${item.shortcut ? `<span class="palette-item-shortcut">${item.shortcut}</span>` : ''}
+        `;
+        el.onclick = () => item.action();
+        el._action = item.action;
+        list.appendChild(el);
+    });
+}
+
+function filterPalette() {
+    const query = document.getElementById('paletteInput').value;
+    state.paletteIndex = 0;
+    renderPaletteItems(query);
+}
+
+function handlePaletteKey(e) {
+    const items = [...document.querySelectorAll('#paletteList .palette-item')];
+    if (e.key === 'ArrowDown') { e.preventDefault(); state.paletteIndex = Math.min(state.paletteIndex + 1, items.length - 1); updatePaletteSelection(items); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); state.paletteIndex = Math.max(state.paletteIndex - 1, 0); updatePaletteSelection(items); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (items[state.paletteIndex]) items[state.paletteIndex].click(); }
+    else if (e.key === 'Escape') { closePalette(); }
+}
+
+function updatePaletteSelection(items) {
+    if (!items) items = [...document.querySelectorAll('#paletteList .palette-item')];
+    items.forEach((el, i) => el.classList.toggle('selected', i === state.paletteIndex));
+    if (items[state.paletteIndex]) items[state.paletteIndex].scrollIntoView({ block: 'nearest' });
+}
+
+function promptKillPalette() {
+    if (state.agents.size === 0) { showToast('No agents to kill', 'info'); return; }
+    // Kill focused agent if one exists, otherwise prompt user
+    if (state.focusedAgentId && state.agents.has(state.focusedAgentId)) {
+        killAgent(state.focusedAgentId);
+        return;
+    }
+    // Show selection: open command palette filtered to agents
+    const agentList = [...state.agents.values()].map(a => `${a.name} (${a.id})`).join(', ');
+    showToast('Focus an agent first (1-9 keys), then kill from palette', 'warning');
+}
+
+function pauseAll() { for (const [id, a] of state.agents) { if (a.status !== 'paused') socket.send({ type: 'pause', agent_id: id }); } }
+function resumeAll() { for (const [id, a] of state.agents) { if (a.status === 'paused') socket.send({ type: 'resume', agent_id: id }); } }
+
+// ── Command Bar ──
+
+// Resolve icon from an item that may have .icon (pre-rendered SVG or key) or .iconKey
+function resolveItemIcon(item, size = 14) {
+    if (item.iconKey) return icon(item.iconKey, size);
+    if (item.icon && typeof item.icon === 'string' && item.icon.includes('<')) return item.icon;
+    if (item.icon && ICONS[item.icon]) return icon(item.icon, size);
+    return item.icon || icon('bot', size);
+}
+
+const COMMAND_SLASH_COMMANDS = [
+    { cmd: 'spawn', desc: 'Spawn a new agent', icon: 'plus' },
+    { cmd: 'kill', desc: 'Kill an agent', icon: 'x' },
+    { cmd: 'pause', desc: 'Pause an agent', icon: 'circle-pause' },
+    { cmd: 'resume', desc: 'Resume an agent', icon: 'play' },
+    { cmd: 'status', desc: 'Show fleet status', icon: 'chart-bar' },
+    { cmd: 'help', desc: 'Show keyboard shortcuts', icon: 'info' },
+];
+
+function handleCommandKey(e) {
+    const ac = document.getElementById('commandAutocomplete');
+    const isAcActive = ac.classList.contains('active');
+
+    if (isAcActive) {
+        const items = ac.querySelectorAll('.command-ac-item');
+        if (e.key === 'ArrowDown') { e.preventDefault(); state.acIndex = Math.min(state.acIndex + 1, items.length - 1); highlightAcItem(items); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); state.acIndex = Math.max(state.acIndex - 1, 0); highlightAcItem(items); return; }
+        if (e.key === 'Tab' || e.key === 'Enter') {
+            e.preventDefault();
+            const sel = items[state.acIndex >= 0 ? state.acIndex : 0];
+            if (sel) selectAcItem(sel);
+            return;
+        }
+        if (e.key === 'Escape') { e.preventDefault(); closeAutocomplete(); return; }
+    }
+
+    if (e.key === 'Enter') { e.preventDefault(); sendCommand(); }
+}
+
+function handleCommandInput(e) {
+    const input = document.getElementById('commandInput');
+    const val = input.value;
+
+    // Detect @mention (allow hyphens, dots, underscores in agent names)
+    const atMatch = val.match(/@([\w\-.]*)$/);
+    if (atMatch) {
+        const query = atMatch[1].toLowerCase();
+        const matches = [...state.agents.values()].filter(a =>
+            a.name.toLowerCase().includes(query) || a.id.includes(query)
+        ).slice(0, 8);
+        if (matches.length) {
+            showAutocomplete(matches.map(a => ({
+                icon: roleIcon(a.role, 14),
+                name: a.name,
+                hint: a.status,
+                value: a.id,
+                type: 'agent',
+            })));
+            return;
+        }
+    }
+
+    // Detect /command — merge built-in commands with Claude Code skills
+    const slashMatch = val.match(/^\/([^\s]*)$/);
+    if (slashMatch) {
+        const query = slashMatch[1].toLowerCase();
+        const builtinMatches = COMMAND_SLASH_COMMANDS.filter(c => c.cmd.includes(query)).map(c => ({
+            icon: c.icon,
+            name: '/' + c.cmd,
+            hint: c.desc,
+            value: c.cmd,
+            type: 'command',
+        }));
+        const skillMatches = (state.extensions.skills || [])
+            .filter(s => s.name.toLowerCase().includes(query))
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .slice(0, 10)
+            .map(s => ({
+                iconKey: 'puzzle',
+                name: '/' + s.name,
+                hint: s.description || s.source,
+                value: s.name,
+                type: 'skill',
+            }));
+        const combined = [...builtinMatches, ...skillMatches];
+        if (combined.length) {
+            showAutocomplete(combined);
+            return;
+        }
+    }
+
+    closeAutocomplete();
+}
+
+function showAutocomplete(items) {
+    const ac = document.getElementById('commandAutocomplete');
+    state.acIndex = 0;
+    ac.innerHTML = items.map((item, i) =>
+        `<div class="command-ac-item${i === 0 ? ' selected' : ''}" data-value="${escapeHtml(item.value)}" data-type="${item.type}" onclick="selectAcItem(this)">` +
+        `<span class="ac-icon">${resolveItemIcon(item, 14)}</span>` +
+        `<span class="ac-name">${escapeHtml(item.name)}</span>` +
+        `<span class="ac-hint">${escapeHtml(item.hint)}</span></div>`
+    ).join('');
+    ac.classList.add('active');
+}
+
+function closeAutocomplete() {
+    document.getElementById('commandAutocomplete').classList.remove('active');
+    state.acIndex = -1;
+}
+
+function highlightAcItem(items) {
+    items.forEach((el, i) => el.classList.toggle('selected', i === state.acIndex));
+    if (items[state.acIndex]) items[state.acIndex].scrollIntoView({ block: 'nearest' });
+}
+
+function selectAcItem(el) {
+    const input = document.getElementById('commandInput');
+    const type = el.dataset.type;
+    const value = el.dataset.value;
+
+    if (type === 'agent') {
+        // Set target pill, strip @mention from input
+        setCommandTarget(value);
+        input.value = input.value.replace(/@\w*$/, '').trim();
+    } else if (type === 'command') {
+        const cmd = value;
+        input.value = '';
+        closeAutocomplete();
+        // Execute slash commands
+        if (cmd === 'spawn') openSpawnDialog();
+        else if (cmd === 'status') showToast(`Fleet: ${state.agents.size} agents, ${[...state.agents.values()].filter(a => a.needs_input).length} waiting`, 'info');
+        else if (cmd === 'help') openCheatsheet();
+        else if (cmd === 'kill' || cmd === 'pause' || cmd === 'resume') {
+            if (state.commandTargetId) {
+                socket.send({ type: cmd, agent_id: state.commandTargetId });
+                showToast(`${cmd} sent to ${escapeHtml(state.agents.get(state.commandTargetId)?.name || state.commandTargetId)}`, 'info');
+            } else {
+                showToast(`Select a target agent first with @name`, 'warning');
+            }
+        }
+        return;
+    } else if (type === 'skill') {
+        // Send skill as slash command to targeted agent
+        invokeSkillOnAgent(value);
+        input.value = '';
+        closeAutocomplete();
+        return;
+    }
+    closeAutocomplete();
+    input.focus();
+}
+
+function setCommandTarget(agentId) {
+    state.commandTargetId = agentId;
+    const pill = document.getElementById('commandTargetPill');
+    const agent = state.agents.get(agentId);
+    if (agent) {
+        document.getElementById('pillLabel').textContent = agent.name;
+        pill.classList.remove('system');
+        pill.classList.add('visible');
+    }
+    // Also sync the hidden select
+    const sel = document.getElementById('commandTarget');
+    if (sel) sel.value = agentId;
+}
+
+function clearCommandTarget(e) {
+    if (e) e.stopPropagation();
+    state.commandTargetId = null;
+    const pill = document.getElementById('commandTargetPill');
+    pill.classList.remove('visible');
+    const sel = document.getElementById('commandTarget');
+    if (sel) sel.value = '';
+}
+
+async function sendCommand() {
+    const input = document.getElementById('commandInput');
+    const msg = input.value.trim();
+    if (!msg) return;
+    closeAutocomplete();
+    input.value = '';
+
+    // If message starts with / or @, handle as direct command/mention
+    const targetId = state.focusedAgentId || state.commandTargetId || (state.agents.size === 1 ? [...state.agents.keys()][0] : null);
+
+    // Try intelligent command parsing first for messages without explicit target
+    if (!targetId || !msg.startsWith('@')) {
+        try {
+            const resp = await apiFetch('/api/intelligence/command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ transcript: msg })
+            });
+            if (resp.ok) {
+                const result = await resp.json();
+                if (result.intent && result.intent.confidence >= 0.6) {
+                    if (result.executed) {
+                        showToast(`${result.intent.action}: ${result.results || 'done'}`, 'success');
+                    } else {
+                        showToast(`Parsed: ${result.intent.action} ${(result.intent.targets || []).join(', ')}`, 'info');
+                    }
+                    return;
+                }
+            }
+        } catch (e) { /* intelligence unavailable, fall through */ }
+    }
+
+    // Direct send to target agent
+    if (targetId) {
+        socket.send({ type: 'send', agent_id: targetId, message: msg });
+        showToast(`Sent to ${escapeHtml(state.agents.get(targetId)?.name || targetId)}`, 'info');
+    } else if (state.agents.size > 1) {
+        showToast('Pick a target agent with @name, or type a natural language command', 'warning');
+    } else {
+        showToast('No agents running', 'info');
+    }
+}
+
+function updateCommandTarget() {
+    // Keep the hidden select in sync for backwards compatibility
+    const sel = document.getElementById('commandTarget');
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">Target...</option>';
+    for (const [id, a] of state.agents) {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = a.name || id;
+        sel.appendChild(opt);
+    }
+    if (prev && state.agents.has(prev)) sel.value = prev;
+
+    // Update pill if target agent was removed
+    if (state.commandTargetId && !state.agents.has(state.commandTargetId)) {
+        clearCommandTarget();
+    }
+}
+
+// ── Keyboard Shortcuts ──
+
+document.addEventListener('keydown', (e) => {
+    const isInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName);
+    const hasActiveOverlay = document.querySelector('.confirm-overlay.active');
+
+    // Interaction sheet keyboard shortcuts (when overlay is active and not focused on input)
+    if (!isInput && document.getElementById('interactionOverlay').classList.contains('active')) {
+        if (e.key === 'a' || e.key === 'y') { e.preventDefault(); sendInteraction('yes'); return; }
+        if (e.key === 'r' || e.key === 'n') { e.preventDefault(); sendInteraction('no'); return; }
+    }
+
+    // Escape always works — close topmost overlay via stack
+    if (e.key === 'Escape') {
+        if (state.view === 'deep') { closeDeepView(); return; }
+        if (state.view === 'spawn') { closeSpawnDialog(); return; }
+        if (state.view === 'palette') { closePalette(); return; }
+        const _overlayStack = [
+            ['notifDropdown', closeNotifications],
+            ['projectDetailPanel', closeProjectDetail],
+            ['historyOverlay', closeHistory],
+            ['cheatsheetOverlay', closeCheatsheet],
+            ['insightsPanel', closeInsightsPanel],
+            ['extensionsOverlay', closeExtensionsPanel],
+            ['settingsOverlay', closeSettings],
+            ['wfEditorOverlay', closeWfEditor],
+            ['wfPickerOverlay', closeWfPicker],
+            ['msgPanelOverlay', closeMsgPanel],
+            ['attentionQueueOverlay', closeAttentionQueue],
+            ['interactionOverlay', closeInteraction],
+            ['timelineOverlay', closeTimeline],
+            ['compareOverlay', closeCompare],
+            ['analyticsOverlay', closeAnalytics],
+            ['conflictsOverlay', closeConflicts],
+            ['eventlogOverlay', closeEventLog],
+            ['gsearchOverlay', closeGlobalSearch],
+            ['pipelineOverlay', closePipeline],
+            ['handoffOverlay', closeHandoff],
+            ['editAgentOverlay', closeEditAgent],
+            ['fleetTimelineOverlay', closeFleetTimeline],
+            ['collabOverlay', closeCollabGraph],
+            ['systemMetricsOverlay', closeSystemMetrics],
+            ['splitViewOverlay', closeSplitView],
+            ['batchSendOverlay', closeBatchSend],
+            ['globalSearchOverlay', closeGlobalSearchBar],
+            ['spawnOverlay', closeSpawnDialog],
+        ];
+        for (const [id, closeFn] of _overlayStack) {
+            const el = document.getElementById(id);
+            if (el && (el.classList.contains('active') || (el.style.display && el.style.display !== 'none'))) { closeFn(); return; }
+        }
+        return;
+    }
+
+    // Skip all non-Escape shortcuts when a confirm overlay is active
+    if (hasActiveOverlay) return;
+
+    // Cmd+K — palette
+    if (e.metaKey && e.key === 'k') {
+        e.preventDefault();
+        state.view === 'palette' ? closePalette() : openPalette();
+        return;
+    }
+
+    // / — palette (when not in input, not shift+/ which is ?)
+    if (e.key === '/' && !e.shiftKey && !isInput && state.view === 'grid') {
+        e.preventDefault();
+        openPalette();
+        return;
+    }
+
+    // Block non-essential shortcuts when typing in inputs
+    if (isInput && !e.metaKey) return;
+
+    // Cmd+N — new agent
+    if (e.metaKey && e.key === 'n' && !e.shiftKey) { e.preventDefault(); openSpawnDialog(); return; }
+
+    // Cmd+, — settings
+    if (e.metaKey && e.key === ',') { e.preventDefault(); openSettings(); return; }
+
+    // Cmd+E — extensions (skip when in input — conflicts with Cmd+E end-of-line)
+    if (e.metaKey && e.key === 'e' && !e.shiftKey && !isInput) { e.preventDefault(); toggleExtensionsPanel(); return; }
+
+    // Cmd+Shift+F — toggle focus mode
+    if (e.metaKey && e.shiftKey && e.key === 'F') { e.preventDefault(); toggleFocusMode(); return; }
+
+    // Cmd+/ — open global search bar (cross-agent output search)
+    if (e.metaKey && e.key === '/') { e.preventDefault(); openGlobalSearchBar(); return; }
+
+    // Cmd+Enter — submit spawn dialog
+    if (e.metaKey && e.key === 'Enter' && state.view === 'spawn') { e.preventDefault(); spawnAgent(); return; }
+
+    // Cmd+G — go to line in deep view
+    if (e.metaKey && e.key === 'g' && state.view === 'deep') { e.preventDefault(); openGoToLine(); return; }
+
+    // Cmd+F — search in deep view
+    if (e.metaKey && e.key === 'f' && state.view === 'deep') { e.preventDefault(); openDeepSearch(); return; }
+
+    // Shift+Arrow in deep view — navigate between agents
+    if (state.view === 'deep' && e.shiftKey && !isInput) {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); deepNavAgent(-1); return; }
+        if (e.key === 'ArrowRight') { e.preventDefault(); deepNavAgent(1); return; }
+    }
+
+    // Deep view tab shortcuts (when not in input)
+    if (state.view === 'deep' && !isInput && !e.metaKey && !e.ctrlKey) {
+        if (e.key === 't' && !e.shiftKey) { e.preventDefault(); switchDeepTab('terminal'); return; }
+        if (e.key === 'a' && !e.shiftKey) { e.preventDefault(); switchDeepTab('activity'); return; }
+        if (e.key === 'n' && !e.shiftKey) { e.preventDefault(); switchDeepTab('notes'); return; }
+        if (e.key === 's' && !e.shiftKey) { e.preventDefault(); switchDeepTab('scratchpad'); return; }
+        if (e.key === 'i') { e.preventDefault(); document.getElementById('deepInput')?.focus(); return; }
+        if (e.key === 'g') { e.preventDefault(); scrollDeepToBottom(); return; }
+    }
+
+    // Cmd+Shift+S — toggle bulk select mode
+    if (e.metaKey && e.shiftKey && e.key === 'S') {
+        e.preventDefault();
+        toggleBulkMode();
+        return;
+    }
+
+    // Cmd+A — select all visible agents in bulk mode
+    if (e.metaKey && e.key === 'a' && !e.shiftKey && document.getElementById('agentGrid').classList.contains('bulk-mode')) {
+        e.preventDefault();
+        for (const [id] of state.agents) {
+            const card = cardElements.get(id);
+            if (card && card.style.display !== 'none') selectedAgents.add(id);
+        }
+        updateBulkUI();
+        return;
+    }
+
+    // Cmd+Shift+A — open attention queue
+    if (e.metaKey && e.shiftKey && e.key === 'A') {
+        e.preventDefault();
+        openAttentionQueue();
+        return;
+    }
+
+    // Cmd+Shift+P — pause/resume focused
+    if (e.metaKey && e.shiftKey && e.key === 'P') {
+        e.preventDefault();
+        if (state.focusedAgentId) pauseResumeAgent(state.focusedAgentId);
+        return;
+    }
+
+    // Cmd+Shift+K — kill focused
+    if (e.metaKey && e.shiftKey && e.key === 'K') {
+        e.preventDefault();
+        if (state.focusedAgentId) { killAgent(state.focusedAgentId); closeDeepView(); }
+        return;
+    }
+
+    // Cmd+Shift+R — restart focused
+    if (e.metaKey && e.shiftKey && e.key === 'R') {
+        e.preventDefault();
+        if (state.focusedAgentId) deepRestart();
+        return;
+    }
+
+    // Cmd+Shift+F handled above (openGlobalSearch)
+
+    // Cmd+Enter — send command bar
+    if (e.metaKey && e.key === 'Enter' && state.view === 'grid') { e.preventDefault(); sendCommand(); return; }
+
+    // Cmd+T — activity timeline
+    if (e.metaKey && e.key === 't' && !e.shiftKey) {
+        e.preventDefault();
+        const overlay = document.getElementById('timelineOverlay');
+        overlay.classList.contains('active') ? closeTimeline() : openTimeline();
+        return;
+    }
+
+    // Cmd+F in grid view — focus grid search
+    if (e.metaKey && e.key === 'f' && state.view === 'grid') {
+        e.preventDefault();
+        document.getElementById('gridSearch').focus();
+        return;
+    }
+
+    // Cmd+1-9 — project quick-switch
+    if (e.metaKey && !e.shiftKey && e.key >= '1' && e.key <= '9' && state.view === 'grid') {
+        e.preventDefault();
+        quickSwitchProject(parseInt(e.key) - 1);
+        return;
+    }
+
+    if (isInput) return;
+
+    // ? — cheatsheet (handles both e.key='?' and shift+/ automation)
+    if ((e.key === '?' || (e.key === '/' && e.shiftKey)) && !e.metaKey) { e.preventDefault(); openCheatsheet(); return; }
+
+    // Tab — cycle agents in grid view
+    if (e.key === 'Tab' && state.view === 'grid') {
+        e.preventDefault();
+        const cards = getVisibleCards();
+        if (!cards.length) return;
+        if (e.shiftKey) {
+            setKeyboardFocus(keyboardFocusIdx <= 0 ? cards.length - 1 : keyboardFocusIdx - 1);
+        } else {
+            setKeyboardFocus(keyboardFocusIdx >= cards.length - 1 ? 0 : keyboardFocusIdx + 1);
+        }
+        return;
+    }
+
+    // Arrow keys + hjkl — keyboard grid navigation
+    if (state.view === 'grid') {
+        const navKeys = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', h: 'left', j: 'down', k: 'up', l: 'right' };
+        const dir = navKeys[e.key];
+        if (dir) {
+            e.preventDefault();
+            const cards = getVisibleCards();
+            if (!cards.length) return;
+            const cols = getGridColumns();
+            if (keyboardFocusIdx < 0) { setKeyboardFocus(0); return; }
+            let newIdx = keyboardFocusIdx;
+            if (dir === 'left') newIdx = Math.max(0, keyboardFocusIdx - 1);
+            else if (dir === 'right') newIdx = Math.min(cards.length - 1, keyboardFocusIdx + 1);
+            else if (dir === 'up') newIdx = Math.max(0, keyboardFocusIdx - cols);
+            else if (dir === 'down') newIdx = Math.min(cards.length - 1, keyboardFocusIdx + cols);
+            setKeyboardFocus(newIdx);
+            return;
+        }
+        // Enter — open focused card
+        if (e.key === 'Enter' && keyboardFocusIdx >= 0) {
+            e.preventDefault();
+            const cards = getVisibleCards();
+            if (cards[keyboardFocusIdx]) {
+                const agentId = cards[keyboardFocusIdx].dataset.agentId;
+                if (agentId) openDeepView(agentId);
+            }
+            return;
+        }
+    }
+
+    // W — cycle through waiting agents and open interaction sheet
+    if (e.key === 'w' && state.view === 'grid' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        cycleWaitingAgents();
+        return;
+    }
+
+    // 1-9 — focus agent (respects active filters)
+    if (e.key >= '1' && e.key <= '9') {
+        e.preventDefault();
+        const grid = document.getElementById('agentGrid');
+        const visibleCards = [...grid.children].filter(c =>
+            c.style.display !== 'none' && c.dataset.agentId
+        );
+        const idx = parseInt(e.key) - 1;
+        if (visibleCards[idx]) openDeepView(visibleCards[idx].dataset.agentId);
+        return;
+    }
+});
+
+// ── Cheatsheet ──
+let _cheatsheetMousedownHandler = null;
+function openCheatsheet() {
+    const el = document.getElementById('cheatsheetOverlay');
+    el.classList.add('active');
+    // Remove previous handler to prevent accumulation
+    if (_cheatsheetMousedownHandler) {
+        document.removeEventListener('mousedown', _cheatsheetMousedownHandler);
+    }
+    _cheatsheetMousedownHandler = (e) => {
+        if (!el.contains(e.target)) closeCheatsheet();
+    };
+    document.addEventListener('mousedown', _cheatsheetMousedownHandler);
+}
+function closeCheatsheet() {
+    document.getElementById('cheatsheetOverlay').classList.remove('active');
+    if (_cheatsheetMousedownHandler) {
+        document.removeEventListener('mousedown', _cheatsheetMousedownHandler);
+        _cheatsheetMousedownHandler = null;
+    }
+}
+
+// ── Project Selector ──
+
+function renderProjectSelector() {
+    const sel = document.getElementById('projectSelector');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">All Projects</option>';
+    state.projects.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        const countStr = p.agent_count ? ` (${p.agent_count})` : '';
+        opt.textContent = p.name + countStr;
+        sel.appendChild(opt);
+    });
+    sel.value = current;
+    updateFileSidebarProjectList();
+}
+
+async function openNewProjectDialog() {
+    const name = await promptInput('New Project Name', 'e.g. payment-service', { iconKey: 'folder-plus', confirmText: 'Next' });
+    if (!name) return;
+    const defaultPath = '~/Projects/' + name.toLowerCase().replace(/\s+/g, '-');
+    const path = await promptInput('Project Directory', defaultPath, { iconKey: 'folder', confirmText: 'Create', defaultValue: defaultPath });
+    if (!path) return;
+    try {
+        const res = await apiFetch('/api/projects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, path }),
+        });
+        if (res.ok) {
+            const proj = await res.json();
+            state.projects.push(proj);
+            renderProjectSelector();
+            showToast(`Project "${proj.name}" created`, 'success');
+        } else {
+            const err = await res.json();
+            showToast(err.error || 'Failed to create project', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to create project', 'error');
+    }
+}
+
+function filterByProject(projectId) {
+    state.selectedProjectId = projectId || null;
+    renderAgentGrid();
+    updateProjectMetricsBadge();
+    updateProjectHeader();
+    saveFilterState();
+    if (projectId) onProjectChanged(projectId);
+}
+
+function updateProjectMetricsBadge() {
+    const badge = document.getElementById('projectMetricsBadge');
+    const pid = state.selectedProjectId;
+    if (!pid) { badge.style.display = 'none'; return; }
+
+    const agents = [...state.agents.values()].filter(a => a.project_id === pid);
+    const count = agents.length;
+    const cost = agents.reduce((sum, a) => sum + (a.estimated_cost_usd || 0), 0);
+    const active = agents.filter(a => !['idle', 'error', 'paused'].includes(a.status)).length;
+
+    badge.style.display = '';
+    badge.innerHTML = `<span class="pm-count">${count}</span> agent${count !== 1 ? 's' : ''}${active > 0 ? ` (${active} active)` : ''}${cost > 0 ? ` · <span class="pm-cost">$${cost.toFixed(3)}</span>` : ''}`;
+}
+
+function updateProjectHeader() {
+    const header = document.getElementById('projectHeader');
+    const pid = state.selectedProjectId;
+    if (!pid) { header.style.display = 'none'; return; }
+    const proj = state.projects.find(p => p.id === pid);
+    if (!proj) { header.style.display = 'none'; return; }
+
+    header.style.display = '';
+    document.getElementById('projHeaderName').textContent = proj.name;
+    const branchEl = document.getElementById('projHeaderBranch');
+    branchEl.textContent = proj.default_branch || '';
+    branchEl.style.display = proj.default_branch ? '' : 'none';
+    const remoteEl = document.getElementById('projHeaderRemote');
+    if (proj.git_remote_url) {
+        let displayUrl = proj.git_remote_url.replace(/\.git$/, '').replace(/^https?:\/\//, '').replace(/^git@([^:]+):/, '$1/');
+        remoteEl.textContent = displayUrl;
+        const httpUrl = proj.git_remote_url.startsWith('http') ? proj.git_remote_url : proj.git_remote_url.replace(/^git@([^:]+):(.+)$/, 'https://$1/$2').replace(/\.git$/, '');
+        remoteEl.href = httpUrl;
+        remoteEl.style.display = '';
+    } else {
+        remoteEl.style.display = 'none';
+    }
+    document.getElementById('projHeaderPath').textContent = proj.path || '';
+
+    // Stats
+    const agents = [...state.agents.values()].filter(a => a.project_id === pid);
+    const active = agents.filter(a => ['working', 'planning', 'reading'].includes(a.status)).length;
+    const cost = agents.reduce((s, a) => s + (a.estimated_cost_usd || 0), 0);
+    const files = new Set();
+    agents.forEach(a => { if (a.files_touched) for (let i = 0; i < a.files_touched; i++) files.add(i); });
+    document.getElementById('projHeaderStats').textContent = `${agents.length} agents (${active} active) \u00b7 $${cost.toFixed(3)}`;
+}
+
+function openSpawnDialogForProject() {
+    openSpawnDialog();
+    if (state.selectedProjectId) {
+        setTimeout(() => {
+            const projSel = document.getElementById('spawnProject');
+            projSel.value = state.selectedProjectId;
+            projSel.dispatchEvent(new Event('change'));
+        }, 50);
+    }
+}
+
+// Project quick-switch: store project order in localStorage
+function getProjectOrder() {
+    try { return JSON.parse(localStorage.getItem('ashlr_project_order') || '[]'); } catch { return []; }
+}
+function setProjectOrder(order) {
+    localStorage.setItem('ashlr_project_order', JSON.stringify(order));
+}
+function quickSwitchProject(index) {
+    const order = getProjectOrder();
+    let pid;
+    if (order.length > index) {
+        pid = order[index];
+    } else {
+        // Fallback: favorites first, then alphabetical
+        const sorted = [...state.projects].sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) || a.name.localeCompare(b.name));
+        if (sorted.length > index) pid = sorted[index].id;
+    }
+    if (pid) {
+        const sel = document.getElementById('projectSelector');
+        sel.value = pid;
+        filterByProject(pid);
+    }
+}
+
+// ── Wave 2: Focus Mode ──
+
+function toggleFocusMode() {
+    state.focusMode = !state.focusMode;
+    localStorage.setItem('ashlr_focus_mode', state.focusMode ? 'true' : 'false');
+    // Also toggle deep view focus-mode CSS class
+    const deepView = document.getElementById('deepView');
+    if (deepView) deepView.classList.toggle('focus-mode', state.focusMode);
+    // Update both focus mode buttons (header + deep view toolbar)
+    ['focusModeBtn', 'focusModeBtnDeep'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.classList.toggle('active', state.focusMode);
+    });
+    renderAgentGrid();
+}
+
+// ── Wave 2: Saved Filter Views ──
+
+function saveCurrentView() {
+    const name = prompt('View name:');
+    if (!name || !name.trim()) return;
+    const view = {
+        name: name.trim(),
+        projectFilter: state.selectedProjectId || '',
+        branchFilter: state.selectedBranch || '',
+        statusFilter: state.statusFilter || 'all',
+        focusMode: state.focusMode,
+        savedAt: new Date().toISOString(),
+    };
+    state.savedViews = state.savedViews.filter(v => v.name !== view.name);
+    state.savedViews.unshift(view);
+    if (state.savedViews.length > 20) state.savedViews = state.savedViews.slice(0, 20);
+    localStorage.setItem('ashlr_saved_views', JSON.stringify(state.savedViews));
+    showToast(`View "${view.name}" saved`);
+}
+
+function loadSavedView(index) {
+    const view = state.savedViews[index];
+    if (!view) return;
+    state.selectedProjectId = view.projectFilter || null;
+    state.selectedBranch = view.branchFilter || null;
+    state.statusFilter = view.statusFilter || 'all';
+    state.focusMode = view.focusMode || false;
+    localStorage.setItem('ashlr_focus_mode', state.focusMode ? 'true' : 'false');
+    // Update UI selectors
+    const projSel = document.getElementById('projectSelector');
+    if (projSel) projSel.value = state.selectedProjectId || '';
+    const branchSel = document.getElementById('branchSelector');
+    if (branchSel) branchSel.value = state.selectedBranch || '';
+    renderAgentGrid();
+    updateProjectMetricsBadge();
+    updateProjectHeader();
+}
+
+function deleteSavedView(index) {
+    state.savedViews.splice(index, 1);
+    localStorage.setItem('ashlr_saved_views', JSON.stringify(state.savedViews));
+}
+
+// ── Wave 2: Filter Persistence ──
+
+function saveFilterState() {
+    localStorage.setItem('ashlr_filter_state', JSON.stringify({
+        projectId: state.selectedProjectId || '',
+        branch: state.selectedBranch || '',
+        status: state.statusFilter || 'all',
+        focusMode: state.focusMode,
+    }));
+}
+
+function restoreFilterState() {
+    try {
+        const saved = safeParseJSON('ashlr_filter_state', {});
+        if (saved.projectId) {
+            state.selectedProjectId = saved.projectId;
+            const projSel = document.getElementById('projectSelector');
+            if (projSel) projSel.value = saved.projectId;
+        }
+        if (saved.branch) {
+            state.selectedBranch = saved.branch;
+        }
+        if (saved.status && saved.status !== 'all') {
+            state.statusFilter = saved.status;
+        }
+        if (saved.focusMode) {
+            state.focusMode = true;
+        }
+    } catch (e) { /* non-critical */ }
+}
+
+// ── Wave 2: Global Search (Cmd+/) ──
+
+function openGlobalSearchBar() {
+    let bar = document.getElementById('globalSearchOverlay');
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'globalSearchOverlay';
+        bar.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding-top:80px';
+        bar.innerHTML = `
+            <div style="background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:var(--radius-md);width:600px;max-width:90vw;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
+                <div style="padding:12px;border-bottom:1px solid var(--border-subtle)">
+                    <input id="globalSearchInput" type="text" placeholder="Search across all agents..." style="width:100%;background:transparent;border:none;color:var(--text-primary);font-size:14px;outline:none;font-family:var(--font-mono)">
+                </div>
+                <div id="globalSearchResults" style="max-height:400px;overflow-y:auto;padding:8px"></div>
+            </div>`;
+        bar.onclick = (e) => { if (e.target === bar) closeGlobalSearchBar(); };
+        document.body.appendChild(bar);
+        const input = document.getElementById('globalSearchInput');
+        let searchTimer;
+        input.addEventListener('input', () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => performGlobalSearch(input.value), 300);
+        });
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeGlobalSearchBar();
+        });
+    }
+    bar.style.display = 'flex';
+    const input = document.getElementById('globalSearchInput');
+    input.value = '';
+    document.getElementById('globalSearchResults').innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:12px">Type to search agent outputs...</div>';
+    setTimeout(() => input.focus(), 50);
+}
+
+function closeGlobalSearchBar() {
+    const bar = document.getElementById('globalSearchOverlay');
+    if (bar) bar.style.display = 'none';
+}
+
+async function performGlobalSearch(query) {
+    if (!query || query.length < 2) {
+        document.getElementById('globalSearchResults').innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:12px">Type at least 2 characters...</div>';
+        return;
+    }
+    try {
+        let url = `/api/search?q=${encodeURIComponent(query)}`;
+        if (state.selectedProjectId) url += `&project_id=${encodeURIComponent(state.selectedProjectId)}`;
+        const resp = await apiFetch(url);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const results = data.results || [];
+        const el = document.getElementById('globalSearchResults');
+        if (!results.length) {
+            el.innerHTML = `<div style="padding:12px;color:var(--text-muted);font-size:12px">No results for "${escapeHtml(query)}"</div>`;
+            return;
+        }
+        el.innerHTML = results.map(r => `
+            <div style="padding:8px 12px;border-bottom:1px solid var(--border-subtle);cursor:pointer" onclick="closeGlobalSearchBar();openDeepView('${r.agent_id}')" onmouseover="this.style.background='var(--bg-surface)'" onmouseout="this.style.background='transparent'">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                    <span style="font-weight:600;font-size:12px;color:var(--text-primary)">${escapeHtml(r.agent_name)}</span>
+                    <span style="font-size:10px;color:var(--text-muted);background:var(--bg-surface);padding:1px 6px;border-radius:8px">${escapeHtml(r.role)}</span>
+                    <span style="font-size:10px;color:var(--text-tertiary)">${r.match_count} match${r.match_count !== 1 ? 'es' : ''}</span>
+                </div>
+                ${r.matches.slice(0, 3).map(m => `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:1px 0">${escapeHtml(m.text)}</div>`).join('')}
+            </div>
+        `).join('');
+    } catch (e) { /* non-critical */ }
+}
+
+// ── Project Detail Panel ──
+
+const STATUS_COLORS = {
+    spawning: '#64748B', planning: '#F59E0B', working: '#22C55E',
+    waiting: '#F97316', idle: '#64748B', error: '#EF4444', paused: '#64748B',
+    complete: '#10B981',
+};
+
+function openProjectDetail(projectId) {
+    const project = state.projects.find(p => p.id === projectId);
+    if (!project) return;
+
+    state._projectDetailId = projectId;
+    document.getElementById('projectDetailName').textContent = project.name;
+    document.getElementById('projectDetailPath').textContent = project.directory || project.path || '';
+    updateProjectDetailContent(projectId);
+    document.getElementById('projectDetailPanel').classList.add('active');
+    // Load GitHub info asynchronously (non-blocking)
+    loadGithubInfo(projectId);
+
+    // Close with Escape — remove first to prevent accumulation
+    document.removeEventListener('keydown', _projectDetailEscHandler);
+    document.addEventListener('keydown', _projectDetailEscHandler);
+}
+
+function _projectDetailEscHandler(e) {
+    if (e.key === 'Escape') closeProjectDetail();
+}
+
+function closeProjectDetail() {
+    document.getElementById('projectDetailPanel').classList.remove('active');
+    document.removeEventListener('keydown', _projectDetailEscHandler);
+    state._projectDetailId = null;
+}
+
+async function deleteCurrentProject() {
+    const pid = state._projectDetailId;
+    if (!pid) return;
+    const project = state.projects?.find(p => p.id === pid);
+    const name = project?.name || pid;
+    const ok = await confirmAction('Delete Project', `Delete "${name}"? Active agents will be unassigned but not killed.`, 'Delete', { iconKey: 'trash-2', danger: true });
+    if (!ok) return;
+    try {
+        const res = await apiFetch(`/api/projects/${pid}`, { method: 'DELETE' });
+        if (res.ok) {
+            showToast(`Project "${name}" deleted`, 'success');
+            closeProjectDetail();
+            state.projects = (state.projects || []).filter(p => p.id !== pid);
+            renderProjectSelector();
+        } else {
+            const data = await res.json().catch(() => ({}));
+            showToast(data.error || 'Failed to delete project', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to delete project', 'error');
+    }
+}
+
+// ── GitHub Integration ──
+
+let _ghAvailable = null; // cached gh CLI status
+
+async function checkGithubAvailability() {
+    try {
+        const res = await apiFetch('/api/github/status');
+        if (res.ok) {
+            const data = await res.json();
+            _ghAvailable = data.available && data.authenticated;
+            return _ghAvailable;
+        }
+    } catch (e) { console.debug('GitHub status check unavailable:', e.message); }
+    _ghAvailable = false;
+    return false;
+}
+
+async function loadGithubInfo(projectId) {
+    const section = document.getElementById('projectGithubSection');
+    const content = document.getElementById('projectGithubContent');
+    if (!section || !content) return;
+
+    // Check gh availability (cached after first call)
+    if (_ghAvailable === null) await checkGithubAvailability();
+    if (!_ghAvailable) { section.style.display = 'none'; return; }
+
+    // Check if project has a git remote
+    const project = state.projects?.find(p => p.id === projectId);
+    if (!project?.git_remote_url || !project.git_remote_url.includes('github')) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = '';
+    content.innerHTML = '<div style="color:var(--text-tertiary);padding:8px 0">Loading GitHub data...</div>';
+
+    try {
+        const res = await apiFetch(`/api/projects/${projectId}/github`);
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            content.innerHTML = `<div style="color:var(--text-tertiary);padding:8px 0">${escapeHtml(err.error || 'Failed to load')}</div>`;
+            return;
+        }
+        const data = await res.json();
+        renderGithubPanel(data, content, projectId);
+    } catch (e) {
+        content.innerHTML = '<div style="color:var(--text-tertiary);padding:8px 0">Failed to connect to GitHub</div>';
+    }
+}
+
+function renderGithubPanel(data, container, projectId) {
+    let html = '';
+
+    // Repo info bar
+    const repo = data.repo || {};
+    const name = repo.nameWithOwner || '';
+    const stars = repo.stargazerCount || 0;
+    const forks = repo.forkCount || 0;
+    const isPrivate = repo.isPrivate;
+    html += `<div class="gh-repo-info">
+        <span class="gh-repo-stat">${isPrivate ? '🔒' : '🌐'} ${escapeHtml(name)}</span>
+        ${stars ? `<span class="gh-repo-stat">⭐ ${stars}</span>` : ''}
+        ${forks ? `<span class="gh-repo-stat">🔀 ${forks}</span>` : ''}
+    </div>`;
+
+    // Pull Requests
+    const prs = data.pull_requests || [];
+    html += `<div class="gh-section-label">Pull Requests ${prs.length ? `(${prs.length})` : ''}</div>`;
+    if (prs.length) {
+        prs.forEach(pr => {
+            const author = pr.author?.login || '';
+            html += `<a class="gh-item" href="${escapeHtml(pr.url || '')}" target="_blank" rel="noopener">
+                <span class="gh-item-num"><span class="gh-badge gh-badge-pr">PR</span></span>
+                <div style="flex:1">
+                    <div class="gh-item-title">#${pr.number} ${escapeHtml(pr.title || '')}</div>
+                    <div class="gh-item-meta">${escapeHtml(pr.headRefName || '')} · ${escapeHtml(author)}</div>
+                </div>
+            </a>`;
+        });
+    } else {
+        html += '<div style="color:var(--text-tertiary);font-size:11px;padding:4px 0">No open pull requests</div>';
+    }
+
+    // Issues
+    const issues = data.issues || [];
+    html += `<div class="gh-section-label">Issues ${issues.length ? `(${issues.length})` : ''}</div>`;
+    if (issues.length) {
+        issues.forEach(issue => {
+            const author = issue.author?.login || '';
+            const labels = (issue.labels || []).map(l => l.name || l).slice(0, 3);
+            html += `<a class="gh-item" href="${escapeHtml(issue.url || '')}" target="_blank" rel="noopener">
+                <span class="gh-item-num"><span class="gh-badge gh-badge-open">#${issue.number}</span></span>
+                <div style="flex:1">
+                    <div class="gh-item-title">${escapeHtml(issue.title || '')}</div>
+                    <div class="gh-item-meta">${escapeHtml(author)}${labels.length ? ' · ' + labels.map(l => escapeHtml(l)).join(', ') : ''}</div>
+                </div>
+            </a>`;
+        });
+    } else {
+        html += '<div style="color:var(--text-tertiary);font-size:11px;padding:4px 0">No open issues</div>';
+    }
+
+    // Branches
+    const branches = data.branches || [];
+    if (branches.length) {
+        html += `<div class="gh-section-label">Branches (${branches.length})</div>`;
+        html += '<div class="gh-branch-list">';
+        branches.slice(0, 15).forEach(b => {
+            html += `<span class="gh-branch-tag">${escapeHtml(b)}</span>`;
+        });
+        if (branches.length > 15) html += `<span class="gh-branch-tag" style="color:var(--text-tertiary)">+${branches.length - 15} more</span>`;
+        html += '</div>';
+    }
+
+    // Actions
+    html += `<div class="gh-actions">
+        <button class="btn" onclick="createGithubIssue('${projectId}')" style="font-size:11px;padding:4px 10px;background:var(--bg-elevated);border:1px solid var(--border-subtle);color:var(--text-secondary);border-radius:6px;cursor:pointer">+ New Issue</button>
+        <button class="btn" onclick="createGithubPR('${projectId}')" style="font-size:11px;padding:4px 10px;background:var(--bg-elevated);border:1px solid var(--border-subtle);color:var(--text-secondary);border-radius:6px;cursor:pointer">+ New PR</button>
+        <a href="${escapeHtml(repo.url || '')}" target="_blank" rel="noopener" style="font-size:11px;padding:4px 10px;background:var(--accent);color:white;border-radius:6px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:4px">Open on GitHub ↗</a>
+    </div>`;
+
+    container.innerHTML = html;
+}
+
+async function refreshGithubInfo() {
+    const pid = state._projectDetailId;
+    if (pid) await loadGithubInfo(pid);
+}
+
+async function createGithubIssue(projectId) {
+    const title = await promptInput('New GitHub Issue', 'Issue title...', { iconKey: 'alert-circle', confirmText: 'Create' });
+    if (!title) return;
+    try {
+        const res = await apiFetch(`/api/projects/${projectId}/github/issues`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title }),
+        });
+        if (res.ok) {
+            const data = await res.json();
+            showToast('Issue created', 'success');
+            if (data.url) window.open(data.url, '_blank');
+            refreshGithubInfo();
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Failed to create issue', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to create issue', 'error');
+    }
+}
+
+async function createGithubPR(projectId) {
+    const title = await promptInput('New Pull Request', 'PR title...', { iconKey: 'git-pull-request', confirmText: 'Create' });
+    if (!title) return;
+    try {
+        const res = await apiFetch(`/api/projects/${projectId}/github/pulls`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title }),
+        });
+        if (res.ok) {
+            const data = await res.json();
+            showToast('Pull request created', 'success');
+            if (data.url) window.open(data.url, '_blank');
+            refreshGithubInfo();
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Failed to create PR', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to create PR', 'error');
+    }
+}
+
+function updateProjectDetailContent(projectId) {
+    const agents = [...state.agents.values()].filter(a => a.project_id === projectId);
+    const active = agents.filter(a => !['idle', 'error', 'paused'].includes(a.status)).length;
+    const totalCost = agents.reduce((s, a) => s + (a.estimated_cost_usd || 0), 0);
+    const avgCtx = agents.length ? agents.reduce((s, a) => s + (a.context_pct || 0), 0) / agents.length : 0;
+
+    document.getElementById('projectDetailActive').textContent = active;
+    document.getElementById('projectDetailTotal').textContent = agents.length;
+    document.getElementById('projectDetailCost').textContent = '$' + totalCost.toFixed(2);
+    document.getElementById('projectDetailContext').textContent = Math.max(0, 100 - Math.round(avgCtx * 100)) + '% left';
+
+    // Agent list
+    const listEl = document.getElementById('projectDetailAgents');
+    if (!agents.length) {
+        listEl.innerHTML = '<div class="project-empty-state">No agents in this project</div>';
+    } else {
+        const roles = window.ROLES || {};
+        listEl.innerHTML = agents.map(a => {
+            const role = roles[a.role] || {};
+            const color = STATUS_COLORS[a.status] || '#64748B';
+            return `<div class="project-agent-item" onclick="closeProjectDetail(); openDeepView('${escapeHtml(a.id)}')">
+                <div class="project-agent-status" style="background:${color}"></div>
+                <span class="project-agent-name">${roleIcon(a.role, 12)} ${escapeHtml(a.name)}</span>
+                <span class="project-agent-role">${escapeHtml(a.status)}</span>
+            </div>`;
+        }).join('');
+    }
+
+    // Scratchpad entries (from state)
+    const spEl = document.getElementById('projectDetailScratchpad');
+    const entries = (state._scratchpadEntries || []).filter(e => e.project_id === projectId);
+    if (!entries.length) {
+        spEl.innerHTML = '<div class="project-empty-state">No scratchpad entries</div>';
+    } else {
+        spEl.innerHTML = entries.map(e => `<div class="project-scratchpad-entry">
+            <div class="entry-time">${new Date(e.created_at).toLocaleString()}</div>
+            ${escapeHtml(e.content)}
+        </div>`).join('');
+    }
+}
+
+// ── Agent History ──
+
+async function openHistory() {
+    state.view = 'history';
+    document.getElementById('historyOverlay').classList.add('active');
+    const list = document.getElementById('historyList');
+    list.innerHTML = '<div class="history-empty">Loading...</div>';
+    try {
+        const res = await apiFetch('/api/history?limit=50');
+        const result = await res.json();
+        const items = result.data || result;
+        if (!items.length) {
+            list.innerHTML = '<div class="history-empty">No completed agents yet</div>';
+            return;
+        }
+        list.innerHTML = '';
+        items.forEach(item => {
+            const info = ROLE_INFO[item.role] || ROLE_INFO.general;
+            const dur = item.duration_sec ? formatDuration(item.duration_sec) : '';
+            const el = document.createElement('div');
+            el.className = 'history-item';
+            const resumable = item.resumable ? `<button class="btn-ghost" style="font-size:11px;padding:2px 8px;color:var(--accent);border:1px solid var(--accent);border-radius:var(--radius-sm)" onclick="event.stopPropagation();resumeSession('${item.id}')" data-tip="Resume this agent session">Resume</button>` : '';
+            el.innerHTML = `
+                <span class="hi-icon">${info.icon}</span>
+                <span class="hi-name">${escapeHtml(item.name)}</span>
+                <span class="hi-task">${escapeHtml(item.task || item.summary || '')}</span>
+                <span class="hi-meta">${dur}</span>
+                ${resumable}
+            `;
+            el.onclick = () => showHistoryDetail(item);
+            list.appendChild(el);
+        });
+    } catch (e) {
+        list.innerHTML = '<div class="history-empty">Failed to load history</div>';
+    }
+    trapFocus(document.getElementById('historyOverlay'));
+}
+
+async function resumeSession(sessionId) {
+    const continueMsg = await promptInput('Resume Session', 'Optional: add continuation instructions (leave blank to resume as-is)', { confirmText: 'Resume', iconKey: 'play' });
+    if (continueMsg === null) return; // User cancelled
+    try {
+        const body = {};
+        if (continueMsg.trim()) body.continue_message = continueMsg.trim();
+        const res = await apiFetch(`/api/sessions/${sessionId}/resume`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            showToast(err.error || 'Failed to resume session', 'error');
+            return;
+        }
+        const result = await res.json();
+        showToast(`Resumed ${result.agent?.name || 'agent'} from session`, 'success');
+        closeHistory();
+    } catch (e) {
+        showToast('Failed to resume session', 'error');
+    }
+}
+
+function closeHistory() {
+    releaseFocus();
+    document.getElementById('historyOverlay').classList.remove('active');
+    if (state.view === 'history') state.view = 'grid';
+}
+
+function showHistoryDetail(item) {
+    closeHistory();
+    // Show output in a temporary deep view (read-only)
+    const info = ROLE_INFO[item.role] || ROLE_INFO.general;
+    const dv = document.getElementById('deepView');
+    dv.classList.add('active', 'archived-view');
+    state.view = 'deep';
+    state.focusedAgentId = null;
+    document.getElementById('deepIcon').textContent = info.icon;
+    document.getElementById('deepName').textContent = `${item.name} (archived)`;
+    document.getElementById('deepRole').textContent = info.name;
+    document.getElementById('deepStatus').textContent = item.status || 'completed';
+    document.getElementById('deepContext').textContent = `${Math.max(0, 100 - Math.round((item.context_pct || 0) * 100))}% remaining`;
+    document.getElementById('deepMemory').textContent = '-';
+    document.getElementById('deepTime').textContent = formatDuration(item.duration_sec || 0);
+    const terminal = document.getElementById('deepTerminal');
+    terminal.innerHTML = item.output_preview ? ansiToHtml(item.output_preview) : '<span style="color:var(--text-tertiary)">No output recorded</span>';
+}
+
+function formatDuration(s) {
+    if (s < 60) return `${s}s`;
+    if (s < 3600) return `${Math.floor(s/60)}m ${s%60}s`;
+    return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
+}
+
+// ── Workflow Runner ──
+
+function openWorkflowRunner() {
+    const workflows = state.workflows;
+    if (!workflows.length) { showToast('No workflow templates available', 'info'); return; }
+
+    const list = document.getElementById('wfPickerList');
+    list.innerHTML = '';
+    workflows.forEach(wf => {
+        const agents = wf.agents || [];
+        // Get role icons for the agent composition
+        const roleIcons = agents.map(a => roleIcon(a.role, 14));
+        const card = document.createElement('div');
+        card.className = 'wf-picker-card';
+        card.innerHTML = `
+            <div class="wf-picker-card-icon">${roleIcons[0] || icon('zap', 16)}</div>
+            <div class="wf-picker-card-info">
+                <div class="wf-picker-card-name">${escapeHtml(wf.name)}${(() => {
+                    let running = false;
+                    state.workflowRuns.forEach(r => { if (r.workflow_id === wf.id && r.status === 'running') running = true; });
+                    return running ? '<span class="wf-picker-running-badge">Running</span>' : '';
+                })()}</div>
+                <div class="wf-picker-card-desc">${escapeHtml(wf.description || 'No description')}</div>
+                <div class="wf-picker-card-meta">
+                    <span class="agent-count">${agents.length} agent${agents.length !== 1 ? 's' : ''}</span>
+                    <span>${roleIcons.join('')}</span>
+                </div>
+            </div>
+            <button class="wf-picker-run-btn" onclick="event.stopPropagation();">Run</button>
+        `;
+        card.onclick = () => runWorkflowFromPicker(wf.id);
+        card.querySelector('.wf-picker-run-btn').onclick = (e) => { e.stopPropagation(); runWorkflowFromPicker(wf.id); };
+        list.appendChild(card);
+    });
+
+    // Set default dir
+    const dirInput = document.getElementById('wfPickerDir');
+    dirInput.value = state.config.default_working_dir || '~/Projects';
+
+    document.getElementById('wfPickerOverlay').classList.add('active');
+    trapFocus(document.getElementById('wfPickerOverlay'));
+}
+
+function closeWfPicker() {
+    releaseFocus();
+    document.getElementById('wfPickerOverlay').classList.remove('active');
+}
+
+async function runWorkflowFromPicker(wfId) {
+    const dir = document.getElementById('wfPickerDir').value.trim();
+    const btn = document.querySelector(`.wf-picker-card[data-wfid="${wfId}"] .wf-picker-run-btn`) || document.querySelector('.wf-picker-run-btn');
+    await withLoading(btn, async () => {
+    try {
+        const res = await apiFetch(`/api/workflows/${wfId}/run`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ working_dir: dir || undefined }),
+        });
+        const result = await res.json();
+        if (res.ok) {
+            const wf = state.workflows.find(w => w.id === wfId);
+            showToast(`Workflow "${wf?.name || wfId}" started: ${result.agent_ids?.length || 0} agents`, 'success');
+            closeWfPicker();
+        } else {
+            showToast(result.error || 'Failed to start workflow', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to start workflow', 'error');
+    }
+    }, 'Running...');
+}
+
+// ── Voice Input ──
+
+class VoiceInput {
+    constructor() {
+        this.recognition = null;
+        this.isListening = false;
+        this._pttMode = false; // true when holding Space
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SR) {
+            this.recognition = new SR();
+            this.recognition.lang = 'en-US';
+            this.recognition.interimResults = true;
+            this.recognition.continuous = true;
+            this.recognition.maxAlternatives = 1;
+
+            this.recognition.onresult = (e) => {
+                let interim = '', final = '';
+                for (let i = e.resultIndex; i < e.results.length; i++) {
+                    const transcript = e.results[i][0].transcript;
+                    if (e.results[i].isFinal) final += transcript;
+                    else interim += transcript;
+                }
+                // Show interim results live
+                if (interim) showVoiceTranscript(interim, true);
+                if (final) {
+                    showVoiceTranscript(final, false);
+                    this.processCommand(final);
+                }
+            };
+            this.recognition.onerror = (e) => {
+                if (e.error === 'not-allowed') { this.stopUI(); showToast('Microphone access denied', 'error'); }
+                else if (e.error === 'no-speech') { /* ignore, keep listening */ }
+                else if (e.error !== 'aborted') { this.stopUI(); showToast('Voice recognition error', 'warning'); }
+            };
+            this.recognition.onend = () => {
+                // If in toggle mode (not PTT) and still supposed to be listening, restart
+                if (this.isListening && !this._pttMode) {
+                    try { this.recognition.start(); } catch(e) { this.stopUI(); }
+                } else {
+                    this.stopUI();
+                }
+            };
+        }
+    }
+
+    toggle() {
+        if (this.isListening) this.stop();
+        else this.start();
+    }
+
+    start(ptt = false) {
+        if (!this.recognition) { showToast('Speech recognition not supported in this browser', 'warning'); return; }
+        if (this.isListening) return;
+        this._pttMode = ptt;
+        try {
+            this.recognition.start();
+            this.isListening = true;
+            document.getElementById('voiceBtn').classList.add('listening');
+            const vs = document.getElementById('voiceStatus');
+            vs.textContent = ptt ? 'Listening (hold)...' : 'Listening — click to stop';
+            vs.classList.add('listening');
+            playTone([440], 0.1);
+        } catch (e) { console.warn('Voice recognition start failed:', e); }
+    }
+
+    stop() {
+        if (!this.recognition || !this.isListening) return;
+        this.isListening = false;
+        this._pttMode = false;
+        try { this.recognition.stop(); } catch(e) {}
+        playTone([330], 0.08);
+    }
+
+    stopUI() {
+        this.isListening = false;
+        this._pttMode = false;
+        const btn = document.getElementById('voiceBtn');
+        if (btn) btn.classList.remove('listening');
+        const vs = document.getElementById('voiceStatus');
+        if (vs) { vs.textContent = 'Voice Ready'; vs.classList.remove('listening'); }
+    }
+
+    async processCommand(text) {
+        const lower = text.toLowerCase();
+
+        // Spawn
+        const spawnMatch = lower.match(/spawn (?:a |an )?(\w+)(?: agent)?/);
+        if (spawnMatch) {
+            const input = spawnMatch[1].toLowerCase();
+            const matchedRole = Object.entries(ROLE_INFO).find(([key, info]) =>
+                key.startsWith(input) || info.name.toLowerCase().includes(input)
+            );
+            if (matchedRole) {
+                state.selectedRole = matchedRole[0];
+                openSpawnDialog();
+                showToast(`Opening spawn dialog for ${matchedRole[1].name}`, 'info');
+                return;
+            }
+        }
+
+        // Approve
+        if (lower.includes('approve') || lower.includes('yes proceed') || lower.includes('yes, proceed')) {
+            for (const [id, a] of state.agents) {
+                if (a.needs_input) { socket.send({ type: 'send', agent_id: id, message: 'yes' }); showToast(`Approved ${a.name}`, 'success'); return; }
+            }
+        }
+
+        // Kill
+        if (lower.includes('kill all')) {
+            const ok = await confirmAction('Kill All Agents', `Terminate all ${state.agents.size} agents?`, 'Kill All', { iconKey: 'skull' });
+            if (ok) { for (const id of state.agents.keys()) killAgent(id); }
+            return;
+        }
+        if (lower.includes('kill')) {
+            const targetId = state.focusedAgentId || (state.agents.size === 1 ? [...state.agents.keys()][0] : null);
+            if (targetId) { killAgent(targetId); showToast('Agent killed', 'info'); return; }
+        }
+
+        // Status
+        if (lower.includes('status') || lower.includes('what')) {
+            const agents = [...state.agents.values()];
+            if (agents.length === 0) { showToast('No agents running', 'info'); return; }
+            const summary = agents.map(a => `${a.name}: ${a.status}`).join(', ');
+            showToast(summary, 'info');
+            return;
+        }
+
+        // Pause
+        if (lower.includes('pause all')) { pauseAll(); showToast('All agents paused', 'info'); return; }
+        if (lower.includes('pause')) {
+            const targetId = state.focusedAgentId || (state.agents.size === 1 ? [...state.agents.keys()][0] : null);
+            if (targetId) { socket.send({ type: 'pause', agent_id: targetId }); return; }
+        }
+
+        // Try intelligent command parsing via server before falling back
+        try {
+            const cmdResp = await apiFetch('/api/intelligence/command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ transcript: text })
+            });
+            if (cmdResp.ok) {
+                const result = await cmdResp.json();
+                if (result.intent && result.intent.confidence >= 0.6) {
+                    const intent = result.intent;
+                    if (result.executed) {
+                        showToast(`${intent.action}: ${result.results || 'done'}`, 'success');
+                        playTone([660, 880], 0.1);
+                    } else {
+                        showToast(`Understood: ${intent.action} ${intent.targets?.join(', ') || ''}`, 'info');
+                    }
+                    return;
+                }
+            }
+        } catch (e) { /* intelligence endpoint unavailable, fall back */ }
+
+        // Fallback: send as message if 3+ words and target exists, else show unrecognized
+        const words = text.trim().split(/\s+/);
+        const targetId = state.focusedAgentId || (state.agents.size === 1 ? [...state.agents.keys()][0] : null);
+        if (targetId && words.length >= 3) {
+            socket.send({ type: 'send', agent_id: targetId, message: text });
+            showToast(`Sent to ${state.agents.get(targetId)?.name}`, 'info');
+        } else {
+            playTone([220, 165], 0.15);
+            showToast(`Voice command not recognized: "${text.slice(0, 40)}"`, 'warning');
+        }
+    }
+}
+
+const voice = new VoiceInput();
+function toggleVoice() { voice.toggle(); }
+function startVoice() { voice.start(true); }
+function stopVoice() { voice.stop(); }
+
+let _voiceTranscriptTimer = null;
+function showVoiceTranscript(text, interim = false) {
+    const el = document.getElementById('voiceTranscript');
+    el.textContent = text;
+    el.style.opacity = interim ? '0.7' : '1';
+    el.style.fontStyle = interim ? 'italic' : 'normal';
+    el.classList.add('active');
+    if (_voiceTranscriptTimer) clearTimeout(_voiceTranscriptTimer);
+    if (!interim) _voiceTranscriptTimer = setTimeout(() => el.classList.remove('active'), 4000);
+}
+
+async function openCrossAgentSearch() {
+    const query = await promptInput('Search All Agents', 'Search across all agent outputs...', { iconKey: 'search', confirmText: 'Search' });
+    if (!query) return;
+    try {
+        const res = await apiFetch(`/api/search?q=${encodeURIComponent(query)}`);
+        if (!res.ok) { showToast('Search failed', 'error'); return; }
+        const data = await res.json();
+        if (!data.results || data.results.length === 0) {
+            showToast(`No matches found for "${query}"`, 'info');
+            return;
+        }
+        // Show results in insights panel
+        const body = document.getElementById('insightsBody');
+        body.innerHTML = `<div style="padding:12px;font-size:12px;color:var(--text-secondary);border-bottom:1px solid var(--border-subtle)">Search: "${escapeHtml(query)}" — ${data.results.length} agent(s) matched</div>`;
+        data.results.forEach(r => {
+            const div = document.createElement('div');
+            div.style.cssText = 'padding:10px 12px;border-bottom:1px solid var(--border-subtle);cursor:pointer';
+            div.innerHTML = `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">${roleIcon(r.role, 14)}<span style="font-weight:600;font-size:12px">${escapeHtml(r.agent_name)}</span><span class="status-badge" style="font-size:9px">${escapeHtml(r.status)}</span></div>` +
+                r.matches.slice(0, 3).map(m => `<div style="font-size:11px;color:var(--text-tertiary);font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 0">${escapeHtml(m.text)}</div>`).join('');
+            div.onclick = () => openDeepView(r.agent_id);
+            body.appendChild(div);
+        });
+        document.getElementById('insightsHeaderLabel').textContent = 'Search Results';
+        document.getElementById('insightsPanel').classList.add('active');
+    } catch (e) {
+        showToast('Search failed', 'error');
+    }
+}
+
+function openNlCommand() {
+    const input = document.getElementById('commandInput');
+    input.focus();
+    input.placeholder = 'Type a natural language command (e.g., "pause all backend agents")...';
+    showToast('Type a command below — it will be parsed by AI', 'info');
+}
+
+// ── Task Queue ──
+
+function updateQueueBadge() {
+    const badge = document.getElementById('queueBadge');
+    if (!badge) return;
+    const count = (state.taskQueue || []).length;
+    badge.style.display = count > 0 ? '' : 'none';
+    badge.textContent = count;
+}
+
+async function addToQueue(role, name, task, workingDir, planMode) {
+    try {
+        const resp = await apiFetch('/api/queue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role, name, task, working_dir: workingDir, plan_mode: planMode })
+        });
+        if (resp.ok) {
+            showToast(`Queued: ${name || role}`, 'success');
+        } else {
+            const err = await resp.json();
+            showToast(err.error || 'Failed to queue task', 'error');
+        }
+    } catch (e) { showToast('Failed to queue task', 'error'); }
+}
+
+async function removeFromQueue(taskId) {
+    try {
+        const resp = await apiFetch(`/api/queue/${taskId}`, { method: 'DELETE' });
+        if (resp.ok) showToast('Removed from queue', 'info');
+    } catch (e) { showToast('Failed to remove from queue', 'error'); }
+}
+
+function openQueuePanel() {
+    const queue = state.taskQueue || [];
+    if (queue.length === 0) {
+        showToast('Task queue is empty — queue tasks when all agent slots are full', 'info');
+        return;
+    }
+    let html = '<div style="padding:16px"><h3 style="margin:0 0 12px;font-size:14px">Task Queue</h3>';
+    queue.forEach(t => {
+        const role = ROLE_INFO[t.role] || ROLE_INFO.general;
+        html += `<div style="display:flex;align-items:center;gap:8px;padding:8px;margin-bottom:6px;background:var(--bg-elevated);border-radius:8px;border:1px solid var(--border-subtle)">
+            <span style="font-size:12px">${icon(role.iconKey || 'bot', 14)}</span>
+            <div style="flex:1;min-width:0">
+                <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(t.name)}</div>
+                <div style="font-size:11px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(t.task.slice(0, 80))}</div>
+            </div>
+            <button onclick="removeFromQueue('${t.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;padding:4px" data-tip="Remove">✕</button>
+        </div>`;
+    });
+    html += '</div>';
+    // Use notification dropdown as container
+    const dropdown = document.getElementById('notifDropdown');
+    dropdown.innerHTML = html;
+    dropdown.classList.add('active');
+}
+
+// Voice keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    if (document.querySelector('.confirm-overlay.active')) return;
+    // V key = toggle voice on/off
+    if (e.key === 'v' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        toggleVoice();
+        return;
+    }
+    // Space = push-to-talk (hold)
+    if (e.code === 'Space' && !voice.isListening) {
+        e.preventDefault();
+        startVoice();
+    }
+});
+document.addEventListener('keyup', (e) => {
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    if (e.code === 'Space' && voice._pttMode) stopVoice();
+});
+
+// ── Audio Feedback ──
+
+let audioCtx = null;
+function playTone(freqs, duration) {
+    if (!document.getElementById('setVoiceSounds')?.classList.contains('active')) return;
+    try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        freqs.forEach((freq, i) => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            gain.gain.value = 0.06;
+            osc.connect(gain).connect(audioCtx.destination);
+            const start = audioCtx.currentTime + i * 0.08;
+            osc.start(start);
+            gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+            osc.stop(start + duration);
+        });
+    } catch (e) { console.debug('Audio playback unavailable'); }
+}
+
+// ── Terminal Toolbar ──
+
+function toggleAutoScroll() {
+    deepAutoScroll = !deepAutoScroll;
+    const btn = document.getElementById('toolbarAutoScroll');
+    btn.classList.toggle('active', deepAutoScroll);
+    document.getElementById('followIndicator').style.display = deepAutoScroll ? '' : 'none';
+    if (deepAutoScroll) scrollDeepToBottom();
+}
+
+function toggleLineWrap() {
+    const terminal = document.getElementById('deepTerminal');
+    const btn = document.getElementById('toolbarLineWrap');
+    const isWrapped = terminal.style.whiteSpace !== 'pre';
+    terminal.style.whiteSpace = isWrapped ? 'pre' : 'pre-wrap';
+    terminal.style.wordWrap = isWrapped ? 'normal' : 'break-word';
+    btn.classList.toggle('active', !isWrapped);
+}
+
+function exportTerminalTxt() {
+    const terminal = document.getElementById('deepTerminal');
+    const text = virtualTermData.length > 0 && document.getElementById('vtContent')
+        ? virtualTermData.join('\n')
+        : terminal.innerText;
+    const agent = state.agents.get(state.focusedAgentId);
+    const name = agent?.name || 'agent';
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name}-output-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Output exported', 'success');
+}
+
+function clearTerminalDisplay() {
+    virtualTermData = [];
+    _virtualSearchMatches = [];
+    document.getElementById('deepTerminal').innerHTML = '<span style="color:var(--text-tertiary)">Display cleared (output continues collecting)</span>';
+}
+
+let _tailMode = false;
+const TAIL_LINES = 50;
+
+function toggleTailMode() {
+    _tailMode = !_tailMode;
+    const btn = document.getElementById('toolbarTailMode');
+    if (btn) btn.classList.toggle('active', _tailMode);
+    if (_tailMode) {
+        applyTailMode();
+        showToast(`Tail mode: showing last ${TAIL_LINES} lines`, 'info');
+    } else {
+        // Re-render full output
+        const agent = state.agents.get(state.focusedAgentId);
+        if (agent) {
+            const terminal = document.getElementById('deepTerminal');
+            const lines = agent._outputBuffer || agent.output_lines || [];
+            terminal.innerHTML = '';
+            resetCodeBlockState(state.focusedAgentId);
+            const frag = document.createDocumentFragment();
+            for (let li = 0; li < lines.length; li++) {
+                const cl = classifyTerminalLine(lines[li], state.focusedAgentId);
+                const div = document.createElement('div');
+                div.className = cl.className;
+                div.innerHTML = cl.html;
+                frag.appendChild(div);
+            }
+            terminal.appendChild(frag);
+        }
+        showToast('Full output restored', 'info');
+    }
+}
+
+function applyTailMode() {
+    if (!_tailMode) return;
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const allLines = terminal.querySelectorAll('.terminal-line');
+    if (allLines.length <= TAIL_LINES) return;
+    const cutoff = allLines.length - TAIL_LINES;
+    for (let i = 0; i < cutoff; i++) {
+        allLines[i].style.display = 'none';
+    }
+    // Add tail indicator
+    let indicator = terminal.querySelector('.tail-indicator');
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.className = 'tail-indicator';
+        indicator.style.cssText = 'padding:4px 12px;font-size:10px;color:var(--text-tertiary);text-align:center;border-bottom:1px solid var(--border-subtle);font-family:var(--font-mono)';
+        terminal.prepend(indicator);
+    }
+    indicator.textContent = `⊟ Tail mode — showing last ${TAIL_LINES} of ${allLines.length} lines`;
+}
+
+// ── Custom Highlight Rules ──
+
+let _highlightRules = safeParseJSON('ashlr_hl_rules', []);
+
+function toggleHighlightPopover() {
+    const pop = document.getElementById('highlightPopover');
+    const btn = document.getElementById('toolbarHighlight');
+    const isActive = pop.classList.contains('active');
+    pop.classList.toggle('active', !isActive);
+    btn.classList.toggle('active', !isActive);
+    if (!isActive) renderHighlightRules();
+}
+
+function renderHighlightRules() {
+    const list = document.getElementById('highlightRulesList');
+    if (_highlightRules.length === 0) {
+        list.innerHTML = '<div style="font-size:10px;color:var(--text-tertiary)">No rules yet. Add a regex pattern below.</div>';
+        return;
+    }
+    list.innerHTML = _highlightRules.map((r, i) => `
+        <div class="hl-rule-item">
+            <span class="hl-rule-swatch" style="background:${r.color}"></span>
+            <span class="hl-rule-pattern" data-tip="${escapeHtml(r.pattern)}">${escapeHtml(r.pattern)}</span>
+            <span class="hl-rule-remove" onclick="removeHighlightRule(${i})">&times;</span>
+        </div>
+    `).join('');
+}
+
+function addHighlightRule() {
+    const patternInput = document.getElementById('hlPatternInput');
+    const colorInput = document.getElementById('hlColorInput');
+    const pattern = patternInput.value.trim();
+    if (!pattern) return;
+    try { new RegExp(pattern, 'gi'); } catch (e) { showToast('Invalid regex pattern', 'error'); return; }
+    _highlightRules.push({ pattern, color: colorInput.value });
+    localStorage.setItem('ashlr_hl_rules', JSON.stringify(_highlightRules));
+    patternInput.value = '';
+    renderHighlightRules();
+    applyHighlightRules();
+}
+
+function removeHighlightRule(idx) {
+    _highlightRules.splice(idx, 1);
+    localStorage.setItem('ashlr_hl_rules', JSON.stringify(_highlightRules));
+    renderHighlightRules();
+    applyHighlightRules();
+}
+
+function applyHighlightRules() {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    // Remove existing custom highlights
+    terminal.querySelectorAll('.custom-hl').forEach(el => {
+        el.outerHTML = el.textContent;
+    });
+    if (_highlightRules.length === 0) return;
+    const lines = terminal.querySelectorAll('.terminal-line');
+    for (const line of lines) {
+        for (const rule of _highlightRules) {
+            try {
+                const re = new RegExp(`(${rule.pattern})`, 'gi');
+                const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                const textNodes = [];
+                while (walker.nextNode()) textNodes.push(walker.currentNode);
+                for (const node of textNodes) {
+                    if (node.parentElement.classList?.contains('custom-hl')) continue;
+                    if (re.test(node.textContent)) {
+                        const span = document.createElement('span');
+                        span.innerHTML = node.textContent.replace(re, `<span class="custom-hl" style="background:${rule.color}33;color:${rule.color};border-bottom:1px solid ${rule.color}">$1</span>`);
+                        node.parentNode.replaceChild(span, node);
+                    }
+                }
+            } catch (e) { console.debug('Highlight rule error:', rule.pattern, e.message); }
+        }
+    }
+    showToast(`Applied ${_highlightRules.length} highlight rule${_highlightRules.length > 1 ? 's' : ''}`, 'info');
+}
+
+// ── Tool Type Filter ──
+
+let _toolFilter = 'all';
+function toggleToolFilterBar() {
+    const bar = document.getElementById('toolFilterBar');
+    const btn = document.getElementById('toolbarToolFilter');
+    const visible = bar.style.display !== 'none';
+    bar.style.display = visible ? 'none' : 'flex';
+    btn.classList.toggle('active', !visible);
+    if (visible) { setToolFilter('all'); }
+}
+
+const _toolFilterPatterns = {
+    read: /\bRead\s*\(/i,
+    edit: /\bEdit\s*\(/i,
+    write: /\bWrite\s*\(/i,
+    bash: /\bBash\s*\(/i,
+    grep: /\bGrep\s*\(/i,
+    error: /\b(error|exception|traceback|FAIL(ED)?|ERROR|panic|fatal)\b/i,
+    thinking: /\b(thinking|<thinking>|Thinking\.\.\.)\b/i,
+};
+
+function setToolFilter(tool) {
+    _toolFilter = tool;
+    document.querySelectorAll('.tool-filter-chip').forEach(c => {
+        c.classList.toggle('active', c.dataset.tool === tool);
+    });
+    applyToolFilter();
+}
+
+function applyToolFilter() {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const lines = terminal.querySelectorAll('.terminal-line');
+    if (_toolFilter === 'all') {
+        lines.forEach(l => l.classList.remove('tool-dimmed'));
+        return;
+    }
+    const pattern = _toolFilterPatterns[_toolFilter];
+    if (!pattern) return;
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    let matchCount = 0;
+    lines.forEach(l => {
+        const text = l.textContent.replace(ansiRe, '');
+        if (pattern.test(text)) {
+            l.classList.remove('tool-dimmed');
+            matchCount++;
+        } else {
+            l.classList.add('tool-dimmed');
+        }
+    });
+    showToast(`Filter: ${matchCount} matching lines`, 'info');
+}
+
+// ── Timestamps Toggle ──
+
+let _showTimestamps = false;
+function toggleTimestamps() {
+    _showTimestamps = !_showTimestamps;
+    const btn = document.getElementById('toolbarTimestamps');
+    btn.classList.toggle('active', _showTimestamps);
+    const terminal = document.getElementById('deepTerminal');
+    if (terminal) terminal.classList.toggle('show-timestamps', _showTimestamps);
+}
+
+function formatLineTimestamp(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const h = d.getHours().toString().padStart(2, '0');
+    const m = d.getMinutes().toString().padStart(2, '0');
+    const s = d.getSeconds().toString().padStart(2, '0');
+    return `${h}:${m}:${s}`;
+}
+
+// ── Dedup / Noise Reduction ──
+
+let _dedupEnabled = false;
+function toggleDedup() {
+    _dedupEnabled = !_dedupEnabled;
+    const btn = document.getElementById('toolbarDedup');
+    btn.classList.toggle('active', _dedupEnabled);
+    if (_dedupEnabled) applyDedup();
+    else removeDedup();
+}
+
+function applyDedup() {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const lines = terminal.querySelectorAll('.terminal-line');
+    if (lines.length === 0) return;
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    let dupCount = 0;
+    let prevText = null;
+    let blankCount = 0;
+    let totalCollapsed = 0;
+    for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i].textContent.replace(ansiRe, '').trim();
+        // Collapse consecutive blanks (keep first)
+        if (raw === '') {
+            blankCount++;
+            if (blankCount > 1) {
+                lines[i].classList.add('dedup-collapsed');
+                totalCollapsed++;
+                continue;
+            }
+        } else {
+            if (blankCount > 2) {
+                // Add marker on the kept blank line
+                const marker = document.createElement('span');
+                marker.className = 'dedup-marker';
+                marker.textContent = `... ${blankCount - 1} empty lines`;
+                lines[i - blankCount + 1]?.appendChild(marker);
+            }
+            blankCount = 0;
+        }
+        // Collapse consecutive duplicates
+        if (raw === prevText && raw !== '') {
+            dupCount++;
+            lines[i].classList.add('dedup-collapsed');
+            totalCollapsed++;
+        } else {
+            if (dupCount > 0) {
+                const marker = document.createElement('span');
+                marker.className = 'dedup-marker';
+                marker.textContent = `×${dupCount + 1}`;
+                marker.title = `${dupCount} identical lines collapsed`;
+                marker.onclick = (e) => { e.stopPropagation(); expandDedupGroup(marker); };
+                lines[i - dupCount - 1]?.appendChild(marker);
+            }
+            dupCount = 0;
+        }
+        prevText = raw;
+    }
+    // Handle trailing dup group
+    if (dupCount > 0 && lines.length > 0) {
+        const marker = document.createElement('span');
+        marker.className = 'dedup-marker';
+        marker.textContent = `×${dupCount + 1}`;
+        marker.onclick = (e) => { e.stopPropagation(); expandDedupGroup(marker); };
+        lines[lines.length - dupCount - 1]?.appendChild(marker);
+    }
+    if (totalCollapsed > 0) showToast(`Dedup: collapsed ${totalCollapsed} lines`, 'info');
+}
+
+function removeDedup() {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    terminal.querySelectorAll('.dedup-collapsed').forEach(el => el.classList.remove('dedup-collapsed'));
+    terminal.querySelectorAll('.dedup-marker').forEach(el => el.remove());
+}
+
+function expandDedupGroup(marker) {
+    const parent = marker.parentElement;
+    if (!parent) return;
+    let el = parent.nextElementSibling;
+    while (el && el.classList.contains('dedup-collapsed')) {
+        el.classList.remove('dedup-collapsed');
+        el = el.nextElementSibling;
+    }
+    marker.remove();
+}
+
+// ── Go-to-Line ──
+
+function openGoToLine() {
+    const pop = document.getElementById('gotoLinePopover');
+    const input = document.getElementById('gotoLineInput');
+    const isActive = pop.classList.contains('active');
+    if (isActive) { pop.classList.remove('active'); return; }
+    const totalLines = virtualTermData.length || document.getElementById('deepTerminal')?.querySelectorAll('.terminal-line').length || 0;
+    input.max = totalLines;
+    input.placeholder = `1–${totalLines}`;
+    input.value = '';
+    pop.classList.add('active');
+    input.focus();
+    input.onkeydown = (e) => {
+        if (e.key === 'Enter') { goToLine(parseInt(input.value)); pop.classList.remove('active'); }
+        if (e.key === 'Escape') { pop.classList.remove('active'); }
+    };
+}
+
+function goToLine(lineNum) {
+    if (!lineNum || lineNum < 1) return;
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    // Disable tail mode if active
+    if (_tailMode) { _tailMode = false; document.getElementById('toolbarTailMode')?.classList.remove('active'); }
+    const lines = terminal.querySelectorAll('.terminal-line');
+    // Re-show all lines (in case tail mode hid them)
+    lines.forEach(l => l.style.display = '');
+    terminal.querySelector('.tail-indicator')?.remove();
+    const idx = Math.min(lineNum - 1, lines.length - 1);
+    if (idx < 0) return;
+    const target = lines[idx];
+    // Highlight briefly
+    target.style.background = 'rgba(99,102,241,0.2)';
+    target.style.borderLeft = '3px solid var(--accent)';
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    deepAutoScroll = false;
+    document.getElementById('toolbarAutoScroll')?.classList.remove('active');
+    document.getElementById('followIndicator').style.display = 'none';
+    setTimeout(() => {
+        target.style.background = '';
+        target.style.borderLeft = '';
+    }, 3000);
+    showToast(`Jumped to line ${lineNum}`, 'info');
+}
+
+// ── Toasts with Progress Bar ──
+
+function showToast(message, type = 'info') {
+    // Log to notification center
+    state.notificationLog.unshift({ message, type, time: Date.now() });
+    if (state.notificationLog.length > 200) state.notificationLog.length = 200;
+
+    const container = document.getElementById('toastContainer');
+    const durations = { info: 3000, success: 3000, warning: 5000, error: 8000 };
+    const duration = durations[type] || 3000;
+    // Deduplicate: if identical message already visible, reset its timer instead
+    for (const existing of container.children) {
+        if (existing._toastMessage === message && existing._toastType === type && !existing.classList.contains('toast-out')) {
+            clearTimeout(existing._toastTimer);
+            existing._toastTimer = setTimeout(existing._dismiss, duration);
+            // Reset progress bar animation
+            const progress = existing.querySelector('.toast-progress');
+            if (progress) { progress.style.animation = 'none'; progress.offsetHeight; progress.style.animationDuration = duration + 'ms'; progress.style.animation = ''; }
+            return;
+        }
+    }
+    // Cap at 5 simultaneous toasts
+    while (container.children.length >= 5) container.removeChild(container.firstChild);
+    const icons = { info: icon('info', 14), success: icon('check', 14), warning: icon('alert-triangle', 14), error: icon('x', 14) };
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.style.cursor = 'pointer';
+    toast._toastMessage = message;
+    toast._toastType = type;
+    if (type === 'error') toast.setAttribute('role', 'alert');
+    toast.innerHTML = `<span class="toast-icon">${icons[type] || icon('info', 14)}</span><span>${escapeHtml(message)}</span><div class="toast-progress"></div>`;
+    // Set progress bar animation duration to match toast duration
+    const progress = toast.querySelector('.toast-progress');
+    if (progress) progress.style.animationDuration = duration + 'ms';
+    const dismiss = () => { toast.classList.add('toast-out'); setTimeout(() => toast.remove(), 300); };
+    toast._dismiss = dismiss;
+    toast.onclick = dismiss;
+    container.appendChild(toast);
+    toast._toastTimer = setTimeout(dismiss, duration);
+    toast.onmouseenter = () => clearTimeout(toast._toastTimer);
+    toast.onmouseleave = () => { toast._toastTimer = setTimeout(dismiss, Math.min(1500, duration / 2)); };
+    // Play error tone on error toasts
+    if (type === 'error') playTone([330, 220], 0.15);
+}
+
+// ── Notifications ──
+
+function addNotification(evtType, message, agentId) {
+    const n = { type: evtType, message, agentId, time: Date.now(), read: false };
+    state.notifications.unshift(n);
+    if (state.notifications.length > 50) state.notifications.pop();
+    state.unreadCount++;
+    document.getElementById('unreadDot').classList.add('active');
+    renderNotificationList();
+}
+
+function renderNotificationList() {
+    const list = document.getElementById('notifList');
+    list.innerHTML = '';
+    const filter = document.getElementById('notifFilter')?.value || 'all';
+
+    // Pattern alerts rendering
+    if (filter === 'alerts') {
+        const alerts = state.patternAlerts || [];
+        if (alerts.length === 0) {
+            list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text-tertiary);font-size:12px">No pattern alerts yet</div>`;
+            return;
+        }
+        alerts.slice(0, 50).forEach(a => {
+            const el = document.createElement('div');
+            const isCrit = a.severity === 'critical';
+            el.className = 'notification-item';
+            el.style.borderLeft = `3px solid ${isCrit ? 'var(--status-error)' : 'var(--status-waiting)'}`;
+            el.innerHTML = `<span class="ni-icon">${icon(isCrit ? 'skull' : 'alert-triangle', 14)}</span>`
+                + `<span class="ni-text"><strong style="color:${isCrit ? 'var(--status-error)' : 'var(--status-waiting)'}">${escapeHtml(a.label)}</strong> on ${escapeHtml(a.agent_name)}`
+                + (a.line ? `<br><span style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)">${escapeHtml(a.line.substring(0, 100))}</span>` : '')
+                + `</span><span class="ni-time">${timeAgo(a.timestamp)}</span>`;
+            el.onclick = () => { closeNotifications(); if (a.agent_id && state.agents.has(a.agent_id)) openDeepView(a.agent_id); };
+            list.appendChild(el);
+        });
+        return;
+    }
+
+    const filterMap = { error: ['agent_error'], input: ['agent_needs_input'], spawn: ['agent_spawned', 'agent_killed'] };
+    const icons = { agent_spawned: icon('rocket', 14), agent_killed: icon('skull', 14), agent_needs_input: icon('alert-triangle', 14), agent_error: icon('x', 14) };
+    const filtered = filter === 'all' ? state.notifications : state.notifications.filter(n => (filterMap[filter] || []).includes(n.type));
+    filtered.slice(0, 30).forEach(n => {
+        const el = document.createElement('div');
+        el.className = 'notification-item' + (n.read ? '' : ' unread');
+        el.innerHTML = `<span class="ni-icon">${icons[n.type] || icon('pin', 14)}</span><span class="ni-text">${escapeHtml(n.message)}</span><span class="ni-time">${timeAgo(new Date(n.time).toISOString())}</span>`;
+        el.onclick = () => { n.read = true; el.classList.remove('unread'); closeNotifications(); if (n.agentId && state.agents.has(n.agentId)) openDeepView(n.agentId); };
+        list.appendChild(el);
+    });
+    if (filtered.length === 0) {
+        list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text-tertiary);font-size:12px">${filter === 'all' ? 'No notifications yet' : 'No ' + filter + ' notifications'}</div>`;
+    }
+}
+
+function toggleNotifications(e) {
+    e.stopPropagation();
+    const dd = document.getElementById('notifDropdown');
+    dd.classList.toggle('active');
+    if (dd.classList.contains('active')) {
+        state.unreadCount = 0;
+        document.getElementById('unreadDot').classList.remove('active');
+        state.notifications.forEach(n => { n.read = true; });
+        renderNotificationList();
+    }
+}
+
+function closeNotifications() { document.getElementById('notifDropdown').classList.remove('active'); }
+function clearNotifications() { state.notifications = []; renderNotificationList(); closeNotifications(); }
+
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.notification-bell') && !e.target.closest('.notification-dropdown')) closeNotifications();
+    if (!e.target.closest('.metrics-bar') && !e.target.closest('.metrics-dropdown')) closeMetricsDropdown();
+});
+
+// ── Browser Notifications ──
+
+function sendBrowserNotification(title, body, agentId, eventType) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    if (document.hasFocus()) return;
+    // Check per-event preferences
+    if (eventType) {
+        const prefs = safeParseJSON('ashlr_notif_events', {});
+        // Default: needs_input, error, restart_exhausted ON; completed OFF
+        if (eventType === 'agent_completed' && !prefs.agent_completed) return;
+        if (eventType === 'agent_needs_input' && prefs.agent_needs_input === false) return;
+        if (eventType === 'agent_error' && prefs.agent_error === false) return;
+        if (eventType === 'agent_restart_exhausted' && prefs.agent_restart_exhausted === false) return;
+    }
+    const n = new Notification(title, { body, icon: '/logo.png', tag: agentId || 'ashlr' });
+    n.onclick = () => { window.focus(); if (agentId) openDeepView(agentId); };
+}
+
+function toggleBrowserNotifPermission() {
+    const toggle = document.getElementById('setBrowserNotifs');
+    if (!('Notification' in window)) { showToast('Browser notifications not supported', 'warning'); return; }
+    if (Notification.permission === 'granted') {
+        toggle.classList.remove('active');
+        showToast('Notifications disabled (clear in browser settings to fully revoke)', 'info');
+    } else {
+        Notification.requestPermission().then(p => {
+            toggle.classList.toggle('active', p === 'granted');
+            showToast(p === 'granted' ? 'Notifications enabled' : 'Notification permission denied', p === 'granted' ? 'success' : 'warning');
+        });
+    }
+}
+
+// Request notification permission
+if ('Notification' in window && Notification.permission === 'default') {
+    setTimeout(() => Notification.requestPermission(), 5000);
+}
+
+// ── Tab Title ──
+
+function updateTabTitle() {
+    const agents = [...state.agents.values()];
+    const waiting = agents.filter(a => a.needs_input).length;
+    const active = agents.filter(a => ['working', 'planning', 'reading', 'spawning'].includes(a.status)).length;
+    if (waiting > 0) {
+        document.title = `(${waiting} waiting) Ashlr AO`;
+    } else if (active > 0) {
+        document.title = `${active} active — Ashlr AO`;
+    } else {
+        document.title = 'Ashlr AO';
+    }
+    updateFavicon(agents, waiting, active);
+}
+
+// ── Dynamic Favicon ──
+
+let _faviconCanvas = null;
+let _faviconLastColor = '';
+
+function updateFavicon(agents, waiting, active) {
+    if (document.hidden) return; // Skip expensive canvas + toDataURL when tab not visible
+    let color;
+    const hasError = agents.some(a => a.status === 'error');
+    if (hasError) color = '#EF4444';
+    else if (waiting > 0) color = '#F97316';
+    else if (active > 0) color = '#6366F1';
+    else if (agents.length > 0) color = '#64748B';
+    else color = '#64748B'; // no agents — neutral gray
+
+    if (color === _faviconLastColor) return;
+    _faviconLastColor = color;
+
+    if (!_faviconCanvas) _faviconCanvas = document.createElement('canvas');
+    _faviconCanvas.width = 32;
+    _faviconCanvas.height = 32;
+    const ctx = _faviconCanvas.getContext('2d');
+    if (!ctx) return;
+
+    // Background
+    ctx.clearRect(0, 0, 32, 32);
+    ctx.beginPath();
+    ctx.roundRect(0, 0, 32, 32, 6);
+    ctx.fillStyle = '#0A0F1A';
+    ctx.fill();
+
+    // "A" letterform
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(16, 6);
+    ctx.lineTo(8, 26);
+    ctx.lineTo(12, 26);
+    ctx.lineTo(14, 21);
+    ctx.lineTo(18, 21);
+    ctx.lineTo(20, 26);
+    ctx.lineTo(24, 26);
+    ctx.closePath();
+    ctx.fill();
+    // Inner cutout
+    ctx.fillStyle = '#0A0F1A';
+    ctx.beginPath();
+    ctx.moveTo(16, 14);
+    ctx.lineTo(13.5, 20);
+    ctx.lineTo(18.5, 20);
+    ctx.closePath();
+    ctx.fill();
+
+    // Status dot (bottom-right)
+    ctx.beginPath();
+    ctx.arc(26, 26, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#0A0F1A';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(26, 26, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+
+    const link = document.querySelector('link[rel="icon"]');
+    if (link) link.href = _faviconCanvas.toDataURL('image/png');
+}
+
+// ── Ambient Background Gradient ──
+
+let _lastAmbientKey = '';
+
+function updateAmbientGradient() {
+    const el = document.getElementById('ambientGradient');
+    if (!el) return;
+
+    const agents = [...state.agents.values()];
+    const hasError = agents.some(a => a.status === 'error');
+    const hasWaiting = agents.some(a => a.needs_input);
+    const hasWorking = agents.some(a => ['working', 'reading', 'spawning'].includes(a.status));
+    const hasPlanning = agents.some(a => a.status === 'planning');
+
+    let key, gradient;
+    if (hasError) {
+        key = 'error';
+        gradient = 'radial-gradient(ellipse at 50% 0%, rgba(239,68,68,0.25) 0%, rgba(239,68,68,0.05) 40%, transparent 70%)';
+    } else if (hasWaiting) {
+        key = 'waiting';
+        gradient = 'radial-gradient(ellipse at 50% 0%, rgba(249,115,22,0.22) 0%, rgba(245,158,11,0.05) 40%, transparent 70%)';
+    } else if (hasWorking || hasPlanning) {
+        key = 'working';
+        gradient = 'radial-gradient(ellipse at 50% 0%, rgba(99,102,241,0.22) 0%, rgba(139,92,246,0.06) 40%, transparent 70%)';
+    } else {
+        key = 'idle';
+        gradient = 'radial-gradient(ellipse at 50% 0%, rgba(100,116,139,0.1) 0%, transparent 60%)';
+    }
+
+    if (key === _lastAmbientKey) return;
+    _lastAmbientKey = key;
+    el.style.background = gradient;
+}
+
+// ── Status Filter Chips ──
+
+function updateStatusFilterChips() {
+    const agents = [...state.agents.values()];
+    const counts = { working: 0, waiting: 0, error: 0, planning: 0, idle: 0 };
+
+    for (const a of agents) {
+        if (a.needs_input) counts.waiting++;
+        else if (a.status === 'error') counts.error++;
+        else if (a.status === 'planning') counts.planning++;
+        else if (['working', 'reading', 'spawning'].includes(a.status)) counts.working++;
+        else counts.idle++;
+    }
+
+    document.getElementById('chipCountWorking').textContent = counts.working;
+    document.getElementById('chipCountWaiting').textContent = counts.waiting;
+    document.getElementById('chipCountError').textContent = counts.error;
+    document.getElementById('chipCountPlanning').textContent = counts.planning;
+    document.getElementById('chipCountIdle').textContent = counts.idle;
+}
+
+function setStatusFilter(status) {
+    state.statusFilter = status;
+    document.querySelectorAll('.status-chip').forEach(chip => {
+        chip.classList.toggle('active', chip.dataset.status === status);
+    });
+    filterAgentGrid(gridSearchQuery);
+}
+
+// ── Grid Layout Adaptation ──
+
+function updateGridLayout() {
+    const grid = document.getElementById('agentGrid');
+    const count = state.agents.size;
+    const aqOpen = document.getElementById('attentionQueueOverlay')?.classList.contains('active');
+    grid.classList.remove('grid-large', 'grid-standard', 'grid-compact');
+    if (aqOpen) {
+        // Always use compact when attention queue narrows the grid
+        grid.classList.add('grid-compact');
+    } else if (count <= 2) grid.classList.add('grid-large');
+    else if (count <= 4) grid.classList.add('grid-standard');
+    else grid.classList.add('grid-compact');
+}
+
+// ── Attention Badge + Queue ──
+
+function updateAttentionBadge() {
+    const waiting = [...state.agents.values()].filter(a => a.needs_input).length;
+    const errored = [...state.agents.values()].filter(a => a.status === 'error').length;
+    const total = waiting + errored;
+    const badge = document.getElementById('attentionBadge');
+    const prevCount = parseInt(badge.textContent) || 0;
+    badge.textContent = total;
+    badge.classList.toggle('active', total > 0);
+    badge.style.background = errored > 0 ? 'var(--danger)' : '';
+    // Auto-open attention queue when first agent enters waiting (and user hasn't dismissed recently)
+    const aqOverlay = document.getElementById('attentionQueueOverlay');
+    if (waiting > 0 && prevCount === 0 && !aqOverlay.classList.contains('active')) {
+        const now = Date.now();
+        if (now - (state.aqDismissedAt || 0) > 30000) { // 30s cooldown after dismiss
+            openAttentionQueue();
+        }
+    }
+    // Also refresh the queue if it's open
+    if (aqOverlay.classList.contains('active')) {
+        renderAttentionQueue();
+    }
+}
+
+function focusFirstWaiting() {
+    openAttentionQueue();
+}
+
+function openAttentionQueue() {
+    const overlay = document.getElementById('attentionQueueOverlay');
+    overlay.classList.add('active');
+    document.getElementById('mainContent').classList.add('aq-open');
+    updateGridLayout();
+    renderAttentionQueue();
+}
+
+function closeAttentionQueue() {
+    document.getElementById('attentionQueueOverlay').classList.remove('active');
+    document.getElementById('mainContent').classList.remove('aq-open');
+    updateGridLayout();
+    state.aqDismissedAt = Date.now();
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function renderAttentionQueue() {
+    const list = document.getElementById('aqList');
+    const bulkBar = document.getElementById('aqBulkBar');
+    const countEl = document.getElementById('aqCount');
+
+    const waiting = [...state.agents.values()]
+        .filter(a => a.needs_input)
+        .sort((a, b) => {
+            const ta = a.updated_at || a.created_at || '';
+            const tb = b.updated_at || b.created_at || '';
+            return ta.localeCompare(tb);
+        });
+
+    // Also include errored agents for attention
+    const errored = [...state.agents.values()]
+        .filter(a => a.status === 'error' && !a.needs_input)
+        .sort((a, b) => (a.updated_at || '').localeCompare(b.updated_at || ''));
+
+    const totalAttention = waiting.length + errored.length;
+    countEl.textContent = totalAttention ? `${totalAttention} need attention` : '';
+    bulkBar.style.display = waiting.length > 1 ? '' : 'none';
+
+    if (!totalAttention) {
+        list.innerHTML = '<div class="aq-empty">No agents need attention</div>';
+        return;
+    }
+
+    list.innerHTML = '';
+    const frag = document.createDocumentFragment();
+
+    // Render errored agents first (more urgent)
+    for (const agent of errored) {
+        const roleIconHtml = roleIcon(agent.role, 14);
+        const elapsed = agent.updated_at ? timeAgo(agent.updated_at) : '';
+        const errorMsg = agent.error_message ? escapeHtml(agent.error_message.slice(0, 150)) : 'Unknown error';
+
+        const item = document.createElement('div');
+        item.className = 'aq-item aq-item-error';
+        item.dataset.agentId = agent.id;
+        item.innerHTML = `
+            <div class="aq-item-header">
+                <span class="aq-item-icon">${roleIconHtml}</span>
+                <span class="aq-item-name">${escapeHtml(agent.name)}</span>
+                <span style="font-size:10px;font-weight:700;color:var(--danger);text-transform:uppercase;font-family:var(--font-mono)">ERROR</span>
+                <span class="aq-item-time">${elapsed}</span>
+            </div>
+            <div class="aq-item-question" style="color:var(--danger)">${errorMsg}</div>
+            <div class="aq-item-actions">
+                <button class="btn btn-primary" data-action="restart">Restart</button>
+                <button class="btn btn-secondary" data-action="view-output">View Output</button>
+                <button class="btn btn-danger" data-action="kill">Kill</button>
+            </div>
+        `;
+        frag.appendChild(item);
+    }
+
+    // Render waiting agents
+    for (const agent of waiting) {
+        const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
+        const roleIconHtml = roleIcon(agent.role, 14);
+        const elapsed = agent.updated_at ? timeAgo(agent.updated_at) : '';
+
+        const isPlan = agent.plan_mode;
+        const questionText = isPlan ? 'Plan ready for review' : escapeHtml(agent.input_prompt || 'Waiting for input...');
+        const approveLabel = isPlan ? 'Approve Plan' : 'Approve';
+
+        const outputLines = (agent._outputBuffer || agent.output_lines || []);
+        const meaningfulLines = outputLines
+            .filter(l => l.trim() && !/^[\s─╭╰│┌┐└┘]+$/.test(l))
+            .slice(-3)
+            .map(l => escapeHtml(l.length > 100 ? l.slice(0, 100) + '...' : l));
+        const outputPreview = meaningfulLines.length
+            ? `<div class="aq-item-preview">${meaningfulLines.join('<br>')}</div>`
+            : '';
+
+        const item = document.createElement('div');
+        item.className = 'aq-item';
+        item.dataset.agentId = agent.id;
+        item.innerHTML = `
+            <div class="aq-item-header">
+                <span class="aq-item-icon">${roleIconHtml}</span>
+                <span class="aq-item-name">${escapeHtml(agent.name)}</span>
+                ${isPlan ? '<span class="plan-mode-indicator" style="display:inline-block">PLAN</span>' : ''}
+                <span class="aq-item-time">${elapsed}</span>
+            </div>
+            ${outputPreview}
+            <div class="aq-item-question">${questionText}</div>
+            <div class="aq-item-actions">
+                <button class="btn btn-primary" data-action="approve">${approveLabel}</button>
+                <button class="btn btn-secondary" data-action="reject">Reject</button>
+                <input class="aq-item-input" placeholder="Custom..." data-action="custom-input">
+            </div>
+        `;
+        frag.appendChild(item);
+    }
+    list.appendChild(frag);
+    // Event delegation for attention queue actions (no inline onclick)
+    list.onclick = (e) => {
+        const actionEl = e.target.closest('[data-action]');
+        if (!actionEl) return;
+        const item = e.target.closest('.aq-item');
+        const aid = item?.dataset.agentId;
+        if (!aid) return;
+        const action = actionEl.dataset.action;
+        if (action === 'restart') restartAgent(aid);
+        else if (action === 'view-output') { openDeepView(aid); closeAttentionQueue(); }
+        else if (action === 'kill') killAgent(aid);
+        else if (action === 'approve') respondToAgent(aid, 'yes');
+        else if (action === 'reject') respondToAgent(aid, 'no');
+    };
+    list.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+            const input = e.target.closest('.aq-item-input');
+            if (!input) return;
+            const item = e.target.closest('.aq-item');
+            const aid = item?.dataset.agentId;
+            if (aid && input.value) { respondToAgent(aid, input.value); input.value = ''; }
+            return;
+        }
+        // Arrow key navigation between queue items
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            const items = [...list.querySelectorAll('.aq-item')];
+            const current = e.target.closest('.aq-item');
+            const idx = items.indexOf(current);
+            const next = e.key === 'ArrowDown' ? items[idx + 1] : items[idx - 1];
+            if (next) {
+                const focusTarget = next.querySelector('.aq-item-input') || next.querySelector('button');
+                if (focusTarget) focusTarget.focus();
+            }
+        }
+    };
+    // Auto-focus first item
+    const firstFocus = list.querySelector('.aq-item-input') || list.querySelector('.aq-item button');
+    if (firstFocus) setTimeout(() => firstFocus.focus(), 100);
+}
+
+function respondToAgent(agentId, message) {
+    if (!message) return;
+    socket.send({ type: 'send', agent_id: agentId, message: message });
+    showToast(`Responded to ${state.agents.get(agentId)?.name || agentId}`, 'success');
+    // Remove the item from the list immediately
+    const item = document.querySelector(`.aq-item[data-agent-id="${agentId}"]`);
+    if (item) item.remove();
+    // Auto-advance: focus next waiting agent's input, or close queue if none left
+    setTimeout(() => {
+        const remaining = document.querySelectorAll('.aq-item');
+        if (remaining.length > 0) {
+            const nextInput = remaining[0].querySelector('.aq-item-input');
+            if (nextInput) nextInput.focus();
+        } else {
+            closeAttentionQueue();
+        }
+        updateAttentionBadge();
+    }, 300);
+}
+
+async function bulkApproveAll() {
+    const waiting = [...state.agents.values()].filter(a => a.needs_input);
+    if (!waiting.length) return;
+    const responses = waiting.map(a => ({ agent_id: a.id, message: 'yes' }));
+    try {
+        const res = await apiFetch('/api/agents/bulk-respond', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ responses }),
+        });
+        const result = await res.json();
+        showToast(`Approved ${result.success?.length || 0} agents`, 'success');
+        renderAttentionQueue();
+    } catch (e) {
+        showToast('Bulk approve failed', 'error');
+    }
+}
+
+async function bulkRejectAll() {
+    const waiting = [...state.agents.values()].filter(a => a.needs_input);
+    if (!waiting.length) return;
+    const responses = waiting.map(a => ({ agent_id: a.id, message: 'no' }));
+    try {
+        const res = await apiFetch('/api/agents/bulk-respond', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ responses }),
+        });
+        const result = await res.json();
+        showToast(`Rejected ${result.success?.length || 0} agents`, 'warning');
+        renderAttentionQueue();
+    } catch (e) {
+        showToast('Bulk reject failed', 'error');
+    }
+}
+
+// ── CPU Sparkline ──
+
+function drawSparkline() {
+    const canvas = document.getElementById('cpuSparkline');
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const data = state.cpuHistory;
+    if (data.length < 2) return;
+
+    ctx.clearRect(0, 0, w, h);
+
+    const max = 100;
+    const maxPoints = 60;
+    const step = w / (maxPoints - 1);
+    // Right-align: offset so the latest point sits at the right edge
+    const xOffset = (maxPoints - data.length) * step;
+
+    ctx.beginPath();
+    ctx.strokeStyle = data[data.length - 1] > 80 ? '#EF4444' : data[data.length - 1] > 50 ? '#F59E0B' : '#22C55E';
+    ctx.lineWidth = 1.5;
+
+    for (let i = 0; i < data.length; i++) {
+        const x = xOffset + i * step;
+        const y = h - (data[i] / max) * h;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Fill gradient
+    ctx.lineTo(xOffset + (data.length - 1) * step, h);
+    ctx.lineTo(xOffset, h);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    const color = data[data.length - 1] > 80 ? '239,68,68' : data[data.length - 1] > 50 ? '245,158,11' : '34,197,94';
+    grad.addColorStop(0, `rgba(${color},0.2)`);
+    grad.addColorStop(1, `rgba(${color},0)`);
+    ctx.fillStyle = grad;
+    ctx.fill();
+}
+
+function drawCostSparkline() {
+    const canvas = document.getElementById('costSparkline');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const data = state.costHistory;
+    if (data.length < 2) return;
+
+    ctx.clearRect(0, 0, w, h);
+
+    const max = Math.max(...data, 0.01);
+    const maxPoints = 60;
+    const step = w / (maxPoints - 1);
+    const xOffset = (maxPoints - data.length) * step;
+
+    ctx.beginPath();
+    ctx.strokeStyle = '#8B5CF6';
+    ctx.lineWidth = 1.5;
+
+    for (let i = 0; i < data.length; i++) {
+        const x = xOffset + i * step;
+        const y = h - (data[i] / max) * (h - 4) - 2;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    ctx.lineTo(xOffset + (data.length - 1) * step, h);
+    ctx.lineTo(xOffset, h);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, 'rgba(139,92,246,0.2)');
+    grad.addColorStop(1, 'rgba(139,92,246,0)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+}
+
+function drawCostTrendChart(canvas, data) {
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = canvas.clientWidth * dpr;
+    canvas.height = canvas.clientHeight * dpr;
+    ctx.scale(dpr, dpr);
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (data.length < 2) return;
+
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    const max = Math.max(...data, 0.01);
+    const pad = { t: 10, b: 16, l: 36, r: 8 };
+    const plotW = w - pad.l - pad.r;
+    const plotH = h - pad.t - pad.b;
+    const step = plotW / (data.length - 1);
+
+    // Grid lines + labels
+    ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)';
+    ctx.lineWidth = 1;
+    ctx.font = '9px JetBrains Mono, monospace';
+    ctx.fillStyle = isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.4)';
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= 3; i++) {
+        const y = pad.t + (plotH / 3) * i;
+        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+        const val = max - (max / 3) * i;
+        ctx.fillText('$' + val.toFixed(val < 1 ? 2 : 1), pad.l - 4, y + 3);
+    }
+
+    // Line
+    ctx.beginPath();
+    ctx.strokeStyle = '#8B5CF6';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < data.length; i++) {
+        const x = pad.l + i * step;
+        const y = pad.t + plotH - (data[i] / max) * plotH;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Fill
+    ctx.lineTo(pad.l + (data.length - 1) * step, pad.t + plotH);
+    ctx.lineTo(pad.l, pad.t + plotH);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + plotH);
+    grad.addColorStop(0, 'rgba(139,92,246,0.25)');
+    grad.addColorStop(1, 'rgba(139,92,246,0)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Latest value dot
+    const lastX = pad.l + (data.length - 1) * step;
+    const lastY = pad.t + plotH - (data[data.length - 1] / max) * plotH;
+    ctx.beginPath();
+    ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#8B5CF6';
+    ctx.fill();
+}
+
+// ── Metrics Dropdown ──
+
+function toggleMetricsDropdown() {
+    const dd = document.getElementById('metricsDropdown');
+    dd.classList.toggle('active');
+    if (dd.classList.contains('active')) updateMetricsDropdown();
+}
+
+function closeMetricsDropdown() { document.getElementById('metricsDropdown').classList.remove('active'); }
+
+function updateMetricsDropdown() {
+    const dd = document.getElementById('metricsDropdown');
+    if (!dd.classList.contains('active')) return;
+
+    const agents = [...state.agents.values()];
+    const m = state.metrics;
+    const totalCost = agents.reduce((sum, a) => sum + (a.estimated_cost_usd || 0), 0);
+
+    let html = '';
+
+    // System overview bar
+    if (m.memory) {
+        const diskPct = m.disk?.pct || 0;
+        html += `<div style="display:flex;gap:16px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border-subtle)">
+            <div style="flex:1;font-size:11px"><span style="color:var(--text-tertiary)">CPU</span><br><span style="font-size:14px;font-weight:600;color:${m.cpu_pct > 80 ? 'var(--danger)' : m.cpu_pct > 50 ? 'var(--orange)' : 'var(--success)'}">${m.cpu_pct}%</span></div>
+            <div style="flex:1;font-size:11px"><span style="color:var(--text-tertiary)">RAM</span><br><span style="font-size:14px;font-weight:600;color:${m.memory.pct > 85 ? 'var(--danger)' : m.memory.pct > 60 ? 'var(--orange)' : 'var(--success)'}">${m.memory.used_gb}/${m.memory.total_gb} GB</span></div>
+            <div style="flex:1;font-size:11px"><span style="color:var(--text-tertiary)">Cost</span><br><span style="font-size:14px;font-weight:600;color:var(--text-primary)">$${totalCost.toFixed(2)}</span></div>
+        </div>`;
+    }
+
+    // Service health
+    if (state._serviceHealth) {
+        const sh = state._serviceHealth;
+        const svcItems = [];
+        svcItems.push(`<span style="color:${sh.db_available !== false ? 'var(--success)' : 'var(--danger)'}">DB ${sh.db_available !== false ? 'OK' : 'DOWN'}</span>`);
+        svcItems.push(`<span style="color:${sh.llm_enabled ? 'var(--success)' : 'var(--text-tertiary)'}">LLM ${sh.llm_enabled ? 'ON' : 'OFF'}</span>`);
+        if (sh.bg_task_health) {
+            const tasks = Object.entries(sh.bg_task_health);
+            const healthy = tasks.filter(([,v]) => v === 'running' || v === true).length;
+            svcItems.push(`<span style="color:${healthy === tasks.length ? 'var(--success)' : 'var(--orange)'}">Tasks ${healthy}/${tasks.length}</span>`);
+        }
+        if (state._serverUptime) {
+            const mins = Math.floor(state._serverUptime / 60);
+            const hrs = Math.floor(mins / 60);
+            svcItems.push(`<span style="color:var(--text-tertiary)">Up ${hrs > 0 ? hrs + 'h ' : ''}${mins % 60}m</span>`);
+        }
+        html += `<div style="font-size:10px;font-family:var(--font-mono);display:flex;gap:10px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border-subtle)">${svcItems.join('')}</div>`;
+        // Background task detail
+        if (sh.bg_task_health && Object.keys(sh.bg_task_health).length > 0) {
+            html += `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border-subtle)">`;
+            for (const [name, status] of Object.entries(sh.bg_task_health)) {
+                const ok = status === 'running' || status === true;
+                html += `<span style="font-size:9px;font-family:var(--font-mono);padding:2px 6px;border-radius:4px;background:${ok ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)'};color:${ok ? 'var(--success)' : 'var(--danger)'}">${escapeHtml(name)}</span>`;
+            }
+            html += `</div>`;
+        }
+    }
+
+    // Agent table
+    html += `<table>
+        <tr><th>Agent</th><th>Status</th><th>Mem</th><th>Ctx</th><th>Cost</th><th>Health</th></tr>`;
+    if (agents.length === 0) {
+        html += '<tr><td colspan="6" style="text-align:center;color:var(--text-tertiary)">No agents</td></tr>';
+    } else {
+        agents.sort((a, b) => (b.estimated_cost_usd || 0) - (a.estimated_cost_usd || 0));
+        agents.forEach(a => {
+            const hp = typeof a.health_score === 'number' ? Math.round(a.health_score * 100) : null;
+            const hpColor = hp !== null ? (hp >= 80 ? 'var(--success)' : hp >= 50 ? 'var(--orange)' : 'var(--danger)') : 'var(--text-tertiary)';
+            const cost = (a.estimated_cost_usd || 0);
+            html += `<tr>
+                <td>${roleIcon(a.role, 14)} ${escapeHtml(a.name)}</td>
+                <td>${escapeHtml(a.status)}</td>
+                <td>${Math.round(a.memory_mb || 0)}MB</td>
+                <td style="color:${(a.context_pct||0) > 0.8 ? 'var(--danger)' : 'var(--text-secondary)'}">${Math.max(0, 100 - Math.round((a.context_pct || 0) * 100))}%</td>
+                <td style="font-family:var(--font-mono)">$${cost.toFixed(2)}</td>
+                <td style="color:${hpColor}">${hp !== null ? hp + '%' : '—'}</td>
+            </tr>`;
+        });
+    }
+    html += '</table>';
+
+    // Cost trend chart
+    if (state.costHistory.length > 1) {
+        html += `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border-subtle)">
+            <div style="font-size:10px;color:var(--text-tertiary);margin-bottom:4px">Cost Trend</div>
+            <canvas id="costTrendChart" width="340" height="80" style="width:100%;height:80px;border-radius:6px;background:rgba(0,0,0,0.15)"></canvas>
+        </div>`;
+    }
+
+    // Per-project cost breakdown
+    const projectCosts = new Map();
+    agents.forEach(a => {
+        const pName = a.project_name || 'Unassigned';
+        projectCosts.set(pName, (projectCosts.get(pName) || 0) + (a.estimated_cost_usd || 0));
+    });
+    if (projectCosts.size > 1 || (projectCosts.size === 1 && !projectCosts.has('Unassigned'))) {
+        const sorted = [...projectCosts.entries()].sort((a, b) => b[1] - a[1]);
+        const maxCost = sorted[0]?.[1] || 1;
+        html += `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border-subtle)">
+            <div style="font-size:10px;color:var(--text-tertiary);margin-bottom:6px">Cost by Project</div>`;
+        sorted.forEach(([name, cost]) => {
+            const pct = Math.max(2, (cost / maxCost) * 100);
+            html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+                <span style="font-size:10px;color:var(--text-secondary);width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(name)}</span>
+                <div style="flex:1;height:6px;background:var(--bg-tertiary);border-radius:3px;overflow:hidden">
+                    <div style="width:${pct}%;height:100%;background:var(--accent);border-radius:3px"></div>
+                </div>
+                <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-tertiary);width:48px;text-align:right">$${cost.toFixed(2)}</span>
+            </div>`;
+        });
+        html += `</div>`;
+    }
+
+    dd.innerHTML = html;
+
+    // Draw cost trend chart if present
+    requestAnimationFrame(() => {
+        const chartCanvas = document.getElementById('costTrendChart');
+        if (chartCanvas) drawCostTrendChart(chartCanvas, state.costHistory);
+    });
+}
+
+// ── System Metrics Detail Panel ──
+
+let _sysMetricsInterval = null;
+
+function openSystemMetrics(section) {
+    closeMetricsDropdown();
+    document.getElementById('systemMetricsOverlay').classList.add('active');
+    loadSystemMetrics(section);
+    if (_sysMetricsInterval) clearInterval(_sysMetricsInterval);
+    _sysMetricsInterval = setInterval(() => loadSystemMetrics(), 3000);
+}
+
+function closeSystemMetrics() {
+    document.getElementById('systemMetricsOverlay').classList.remove('active');
+    if (_sysMetricsInterval) { clearInterval(_sysMetricsInterval); _sysMetricsInterval = null; }
+}
+
+function _pctColor(pct) {
+    if (pct > 80) return 'var(--danger)';
+    if (pct > 60) return 'var(--warning, var(--orange))';
+    return 'var(--success)';
+}
+
+async function loadSystemMetrics(scrollTo) {
+    try {
+        const resp = await apiFetch('/api/system/detail');
+        if (!resp.ok) return;
+        const d = await resp.json();
+        renderSystemMetrics(d, scrollTo);
+    } catch (e) { /* offline */ }
+}
+
+function renderSystemMetrics(d, scrollTo) {
+    const container = document.getElementById('systemMetricsContent');
+    if (!d || !d.cpu || !d.memory || !d.disk) {
+        container.innerHTML = '<div style="color:var(--text-tertiary);text-align:center;padding:20px">Failed to load system metrics</div>';
+        return;
+    }
+    const cpu = d.cpu;
+    const mem = d.memory;
+    const disk = d.disk;
+
+    let html = '';
+
+    // CPU Section
+    html += `<div class="sm-section" id="sm-cpu">
+        <div class="sm-section-title">CPU</div>
+        <div class="sm-gauge-row">
+            <div class="sm-gauge">
+                <div class="sm-gauge-label">Total Usage</div>
+                <div class="sm-gauge-value" style="color:${_pctColor(cpu.total_pct)}">${cpu.total_pct}%</div>
+                <div class="sm-gauge-sub">${cpu.count_physical}C / ${cpu.count_logical}T${cpu.freq_mhz ? ' @ ' + cpu.freq_mhz + ' MHz' : ''}</div>
+                <div class="sm-bar-track"><div class="sm-bar-fill" style="width:${cpu.total_pct}%;background:${_pctColor(cpu.total_pct)}"></div></div>
+            </div>
+            <div class="sm-gauge">
+                <div class="sm-gauge-label">Load Average</div>
+                <div class="sm-gauge-value" style="color:${_pctColor((d.load_avg[0] / cpu.count_logical) * 100)}">${d.load_avg[0]}</div>
+                <div class="sm-gauge-sub">1m: ${d.load_avg[0]} &nbsp; 5m: ${d.load_avg[1]} &nbsp; 15m: ${d.load_avg[2]}</div>
+            </div>
+        </div>
+        <div class="sm-section-title" style="margin-top:4px">Per-Core Usage</div>
+        <div class="sm-cpu-cores">`;
+    cpu.per_cpu.forEach((pct, i) => {
+        html += `<div class="sm-cpu-core">
+            <div class="sm-cpu-core-label">C${i}</div>
+            <div class="sm-cpu-core-value" style="color:${_pctColor(pct)}">${pct}%</div>
+            <div class="sm-bar-track" style="margin-top:4px"><div class="sm-bar-fill" style="width:${pct}%;background:${_pctColor(pct)}"></div></div>
+        </div>`;
+    });
+    html += `</div></div>`;
+
+    // Memory Section
+    html += `<div class="sm-section" id="sm-memory">
+        <div class="sm-section-title">Memory</div>
+        <div class="sm-gauge-row">
+            <div class="sm-gauge">
+                <div class="sm-gauge-label">RAM Usage</div>
+                <div class="sm-gauge-value" style="color:${_pctColor(mem.pct)}">${mem.pct}%</div>
+                <div class="sm-gauge-sub">${mem.used_gb} / ${mem.total_gb} GB &nbsp;(${mem.available_gb} GB free)</div>
+                <div class="sm-bar-track"><div class="sm-bar-fill" style="width:${mem.pct}%;background:${_pctColor(mem.pct)}"></div></div>
+            </div>
+            <div class="sm-gauge">
+                <div class="sm-gauge-label">Swap</div>
+                <div class="sm-gauge-value" style="color:${mem.swap_pct > 50 ? 'var(--danger)' : mem.swap_pct > 0 ? 'var(--orange)' : 'var(--text-tertiary)'}">${mem.swap_pct}%</div>
+                <div class="sm-gauge-sub">${mem.swap_used_gb} / ${mem.swap_total_gb} GB</div>
+                <div class="sm-bar-track"><div class="sm-bar-fill" style="width:${mem.swap_pct}%;background:${mem.swap_pct > 50 ? 'var(--danger)' : 'var(--orange)'}"></div></div>
+            </div>
+        </div>
+    </div>`;
+
+    // Disk Section
+    html += `<div class="sm-section" id="sm-disk">
+        <div class="sm-section-title">Disk</div>
+        <div class="sm-gauge-row">
+            <div class="sm-gauge" style="flex:2">
+                <div class="sm-gauge-label">Storage (/) </div>
+                <div class="sm-gauge-value" style="color:${_pctColor(disk.pct)}">${disk.pct}%</div>
+                <div class="sm-gauge-sub">${disk.used_gb} / ${disk.total_gb} GB used &nbsp;(${disk.free_gb} GB free)</div>
+                <div class="sm-bar-track"><div class="sm-bar-fill" style="width:${disk.pct}%;background:${_pctColor(disk.pct)}"></div></div>
+            </div>
+        </div>
+    </div>`;
+
+    // Top Processes
+    if (d.top_processes && d.top_processes.length > 0) {
+        const maxCpu = Math.max(...d.top_processes.map(p => p.cpu), 1);
+        html += `<div class="sm-section" id="sm-processes">
+            <div class="sm-section-title">Top Processes by CPU</div>
+            <table class="sm-process-table">
+                <tr><th>PID</th><th>Process</th><th>CPU</th><th>Memory</th><th>Status</th></tr>`;
+        d.top_processes.forEach(p => {
+            const barW = Math.max(2, (p.cpu / maxCpu) * 60);
+            html += `<tr>
+                <td style="color:var(--text-tertiary)">${p.pid}</td>
+                <td style="color:var(--text-primary)">${escapeHtml(p.name)}</td>
+                <td>${p.cpu}%<span class="sm-process-bar" style="width:${barW}px;background:${_pctColor(p.cpu)}"></span></td>
+                <td>${p.mem_mb} MB</td>
+                <td style="color:${p.status === 'running' ? 'var(--success)' : 'var(--text-tertiary)'}">${p.status}</td>
+            </tr>`;
+        });
+        html += `</table></div>`;
+    }
+
+    container.innerHTML = html;
+
+    // Auto-scroll to requested section
+    if (scrollTo) {
+        const el = document.getElementById('sm-' + scrollTo);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+// Fetch service health periodically
+async function fetchServiceHealth() {
+    try {
+        const resp = await apiFetch('/api/system');
+        if (resp.ok) {
+            const data = await resp.json();
+            state._serviceHealth = data.services || {};
+            state._serverUptime = data.uptime_sec || 0;
+        }
+    } catch (e) { /* server may be down */ }
+}
+let _healthTimer = setInterval(fetchServiceHealth, 10000);
+fetchServiceHealth();
+
+// ── Cleanup all global timers on page unload ──
+window.addEventListener('beforeunload', () => {
+    clearInterval(_healthTimer);
+    clearInterval(_timeUpdaterTimer);
+    if (_sysMetricsInterval) clearInterval(_sysMetricsInterval);
+    // Clean up terminal WebSocket connections
+    if (typeof disconnectInteractiveTerminal === 'function') disconnectInteractiveTerminal();
+    if (typeof _bottomTerminals !== 'undefined') {
+        for (const tab of _bottomTerminals.tabs) {
+            if (tab.ws) tab.ws.close();
+        }
+    }
+});
+
+// ── Time Updater ──
+
+function _updateCardTimers() {
+    for (const [id, agent] of state.agents) {
+        const card = cardElements.get(id);
+        if (card) {
+            const meta = card.querySelector('.card-meta');
+            if (!meta) continue;
+            const parts = [];
+            if (agent.model) {
+                const shortModel = agent.model.replace(/^claude-/, '').replace(/-\d{8}$/, '').replace(/^grok-/, 'grok ');
+                parts.push(shortModel);
+            }
+            if (agent.restart_count > 0) parts.push(`\u21bb${agent.restart_count}`);
+            if (agent.memory_mb) parts.push(`${Math.round(agent.memory_mb)}MB`);
+            if (agent.output_rate) parts.push(`${Math.round(agent.output_rate)}l/m`);
+            if (agent.estimated_cost_usd > 0.001) parts.push(`$${agent.estimated_cost_usd.toFixed(2)}`);
+            if (agent.files_touched > 0) parts.push(`${agent.files_touched} files`);
+            if (agent.last_test_result) {
+                const tr = agent.last_test_result;
+                if (tr.failed > 0) parts.push(`${tr.passed}\u2713 ${tr.failed}\u2717`);
+                else if (tr.passed > 0) parts.push(`${tr.passed}\u2713`);
+            }
+            parts.push(timeAgo(agent.updated_at || agent.created_at));
+            meta.innerHTML = parts.map(p => `<span>${escapeHtml(p)}</span>`).join('');
+        }
+    }
+    if (state.view === 'deep' && state.focusedAgentId) {
+        const a = state.agents.get(state.focusedAgentId);
+        if (a) updateDeepViewHeader(a);
+    }
+    updateTabTitle();
+}
+let _timeUpdaterTimer = setInterval(_updateCardTimers, 5000);
+
+// ── Visibility-based interval pausing ──
+// Pause polling when tab is hidden to save CPU/network
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        clearInterval(_healthTimer);
+        clearInterval(_timeUpdaterTimer);
+        _healthTimer = null;
+        _timeUpdaterTimer = null;
+    } else {
+        if (!_healthTimer) _healthTimer = setInterval(fetchServiceHealth, 10000);
+        if (!_timeUpdaterTimer) _timeUpdaterTimer = setInterval(_updateCardTimers, 5000);
+        fetchServiceHealth();
+        _updateCardTimers();
+    }
+});
+
+// ── Theme Toggle ──
+
+function toggleTheme() {
+    // Cycle: dark → light → auto → dark
+    const saved = localStorage.getItem('ashlr_theme') || 'dark';
+    const cycle = { dark: 'light', light: 'auto', auto: 'dark' };
+    const next = cycle[saved] || 'dark';
+    localStorage.setItem('ashlr_theme', next);
+    applyTheme(next);
+}
+
+function applyTheme(pref) {
+    const html = document.documentElement;
+    let effective = pref;
+    if (pref === 'auto') {
+        effective = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+    html.setAttribute('data-theme', effective);
+    updateThemeIcon(pref);
+    xtermManager.updateTheme();
+}
+
+function updateThemeIcon(pref) {
+    const btn = document.getElementById('themeToggleBtn');
+    if (!btn) return;
+    const icons = {
+        light: '<svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>',
+        dark: '<svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>',
+        auto: '<svg class="lucide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 0 0 20z" fill="currentColor"/></svg>',
+    };
+    btn.innerHTML = icons[pref] || icons.dark;
+    btn.title = `Theme: ${pref} (click to cycle)`;
+}
+
+// Restore saved theme on load + listen for system preference changes
+(function() {
+    const saved = localStorage.getItem('ashlr_theme') || 'dark';
+    applyTheme(saved);
+    // Listen for system preference changes (matters in auto mode)
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+        const current = localStorage.getItem('ashlr_theme') || 'dark';
+        if (current === 'auto') applyTheme('auto');
+    });
+})();
+
+// Restore saved card sort
+(function() {
+    const saved = localStorage.getItem('ashlr_card_sort');
+    if (saved) {
+        setTimeout(() => {
+            const sel = document.getElementById('cardSortSelect');
+            if (sel) sel.value = saved;
+        }, 0);
+    }
+})();
+
+// ── Settings Panel ──
+
+function openSettings() {
+    const cfg = state.config;
+    document.getElementById('setMaxAgents').value = cfg.max_agents || 16;
+    document.getElementById('setDefaultDir').value = cfg.default_working_dir || '~/Projects';
+    document.getElementById('setOutputInterval').value = cfg.output_capture_interval || 1.0;
+    document.getElementById('setMemoryLimit').value = cfg.memory_limit_mb || 2048;
+    document.getElementById('setLlmModel').value = cfg.llm_model || 'grok-4-1-fast-reasoning';
+    document.getElementById('setLlmInterval').value = cfg.llm_summary_interval || 10;
+    document.getElementById('setIdleTtl').value = cfg.idle_agent_ttl || 3600;
+
+    // LLM toggle
+    const llmToggle = document.getElementById('setLlmEnabled');
+    llmToggle.classList.toggle('active', !!cfg.llm_enabled);
+    document.getElementById('setLlmStatus').textContent = cfg.llm_enabled ? 'Active' : 'Off';
+    document.getElementById('setLlmStatus').style.background = cfg.llm_enabled ? 'var(--success-subtle)' : 'var(--bg-elevated)';
+    document.getElementById('setLlmStatus').style.color = cfg.llm_enabled ? 'var(--success)' : 'var(--text-tertiary)';
+
+    // Display toggles
+    document.getElementById('setVoiceSounds').classList.toggle('active', cfg.voice_feedback !== false);
+    document.getElementById('setBrowserNotifs').classList.toggle('active', Notification.permission === 'granted');
+
+    // Role selector
+    const roleSel = document.getElementById('setDefaultRole');
+    roleSel.innerHTML = '';
+    for (const [key, info] of Object.entries(ROLE_INFO)) {
+        const opt = document.createElement('option');
+        opt.value = key;
+        opt.textContent = `${info.icon} ${info.name}`;
+        if (key === cfg.default_role) opt.selected = true;
+        roleSel.appendChild(opt);
+    }
+
+    // Backend selector with availability dots
+    const backendSel = document.getElementById('setDefaultBackend');
+    backendSel.innerHTML = '';
+    const backends = state.backends || cfg.backends || {};
+    for (const [key, info] of Object.entries(backends)) {
+        const opt = document.createElement('option');
+        opt.value = key;
+        const avail = info.available !== false;
+        opt.textContent = (avail ? '● ' : '○ ') + key + (avail ? '' : ' (not installed)');
+        if (key === cfg.default_backend) opt.selected = true;
+        backendSel.appendChild(opt);
+    }
+
+    // Backend availability list
+    const backendsList = document.getElementById('settingsBackendsList');
+    backendsList.innerHTML = '';
+    for (const [key, info] of Object.entries(backends)) {
+        const avail = info.available !== false;
+        const row = document.createElement('div');
+        row.className = 'settings-row';
+        row.innerHTML = `<span class="settings-label"><span class="backend-dot ${avail ? 'available' : 'unavailable'}"></span>${key}</span><span style="font-size:11px;color:var(--text-tertiary)">${avail ? 'Installed' : 'Not found'}</span>`;
+        backendsList.appendChild(row);
+    }
+
+    // License settings
+    updateLicenseSettingsUI();
+
+    // Clamp max_agents input to license limit
+    const maxInput = document.getElementById('setMaxAgents');
+    if (maxInput && !state.license?.is_pro) {
+        maxInput.max = COMMUNITY_MAX_AGENTS;
+        if (parseInt(maxInput.value) > COMMUNITY_MAX_AGENTS) maxInput.value = COMMUNITY_MAX_AGENTS;
+    } else if (maxInput) {
+        maxInput.max = state.license?.max_agents || 100;
+    }
+
+    // Fetch server health stats
+    fetchServerHealth();
+
+    document.getElementById('settingsOverlay').classList.add('active');
+    trapFocus(document.getElementById('settingsOverlay'));
+}
+
+async function fetchServerHealth() {
+    const el = document.getElementById('serverHealthStats');
+    if (!el) return;
+    try {
+        const res = await apiFetch('/api/health/detailed');
+        if (!res.ok) { el.innerHTML = '<span style="color:var(--danger)">Failed to load</span>'; return; }
+        const h = await res.json();
+        const rows = [
+            `Uptime: <strong>${h.uptime}</strong>`,
+            `Server memory: <strong>${h.server_memory_mb} MB</strong>`,
+            `Active agents: <strong>${h.agents.active}</strong> &nbsp;|&nbsp; Spawned: <strong>${h.agents.total_spawned}</strong> &nbsp;|&nbsp; Killed: <strong>${h.agents.total_killed}</strong>`,
+            `Messages sent: <strong>${h.agents.total_messages_sent}</strong>`,
+            `Total cost: <strong>$${h.costs.total_cost_usd.toFixed(4)}</strong> &nbsp;|&nbsp; Tokens: <strong>${h.costs.total_tokens.toLocaleString()}</strong>`,
+            `Tool calls: <strong>${h.intelligence.total_tool_invocations}</strong> &nbsp;|&nbsp; File ops: <strong>${h.intelligence.total_file_operations}</strong>`,
+            `WebSocket clients: <strong>${h.websocket.connected_clients}</strong>`,
+            `Database: <strong>${h.database.available ? 'OK' : 'Unavailable'}</strong> (${h.database.size_mb} MB)`,
+            `LLM: <strong>${h.llm.enabled ? escapeHtml(String(h.llm.provider)) : 'Disabled'}</strong>`,
+        ];
+        // Background tasks
+        const bgParts = Object.entries(h.background_tasks || {}).map(([name, status]) =>
+            `<span style="color:${status === 'running' ? 'var(--success)' : 'var(--danger)'}">${escapeHtml(name)}: ${escapeHtml(String(status))}</span>`
+        );
+        if (bgParts.length) rows.push(`Tasks: ${bgParts.join(' &nbsp;|&nbsp; ')}`);
+        el.innerHTML = rows.map(r => `<div>${r}</div>`).join('');
+    } catch (e) {
+        el.innerHTML = '<span style="color:var(--text-tertiary)">Could not reach server</span>';
+    }
+}
+
+async function resetSettings() {
+    const ok = await confirmAction('Reset Settings', 'Reset all settings to defaults?', 'Reset', { iconKey: 'refresh-cw', danger: false });
+    if (!ok) return;
+    // Agents
+    document.getElementById('setMaxAgents').value = 16;
+    document.getElementById('setDefaultRole').value = 'general';
+    document.getElementById('setDefaultDir').value = '~/Projects';
+    document.getElementById('setDefaultBackend').value = 'claude-code';
+    document.getElementById('setOutputInterval').value = 1.0;
+    document.getElementById('setMemoryLimit').value = 2048;
+    // AI Summaries
+    document.getElementById('setLlmEnabled').classList.remove('active');
+    document.getElementById('setLlmModel').value = 'grok-4-1-fast-reasoning';
+    document.getElementById('setLlmInterval').value = 10;
+    document.getElementById('setIdleTtl').value = 3600;
+    // Alert Thresholds
+    document.getElementById('setHealthLow').value = 0.3;
+    document.getElementById('setHealthCritical').value = 0.1;
+    document.getElementById('setStallTimeout').value = 5;
+    document.getElementById('setHungTimeout').value = 10;
+    document.getElementById('setCostBudget').value = 0;
+    document.getElementById('setCostAutoPause').classList.remove('active');
+    // Auto-Pilot
+    document.getElementById('setAutoRestartStall').classList.remove('active');
+    document.getElementById('setAutoApproveEnabled').classList.remove('active');
+    document.getElementById('setAutoApprovePatterns').value = '';
+    document.getElementById('setAutoPauseCritical').classList.remove('active');
+    // Display
+    document.getElementById('setVoiceSounds').classList.add('active');
+    // Notification checkboxes
+    document.getElementById('notifEvtNeedsInput').checked = true;
+    document.getElementById('notifEvtError').checked = true;
+    document.getElementById('notifEvtCompleted').checked = false;
+    document.getElementById('notifEvtRestartExhausted').checked = true;
+    showToast('Reset to defaults — save to apply', 'info');
+}
+
+function closeSettings() {
+    releaseFocus();
+    document.getElementById('settingsOverlay').classList.remove('active');
+}
+
+// ── Extensions Panel ──
+
+function toggleExtensionsPanel() {
+    const overlay = document.getElementById('extensionsOverlay');
+    if (overlay.classList.contains('active')) {
+        closeExtensionsPanel();
+    } else {
+        openExtensionsPanel();
+    }
+}
+
+function openExtensionsPanel() {
+    const overlay = document.getElementById('extensionsOverlay');
+    overlay.classList.add('active');
+    document.getElementById('extSearch').value = '';
+    state.extFilter = '';
+    renderExtensionsContent();
+    document.getElementById('extSearch').focus();
+}
+
+function closeExtensionsPanel() {
+    document.getElementById('extensionsOverlay').classList.remove('active');
+}
+
+function switchExtTab(tab) {
+    state.extTab = tab;
+    document.querySelectorAll('.ext-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+    state.extFilter = '';
+    document.getElementById('extSearch').value = '';
+    renderExtensionsContent();
+}
+
+function filterExtensions(query) {
+    state.extFilter = query.toLowerCase();
+    renderExtensionsContent();
+}
+
+function renderExtensionsContent() {
+    const content = document.getElementById('extContent');
+    const footer = document.getElementById('extFooter');
+    const filter = state.extFilter;
+    let html = '';
+
+    if (state.extTab === 'skills') {
+        const items = (state.extensions.skills || []).filter(s =>
+            !filter || s.name.toLowerCase().includes(filter) || (s.description || '').toLowerCase().includes(filter)
+        );
+        if (items.length === 0) {
+            html = `<div class="ext-empty-rich">
+                <div class="ext-empty-rich-icon">${icon('terminal', 32)}</div>
+                <h4>No skills found</h4>
+                <p>Skills are reusable prompts your agents can invoke. Add <code>.md</code> files to <code>~/.claude/commands/</code> or your project's <code>.claude/commands/</code> directory.</p>
+                <button class="btn btn-secondary btn-sm" onclick="refreshExtensions()">&#8635; Refresh</button>
+            </div>`;
+        } else {
+            items.forEach(s => {
+                const srcBadge = s.source === 'user'
+                    ? '<span class="ext-item-badge user">global</span>'
+                    : '<span class="ext-item-badge project">project</span>';
+                const hasTarget = state.commandTargetId || state.focusedAgentId;
+                html += `<div class="ext-item">
+                    <div class="ext-item-icon">/</div>
+                    <div class="ext-item-info">
+                        <div class="ext-item-name">/${s.name}</div>
+                        <div class="ext-item-desc">${escapeHtml(s.description || 'No description')}</div>
+                    </div>
+                    ${srcBadge}
+                    <button class="ext-item-action" onclick="invokeSkillOnAgent('${escapeHtml(s.name)}')" ${hasTarget ? '' : 'disabled'} data-tip="${hasTarget ? 'Send to targeted agent' : 'No agent targeted'}">Invoke</button>
+                </div>`;
+            });
+        }
+        footer.textContent = `${items.length} skill${items.length !== 1 ? 's' : ''} — scanned ${state.extensions.scanned_at ? new Date(state.extensions.scanned_at).toLocaleTimeString() : 'never'}`;
+    } else if (state.extTab === 'mcp') {
+        const items = (state.extensions.mcp_servers || []).filter(m =>
+            !filter || m.name.toLowerCase().includes(filter) || (m.url_or_command || '').toLowerCase().includes(filter)
+        );
+        if (items.length === 0) {
+            html = `<div class="ext-empty-rich">
+                <div class="ext-empty-rich-icon">${icon('plug', 32)}</div>
+                <h4>No MCP servers detected</h4>
+                <p>MCP servers extend your agents with tools like databases, APIs, and file systems.</p>
+                <p>Add servers to <code>~/.claude/settings.json</code> under <code>mcpServers</code>, or add <code>.mcp.json</code> to your project root.</p>
+                <a href="https://modelcontextprotocol.io/quickstart/user" target="_blank" rel="noopener">Learn more &rarr;</a><br>
+                <button class="btn btn-secondary btn-sm" onclick="refreshExtensions()">&#8635; Refresh</button>
+            </div>`;
+        } else {
+            items.forEach(m => {
+                const typeIcon = m.type === 'stdio' ? icon('terminal', 14) : m.type === 'http' ? icon('plug', 14) : m.type === 'sse' ? icon('zap', 14) : icon('info', 14);
+                const srcBadge = m.source === 'user'
+                    ? '<span class="ext-item-badge user">global</span>'
+                    : '<span class="ext-item-badge project">project</span>';
+                html += `<div class="ext-item">
+                    <div class="ext-item-icon">${typeIcon}</div>
+                    <div class="ext-item-info">
+                        <div class="ext-item-name">${escapeHtml(m.name)}</div>
+                        <div class="ext-item-desc">${escapeHtml(m.type)} — ${escapeHtml(m.url_or_command || 'N/A')}</div>
+                    </div>
+                    ${srcBadge}
+                </div>`;
+            });
+        }
+        footer.textContent = `${items.length} MCP server${items.length !== 1 ? 's' : ''}`;
+    } else if (state.extTab === 'plugins') {
+        const items = (state.extensions.plugins || []).filter(p =>
+            !filter || p.name.toLowerCase().includes(filter) || (p.provider || '').toLowerCase().includes(filter)
+        );
+        if (items.length === 0) {
+            html = `<div class="ext-empty-rich">
+                <div class="ext-empty-rich-icon">${icon('puzzle', 32)}</div>
+                <h4>No plugins installed</h4>
+                <p>Plugins add custom behavior to Ashlr. Check the docs for available plugins.</p>
+            </div>`;
+        } else {
+            items.forEach(p => {
+                const statusBadge = p.enabled
+                    ? '<span class="ext-item-badge enabled">enabled</span>'
+                    : '<span class="ext-item-badge disabled">disabled</span>';
+                html += `<div class="ext-item">
+                    <div class="ext-item-icon">${icon('plug', 16)}</div>
+                    <div class="ext-item-info">
+                        <div class="ext-item-name">${escapeHtml(p.name)}</div>
+                        <div class="ext-item-desc">${escapeHtml(p.provider)}</div>
+                    </div>
+                    ${statusBadge}
+                </div>`;
+            });
+        }
+        footer.textContent = `${items.length} plugin${items.length !== 1 ? 's' : ''}`;
+    }
+
+    content.innerHTML = html;
+}
+
+function invokeSkillOnAgent(skillName) {
+    const targetId = state.commandTargetId || state.focusedAgentId;
+    if (!targetId) {
+        showToast('No agent targeted — focus or @mention an agent first', 'warning');
+        return;
+    }
+    const agent = state.agents.get(targetId);
+    if (!agent) {
+        showToast('Target agent not found', 'error');
+        return;
+    }
+    socket.send({ type: 'send', agent_id: targetId, message: `/${skillName}` });
+    showToast(`Sent /${skillName} to ${agent.name}`, 'success');
+    closeExtensionsPanel();
+}
+
+async function refreshExtensions() {
+    try {
+        const res = await apiFetch('/api/extensions/refresh', { method: 'POST' });
+        if (res.ok) {
+            state.extensions = await res.json();
+            renderExtensionsContent();
+            showToast('Extensions refreshed', 'success');
+        } else {
+            showToast('Failed to refresh extensions', 'error');
+        }
+    } catch (e) {
+        showToast('Extension refresh failed', 'error');
+    }
+}
+
+// saveSettings is defined later with full alert threshold support
+
+// ── Workflow Editor ──
+
+let wfEditingId = null;
+
+function openWfEditor() {
+    wfEditingId = null;
+    document.getElementById('wfEditorOverlay').classList.add('active');
+    renderWfList();
+    trapFocus(document.getElementById('wfEditorOverlay'));
+}
+
+function closeWfEditor() {
+    releaseFocus();
+    document.getElementById('wfEditorOverlay').classList.remove('active');
+    wfEditingId = null;
+}
+
+function renderWfList() {
+    const content = document.getElementById('wfEditorContent');
+    document.getElementById('wfEditorTitle').textContent = 'Workflows';
+
+    let html = '';
+    state.workflows.forEach(wf => {
+        const isBuiltin = wf.id.startsWith('builtin-');
+        const agents = wf.agents || [];
+        const roleIcons = agents.map(a => roleIcon(a.role, 14));
+        html += `<div class="wf-list-item">
+            <span style="font-size:14px;flex-shrink:0">${roleIcons[0] || icon('zap', 16)}</span>
+            <span class="wf-name">${wf.name}</span>
+            <span class="wf-desc">${wf.description || ''}</span>
+            <span class="wf-count">${agents.length} agents</span>
+            ${isBuiltin ? '<span class="wf-builtin">built-in</span>' : ''}
+            <span class="wf-actions">
+                ${!isBuiltin ? `<button onclick="event.stopPropagation();editWorkflow('${wf.id}')" data-tip="Edit">${icon('edit', 12)}</button>` : ''}
+                <button class="wf-duplicate-btn" onclick="event.stopPropagation();duplicateWorkflow('${wf.id}')" data-tip="Duplicate">${icon('copy', 12)}</button>
+                <button onclick="event.stopPropagation();runWorkflowById('${wf.id}')" data-tip="Run">${icon('play', 12)}</button>
+                ${!isBuiltin ? `<button onclick="event.stopPropagation();deleteWorkflow('${wf.id}')" data-tip="Delete" style="color:var(--danger)">${icon('trash-2', 12)}</button>` : ''}
+            </span>
+        </div>`;
+    });
+
+    html += `<div class="wf-add-btn" onclick="editWorkflow(null)">+ Create new workflow</div>`;
+    content.innerHTML = html;
+}
+
+function editWorkflow(wfId) {
+    wfEditingId = wfId;
+    const wf = wfId ? state.workflows.find(w => w.id === wfId) : null;
+    document.getElementById('wfEditorTitle').textContent = wf ? `Edit: ${wf.name}` : 'New Workflow';
+
+    const agents = wf ? (wf.agents || []) : [{ role: 'general', task: '' }];
+    const content = document.getElementById('wfEditorContent');
+
+    let html = `
+        <div style="margin-bottom:12px">
+            <label class="form-label">Name</label>
+            <input class="settings-input" id="wfName" type="text" style="width:100%" value="${escapeHtml(wf?.name || '')}" placeholder="e.g., Security Audit">
+        </div>
+        <div style="margin-bottom:12px">
+            <label class="form-label">Description</label>
+            <input class="settings-input" id="wfDesc" type="text" style="width:100%" value="${escapeHtml(wf?.description || '')}" placeholder="What this workflow does">
+        </div>
+        <label class="form-label">Agents</label>
+        <div id="wfAgentsList">`;
+
+    agents.forEach((a, i) => {
+        html += buildWfAgentRow(i, a.role, a.task, a.depends_on || [], a);
+    });
+
+    html += `</div>
+        <div class="wf-add-btn" onclick="addWfAgent()">+ Add Agent</div>
+        <div class="settings-actions">
+            <button class="btn btn-secondary" onclick="renderWfList()">Back</button>
+            <button class="btn btn-primary" onclick="saveWorkflow()">Save</button>
+        </div>`;
+    content.innerHTML = html;
+}
+
+function buildWfAgentRow(idx, role, task, dependsOn) {
+    dependsOn = dependsOn || [];
+    const roleInfo = ROLE_INFO[role] || ROLE_INFO.general;
+    const roleOpts = Object.entries(ROLE_INFO).map(([k, v]) =>
+        `<option value="${k}" ${k === role ? 'selected' : ''}>${v.icon} ${v.name.split(' ')[0]}</option>`
+    ).join('');
+    // Build dependency checkboxes for preceding agents
+    let depsHtml = '';
+    if (idx > 0) {
+        const checks = [];
+        for (let i = 0; i < idx; i++) {
+            const checked = dependsOn.includes(i) ? 'checked' : '';
+            checks.push(`<label class="wf-dep-check"><input type="checkbox" data-dep-idx="${i}" ${checked}> Step ${i + 1}</label>`);
+        }
+        depsHtml = `<div class="wf-deps-wrap"><span class="wf-deps-label">Depends on:</span><div class="wf-deps-checks">${checks.join('')}</div></div>`;
+    }
+    return `<div class="wf-agent-row" data-idx="${idx}" style="flex-wrap:wrap">
+        <span class="wf-agent-row-icon" id="wfRowIcon-${idx}">${icon(roleInfo.iconKey || 'bot', 14)}</span>
+        <select onchange="this.parentElement.dataset.role=this.value;document.getElementById('wfRowIcon-${idx}').textContent=this.options[this.selectedIndex].text.split(' ')[0]">${roleOpts}</select>
+        <input type="text" value="${(task || '').replace(/"/g, '&quot;')}" placeholder="Task description..." onchange="this.parentElement.dataset.task=this.value">
+        <button class="wf-remove-btn" onclick="removeWfAgent(this)">✕</button>
+        ${depsHtml}
+    </div>`;
+}
+
+function removeWfAgent(btn) {
+    btn.parentElement.remove();
+    rebuildWfIndices();
+}
+
+function rebuildWfIndices() {
+    const list = document.getElementById('wfAgentsList');
+    if (!list) return;
+    const rows = list.querySelectorAll('.wf-agent-row');
+    // Collect current data
+    const agents = [];
+    rows.forEach(row => {
+        const role = row.querySelector('select')?.value || 'general';
+        const task = row.querySelector('input[type="text"]')?.value || '';
+        const deps = [];
+        row.querySelectorAll('.wf-dep-check input:checked').forEach(cb => deps.push(parseInt(cb.dataset.depIdx)));
+        const onFailSel = row.querySelector('.wf-on-failure');
+        const retryCntInput = row.querySelector('.wf-retry-count');
+        const skipIfInput = row.querySelector('.wf-skip-if');
+        const extra = { role, task, depends_on: deps };
+        if (onFailSel) extra.on_failure = onFailSel.value;
+        if (retryCntInput) extra.retry_count = parseInt(retryCntInput.value) || 0;
+        if (skipIfInput) extra.skip_if = skipIfInput.value;
+        agents.push(extra);
+    });
+    // Re-render with corrected indices
+    list.innerHTML = '';
+    agents.forEach((a, i) => {
+        // Filter out deps that reference removed/invalid indices
+        const validDeps = (a.depends_on || []).filter(d => d < i);
+        list.insertAdjacentHTML('beforeend', buildWfAgentRow(i, a.role, a.task, validDeps, a));
+        // Re-set the input value (dataset bindings)
+        const newRow = list.children[i];
+        newRow.querySelector('input[type="text"]').value = a.task;
+    });
+}
+
+function duplicateWorkflow(wfId) {
+    const original = state.workflows.find(w => w.id === wfId);
+    if (!original) return;
+    // Open the edit view with a copy of the workflow
+    wfEditingId = null; // null = create new
+    document.getElementById('wfEditorTitle').textContent = `Duplicate: ${original.name}`;
+    const agents = (original.agents || []).map(a => ({ ...a }));
+    const content = document.getElementById('wfEditorContent');
+
+    let html = `
+        <div style="margin-bottom:12px">
+            <label class="form-label">Name</label>
+            <input class="settings-input" id="wfName" type="text" style="width:100%" value="${escapeHtml(original.name)} (copy)" placeholder="e.g., Security Audit">
+        </div>
+        <div style="margin-bottom:12px">
+            <label class="form-label">Description</label>
+            <input class="settings-input" id="wfDesc" type="text" style="width:100%" value="${escapeHtml(original.description || '')}" placeholder="What this workflow does">
+        </div>
+        <label class="form-label">Agents</label>
+        <div id="wfAgentsList">`;
+    agents.forEach((a, i) => { html += buildWfAgentRow(i, a.role, a.task, a.depends_on || [], a); });
+    html += `</div>
+        <div class="wf-add-btn" onclick="addWfAgent()">+ Add Agent</div>
+        <div class="settings-actions">
+            <button class="btn btn-secondary" onclick="renderWfList()">Back</button>
+            <button class="btn btn-primary" onclick="saveWorkflow()">Save as New</button>
+        </div>`;
+    content.innerHTML = html;
+}
+
+function addWfAgent() {
+    const list = document.getElementById('wfAgentsList');
+    const idx = list.children.length;
+    list.insertAdjacentHTML('beforeend', buildWfAgentRow(idx, 'general', ''));
+}
+
+async function saveWorkflow() {
+    const btn = document.querySelector('#wfEditorContent .btn-primary');
+    const name = document.getElementById('wfName').value.trim();
+    const description = document.getElementById('wfDesc').value.trim();
+    if (!name) { showToast('Workflow name required', 'warning'); return; }
+
+    const rows = document.querySelectorAll('#wfAgentsList .wf-agent-row');
+    const agents = [];
+    rows.forEach(row => {
+        const role = row.querySelector('select').value;
+        const task = row.querySelector('input[type="text"]').value.trim();
+        const deps = [];
+        row.querySelectorAll('.wf-dep-check input:checked').forEach(cb => deps.push(parseInt(cb.dataset.depIdx)));
+        const entry = { role, task };
+        if (deps.length > 0) entry.depends_on = deps;
+        // Read conditional branching fields (C1)
+        const onFailSel = row.querySelector('.wf-on-failure');
+        const retryCntInput = row.querySelector('.wf-retry-count');
+        const skipIfInput = row.querySelector('.wf-skip-if');
+        if (onFailSel && onFailSel.value !== 'abort') entry.on_failure = onFailSel.value;
+        if (retryCntInput && parseInt(retryCntInput.value) > 0) entry.retry_count = parseInt(retryCntInput.value);
+        if (skipIfInput && skipIfInput.value.trim()) entry.skip_if = skipIfInput.value.trim();
+        agents.push(entry);
+    });
+
+    if (agents.length === 0) { showToast('Add at least one agent', 'warning'); return; }
+
+    const method = wfEditingId ? 'PUT' : 'POST';
+    const url = wfEditingId ? `/api/workflows/${wfEditingId}` : '/api/workflows';
+
+    await withLoading(btn, async () => {
+    try {
+        const res = await apiFetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, description, agents }),
+        });
+        if (res.ok) {
+            showToast(`Workflow "${name}" saved`, 'success');
+            // Refresh workflows
+            const wfRes = await apiFetch('/api/workflows');
+            state.workflows = await wfRes.json();
+            renderWfList();
+        } else {
+            const data = await res.json();
+            showToast(data.error || 'Failed to save', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to save workflow', 'error');
+    }
+    }, 'Saving...');
+}
+
+async function deleteWorkflow(wfId) {
+    const wf = state.workflows.find(w => w.id === wfId);
+    const ok = await confirmAction('Delete Workflow', `Delete "${wf?.name || wfId}"? This cannot be undone.`, 'Delete', { iconKey: 'trash-2' });
+    if (!ok) return;
+    try {
+        const res = await apiFetch(`/api/workflows/${wfId}`, { method: 'DELETE' });
+        if (res.ok) {
+            showToast('Workflow deleted', 'info');
+            const wfRes = await apiFetch('/api/workflows');
+            state.workflows = await wfRes.json();
+            renderWfList();
+        } else {
+            const data = await res.json();
+            showToast(data.error || 'Failed to delete', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to delete workflow', 'error');
+    }
+}
+
+async function runWorkflowById(wfId) {
+    // Use the workflow picker modal instead of prompt()
+    closeWfEditor();
+    // Pre-select this workflow in the picker
+    const workflows = state.workflows;
+    if (!workflows.length) { showToast('No workflows available', 'info'); return; }
+
+    const list = document.getElementById('wfPickerList');
+    list.innerHTML = '';
+
+    // Only show the selected workflow, pre-highlighted
+    const wf = workflows.find(w => w.id === wfId);
+    if (!wf) { showToast('Workflow not found', 'error'); return; }
+
+    const agents = wf.agents || [];
+    const roleIcons = agents.map(a => roleIcon(a.role, 14));
+    const card = document.createElement('div');
+    card.className = 'wf-picker-card';
+    card.style.borderColor = 'var(--accent)';
+    card.style.background = 'var(--accent-subtle)';
+    card.innerHTML = `
+        <div class="wf-picker-card-icon">${roleIcons[0] || icon('zap', 16)}</div>
+        <div class="wf-picker-card-info">
+            <div class="wf-picker-card-name">${wf.name}</div>
+            <div class="wf-picker-card-desc">${wf.description || 'No description'}</div>
+            <div class="wf-picker-card-meta">
+                <span class="agent-count">${agents.length} agent${agents.length !== 1 ? 's' : ''}</span>
+                <span>${roleIcons.join('')}</span>
+            </div>
+        </div>
+        <button class="wf-picker-run-btn" style="opacity:1;transform:none" onclick="event.stopPropagation();">Run</button>
+    `;
+    card.onclick = () => runWorkflowFromPicker(wf.id);
+    card.querySelector('.wf-picker-run-btn').onclick = (e) => { e.stopPropagation(); runWorkflowFromPicker(wf.id); };
+    list.appendChild(card);
+
+    document.getElementById('wfPickerDir').value = state.config.default_working_dir || '~/Projects';
+    document.getElementById('wfPickerOverlay').classList.add('active');
+}
+
+// ── Agent Messaging ──
+
+function handleAgentMessage(msg) {
+    if (!msg) return;
+    const fromAgent = state.agents.get(msg.from_agent_id);
+    const toAgent = state.agents.get(msg.to_agent_id);
+    const fromName = fromAgent?.name || msg.from_agent_id;
+    const toName = toAgent?.name || msg.to_agent_id;
+    showToast(`${fromName} → ${toName}: ${msg.content?.slice(0, 60) || ''}`, 'info');
+    addNotification('agent_message', `${fromName} messaged ${toName}`, msg.to_agent_id);
+}
+
+let msgPanelTargetId = null;
+
+function openDeepMessaging() {
+    if (!state.focusedAgentId) return;
+    const agents = [...state.agents.values()].filter(a => a.id !== state.focusedAgentId);
+    if (agents.length === 0) { showToast('No other agents to message', 'info'); return; }
+
+    msgPanelTargetId = null;
+    const fromAgent = state.agents.get(state.focusedAgentId);
+
+    // Populate agent chips
+    const chipsEl = document.getElementById('msgPanelAgents');
+    chipsEl.innerHTML = '';
+    agents.forEach(a => {
+        const info = ROLE_INFO[a.role] || ROLE_INFO.general;
+        const chip = document.createElement('div');
+        chip.className = 'msg-agent-chip';
+        chip.dataset.agentId = a.id;
+        chip.innerHTML = `<span class="msg-agent-chip-icon">${info.icon}</span>${escapeHtml(a.name)}`;
+        chip.onclick = () => selectMsgTarget(a.id);
+        chipsEl.appendChild(chip);
+    });
+
+    // Clear body and input
+    document.getElementById('msgPanelBody').innerHTML = '<div class="msg-panel-empty">Select an agent above to send a message</div>';
+    document.getElementById('msgPanelInput').value = '';
+    document.getElementById('msgPanelSend').disabled = true;
+
+    document.getElementById('msgPanelOverlay').classList.add('active');
+    trapFocus(document.getElementById('msgPanelOverlay'));
+}
+
+function closeMsgPanel() {
+    releaseFocus();
+    document.getElementById('msgPanelOverlay').classList.remove('active');
+    msgPanelTargetId = null;
+}
+
+async function selectMsgTarget(agentId) {
+    msgPanelTargetId = agentId;
+
+    // Update chip selection
+    document.querySelectorAll('#msgPanelAgents .msg-agent-chip').forEach(chip => {
+        chip.classList.toggle('selected', chip.dataset.agentId === agentId);
+    });
+
+    // Enable send
+    document.getElementById('msgPanelSend').disabled = false;
+    document.getElementById('msgPanelInput').focus();
+
+    // Load message history
+    const body = document.getElementById('msgPanelBody');
+    body.innerHTML = '<div class="msg-panel-empty">Loading...</div>';
+    try {
+        const res = await apiFetch(`/api/agents/${state.focusedAgentId}/messages`);
+        const result = await res.json();
+        const msgs = result.data || result;
+        if (!msgs.length) {
+            body.innerHTML = '<div class="msg-panel-empty">No messages yet. Start the conversation!</div>';
+            return;
+        }
+        body.innerHTML = '';
+        msgs.filter(m => m.from_agent_id === agentId || m.to_agent_id === agentId)
+            .forEach(m => {
+                const bubble = document.createElement('div');
+                const isSent = m.from_agent_id === state.focusedAgentId;
+                bubble.className = 'msg-bubble' + (isSent ? ' sent' : '');
+                const fromName = state.agents.get(m.from_agent_id)?.name || m.from_agent_id;
+                bubble.innerHTML = `${escapeHtml(m.content)}<div class="msg-bubble-meta">${escapeHtml(fromName)} · ${timeAgo(m.created_at)}</div>`;
+                body.appendChild(bubble);
+            });
+        body.scrollTop = body.scrollHeight;
+    } catch {
+        body.innerHTML = '<div class="msg-panel-empty">Failed to load messages</div>';
+    }
+}
+
+function sendMsgPanelMessage() {
+    if (!state.focusedAgentId || !msgPanelTargetId) return;
+    const input = document.getElementById('msgPanelInput');
+    const content = input.value.trim();
+    if (!content) return;
+
+    socket.send({
+        type: 'agent_message',
+        from_agent_id: state.focusedAgentId,
+        to_agent_id: msgPanelTargetId,
+        content,
+    });
+
+    // Optimistically add to UI
+    const body = document.getElementById('msgPanelBody');
+    if (body.querySelector('.msg-panel-empty')) body.innerHTML = '';
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble sent';
+    const fromName = state.agents.get(state.focusedAgentId)?.name || 'You';
+    bubble.innerHTML = `${escapeHtml(content)}<div class="msg-bubble-meta">${escapeHtml(fromName)} · now</div>`;
+    body.appendChild(bubble);
+    body.scrollTop = body.scrollHeight;
+
+    input.value = '';
+}
+
+// ── LLM Summary Button ──
+
+async function deepRegenSummary() {
+    if (!state.focusedAgentId) return;
+    showToast('Generating AI summary...', 'info');
+    try {
+        const res = await apiFetch(`/api/agents/${state.focusedAgentId}/summarize`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.summary) {
+            showToast(`AI: ${data.summary}`, 'success');
+        } else {
+            showToast(data.error || 'AI summary unavailable', 'warning');
+        }
+    } catch (e) {
+        showToast('Failed to generate summary', 'error');
+    }
+}
+
+// ── Bulk Selection ──
+
+const selectedAgents = new Set();
+
+function toggleToolbarMore() {
+    const menu = document.getElementById('toolbarMoreMenu');
+    menu.classList.toggle('open');
+    if (menu.classList.contains('open')) {
+        const close = (e) => { if (!e.target.closest('.toolbar-more-wrap')) { menu.classList.remove('open'); document.removeEventListener('click', close); } };
+        setTimeout(() => document.addEventListener('click', close), 0);
+    }
+}
+
+function toggleBulkMode() {
+    const grid = document.getElementById('agentGrid');
+    grid.classList.toggle('bulk-mode');
+    const btn = document.getElementById('bulkSelectBtn');
+    btn.classList.toggle('active', grid.classList.contains('bulk-mode'));
+    if (!grid.classList.contains('bulk-mode')) clearBulkSelection();
+}
+
+function toggleAgentSelection(agentId, e) {
+    if (e) e.stopPropagation();
+    if (selectedAgents.has(agentId)) selectedAgents.delete(agentId);
+    else selectedAgents.add(agentId);
+    updateBulkUI();
+}
+
+function clearBulkSelection() {
+    selectedAgents.clear();
+    document.getElementById('agentGrid').classList.remove('bulk-mode');
+    document.getElementById('bulkSelectBtn').classList.remove('active');
+    updateBulkUI();
+}
+
+function updateBulkUI() {
+    const bar = document.getElementById('bulkBar');
+    const count = selectedAgents.size;
+    document.getElementById('bulkCount').textContent = `${count} selected`;
+    bar.classList.toggle('active', count > 0);
+    // Update checkboxes
+    document.querySelectorAll('.card-select').forEach(cb => {
+        cb.classList.toggle('checked', selectedAgents.has(cb.dataset.agentId));
+    });
+}
+
+async function bulkAction(action, extraPayload = {}) {
+    if (selectedAgents.size === 0) return;
+    const ids = [...selectedAgents].filter(id => {
+        const card = cardElements.get(id);
+        return card && card.style.display !== 'none';
+    });
+    if (ids.length === 0) return;
+    const labels = { kill: 'Kill', pause: 'Pause', resume: 'Resume', restart: 'Restart', send: 'Send to' };
+    const actionLabel = labels[action] || action;
+    const danger = action === 'kill';
+    const ok = await confirmAction(`${actionLabel} ${ids.length} Agents`, `${actionLabel} ${ids.length} selected agents?`, actionLabel, { iconKey: danger ? 'skull' : 'zap', danger });
+    if (!ok) return;
+    try {
+        const res = await apiFetch('/api/agents/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, agent_ids: ids, ...extraPayload }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(`${actionLabel}: ${data.success?.length || 0} succeeded, ${data.failed?.length || 0} failed`, data.failed?.length ? 'warning' : 'success');
+        } else {
+            showToast(data.error || `Bulk ${action} failed`, 'error');
+        }
+    } catch (e) {
+        showToast(`Bulk ${action} failed`, 'error');
+    }
+    clearBulkSelection();
+}
+
+async function bulkSendPrompt() {
+    if (selectedAgents.size === 0) return;
+    openBatchSend();
+}
+
+function openBatchSend() {
+    const overlay = document.getElementById('batchSendOverlay');
+    const input = document.getElementById('batchSendInput');
+    const countEl = document.getElementById('batchSendCount');
+    const namesEl = document.getElementById('batchSendNames');
+    const iconEl = document.getElementById('batchSendIcon');
+    const tplContainer = document.getElementById('batchSendTemplates');
+    if (!overlay) return;
+
+    const ids = [...selectedAgents];
+    countEl.textContent = ids.length;
+    iconEl.innerHTML = icon('send', 20);
+
+    // Show agent names
+    const names = ids.map(id => state.agents.get(id)?.name || id).slice(0, 4);
+    namesEl.textContent = names.join(', ') + (ids.length > 4 ? ` +${ids.length - 4}` : '');
+
+    // Populate templates
+    const templates = getReplyTemplates();
+    tplContainer.innerHTML = templates.map((t, i) =>
+        `<button class="batch-tpl-btn" data-bt-idx="${i}">${escapeHtml(t.label)}</button>`
+    ).join('');
+    tplContainer.querySelectorAll('[data-bt-idx]').forEach(btn => {
+        btn.addEventListener('click', () => setBatchTemplate(templates[parseInt(btn.dataset.btIdx)].message));
+    });
+
+    input.value = '';
+    document.getElementById('batchPreview').style.display = 'none';
+    overlay.classList.add('active');
+    setTimeout(() => input.focus(), 50);
+
+    // Live preview on input
+    input.oninput = updateBatchPreview;
+    input.onkeydown = function(e) {
+        if (e.key === 'Escape') closeBatchSend();
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) executeBatchSend();
+    };
+    overlay.onclick = function(e) { if (e.target === overlay) closeBatchSend(); };
+}
+
+function closeBatchSend() {
+    const overlay = document.getElementById('batchSendOverlay');
+    if (overlay) overlay.classList.remove('active');
+}
+
+function setBatchTemplate(msg) {
+    const input = document.getElementById('batchSendInput');
+    if (input) { input.value = msg; updateBatchPreview(); input.focus(); }
+}
+
+function insertBatchVar(varName) {
+    const input = document.getElementById('batchSendInput');
+    if (!input) return;
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    const text = input.value;
+    input.value = text.substring(0, start) + varName + text.substring(end);
+    input.selectionStart = input.selectionEnd = start + varName.length;
+    input.focus();
+    updateBatchPreview();
+}
+
+function resolveBatchTemplate(template, agent) {
+    return template
+        .replace(/\{name\}/g, agent.name || agent.id)
+        .replace(/\{role\}/g, agent.role || 'general')
+        .replace(/\{task\}/g, agent.task || '')
+        .replace(/\{id\}/g, agent.id)
+        .replace(/\{status\}/g, agent.status || 'unknown');
+}
+
+function updateBatchPreview() {
+    const input = document.getElementById('batchSendInput');
+    const previewWrap = document.getElementById('batchPreview');
+    const previewText = document.getElementById('batchPreviewText');
+    if (!input || !previewWrap || !previewText) return;
+
+    const msg = input.value.trim();
+    const hasVars = /\{(name|role|task|id|status)\}/.test(msg);
+    if (!msg || !hasVars) { previewWrap.style.display = 'none'; return; }
+
+    const firstId = [...selectedAgents][0];
+    const agent = state.agents.get(firstId);
+    if (!agent) { previewWrap.style.display = 'none'; return; }
+
+    previewWrap.style.display = '';
+    previewText.textContent = resolveBatchTemplate(msg, agent);
+}
+
+async function executeBatchSend() {
+    const input = document.getElementById('batchSendInput');
+    if (!input) return;
+    const msg = input.value.trim();
+    if (!msg) { showToast('Enter a message to send', 'warning'); return; }
+
+    const ids = [...selectedAgents].filter(id => {
+        const card = cardElements.get(id);
+        return card && card.style.display !== 'none';
+    });
+    if (ids.length === 0) { showToast('No visible agents selected', 'warning'); return; }
+
+    const hasVars = /\{(name|role|task|id|status)\}/.test(msg);
+    closeBatchSend();
+
+    if (hasVars) {
+        // Send personalized messages via WebSocket (use socket.send with object, not pre-stringified)
+        let sent = 0;
+        for (const id of ids) {
+            const agent = state.agents.get(id);
+            if (!agent) continue;
+            const resolved = resolveBatchTemplate(msg, agent);
+            socket.send({ type: 'send', agent_id: id, message: resolved });
+            sent++;
+        }
+        showToast(`Sent personalized message to ${sent} agent${sent !== 1 ? 's' : ''}`, 'success');
+        clearBulkSelection();
+    } else {
+        // Plain message — use bulk API
+        bulkAction('send', { message: msg });
+    }
+}
+
+// ── Agent Edit ──
+
+let editingAgentId = null;
+
+function openEditAgent(agentId) {
+    const agent = state.agents.get(agentId);
+    if (!agent) return;
+    editingAgentId = agentId;
+
+    document.getElementById('editAgentName').value = agent.name || '';
+    document.getElementById('editAgentTask').value = agent.task || '';
+
+    const projSel = document.getElementById('editAgentProject');
+    projSel.innerHTML = '<option value="">None</option>';
+    state.projects.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name;
+        if (p.id === agent.project_id) opt.selected = true;
+        projSel.appendChild(opt);
+    });
+
+    document.getElementById('editAgentOverlay').classList.add('active');
+    trapFocus(document.getElementById('editAgentOverlay'));
+}
+
+function closeEditAgent() {
+    releaseFocus();
+    document.getElementById('editAgentOverlay').classList.remove('active');
+    editingAgentId = null;
+}
+
+async function saveEditAgent() {
+    if (!editingAgentId) return;
+    const name = document.getElementById('editAgentName').value.trim();
+    const task = document.getElementById('editAgentTask').value.trim();
+    const project_id = document.getElementById('editAgentProject').value || null;
+
+    if (!name) { showToast('Name is required', 'warning'); return; }
+
+    const btn = document.getElementById('editAgentSaveBtn');
+    await withLoading(btn, async () => {
+        try {
+            const res = await apiFetch(`/api/agents/${editingAgentId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, task, project_id }),
+            });
+            if (res.ok) {
+                showToast('Agent updated', 'success');
+                closeEditAgent();
+            } else {
+                const data = await res.json();
+                showToast(data.error || 'Failed to update', 'error');
+            }
+        } catch (e) {
+            showToast('Failed to update agent', 'error');
+        }
+    }, 'Saving...');
+}
+
+// ── Agent Grid Search/Filter ──
+
+let gridSearchQuery = '';
+
+let _gridSearchTimer = null;
+function filterAgentGridDebounced(query) {
+    clearTimeout(_gridSearchTimer);
+    _gridSearchTimer = setTimeout(() => filterAgentGrid(query), 150);
+}
+
+function agentMatchesStatusFilter(agent, filter) {
+    if (filter === 'all') return true;
+    if (filter === 'waiting') return agent.needs_input;
+    if (filter === 'error') return agent.status === 'error' && !agent.needs_input;
+    if (filter === 'planning') return agent.status === 'planning' && !agent.needs_input;
+    if (filter === 'working') return ['working', 'reading', 'spawning'].includes(agent.status) && !agent.needs_input;
+    if (filter === 'idle') return ['idle', 'paused'].includes(agent.status) && !agent.needs_input;
+    return true;
+}
+
+function filterAgentGrid(query) {
+    gridSearchQuery = (query || '').toLowerCase().trim();
+    const grid = document.getElementById('agentGrid');
+    const statusFilter = state.statusFilter || 'all';
+    let visible = 0, total = 0;
+    const hasFilter = gridSearchQuery || statusFilter !== 'all';
+
+    for (const [id, agent] of state.agents) {
+        const card = cardElements.get(id);
+        if (!card) continue;
+        total++;
+
+        // Status filter dimension
+        if (!agentMatchesStatusFilter(agent, statusFilter)) {
+            card.style.display = 'none';
+            continue;
+        }
+
+        // Text search dimension
+        if (!gridSearchQuery) {
+            card.style.display = '';
+            visible++;
+            continue;
+        }
+
+        const searchable = [
+            agent.name, agent.role, agent.status, agent.task, agent.summary,
+            agent.backend, agent.project_id,
+        ].filter(Boolean).join(' ').toLowerCase();
+
+        if (searchable.includes(gridSearchQuery)) {
+            card.style.display = '';
+            visible++;
+        } else {
+            card.style.display = 'none';
+        }
+    }
+
+    const countEl = document.getElementById('gridSearchCount');
+    if (hasFilter) {
+        countEl.textContent = `${visible}/${total}`;
+        countEl.style.display = '';
+    } else {
+        countEl.style.display = 'none';
+    }
+
+    const filterEmpty = document.getElementById('filterEmptyState');
+    if (hasFilter && visible === 0 && total > 0) {
+        filterEmpty.style.display = '';
+    } else {
+        filterEmpty.style.display = 'none';
+    }
+}
+
+// ── Activity Timeline ──
+
+let timelineRefreshTimer = null;
+
+function openTimeline() {
+    if (timelineRefreshTimer) { clearInterval(timelineRefreshTimer); timelineRefreshTimer = null; }
+    const overlay = document.getElementById('timelineOverlay');
+    overlay.classList.add('active');
+    // Populate agent filter
+    const agentFilter = document.getElementById('timelineAgentFilter');
+    const currentVal = agentFilter.value;
+    agentFilter.innerHTML = '<option value="">All Agents</option>';
+    for (const [id, agent] of state.agents) {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = `${agent.name}`;
+        agentFilter.appendChild(opt);
+    }
+    agentFilter.value = currentVal;
+    refreshTimeline();
+    // Auto-refresh every 5s
+    timelineRefreshTimer = setInterval(refreshTimeline, 5000);
+}
+
+function closeTimeline() {
+    document.getElementById('timelineOverlay').classList.remove('active');
+    if (timelineRefreshTimer) { clearInterval(timelineRefreshTimer); timelineRefreshTimer = null; }
+}
+
+async function refreshTimeline() {
+    const list = document.getElementById('timelineList');
+    const agentId = document.getElementById('timelineAgentFilter').value;
+    const eventType = document.getElementById('timelineTypeFilter').value;
+
+    let url = '/api/events?limit=100';
+    if (agentId) url += `&agent_id=${encodeURIComponent(agentId)}`;
+    if (eventType) url += `&event_type=${encodeURIComponent(eventType)}`;
+
+    try {
+        const res = await apiFetch(url);
+        const result = await res.json();
+        const events = result.data || result;
+
+        if (!events.length) {
+            list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary)">No events yet</div>';
+            return;
+        }
+
+        list.innerHTML = '';
+        const badgeColors = {
+            agent_spawned: 'spawned', agent_killed: 'killed', agent_error: 'error',
+            agent_restarted: 'restarted', workflow_started: 'workflow', workflow_completed: 'workflow',
+            workflow_failed: 'error', file_conflict: 'conflict', agent_handoff: 'handoff',
+        };
+
+        events.forEach(evt => {
+            const el = document.createElement('div');
+            el.className = 'timeline-event';
+            const badgeClass = badgeColors[evt.event_type] || '';
+            const relTime = timeAgo(evt.created_at);
+            const agentName = evt.agent_name || '';
+            el.innerHTML = `
+                <span class="timeline-event-badge ${badgeClass}">${escapeHtml(evt.event_type.replace('agent_', '').replace('workflow_', 'wf:'))}</span>
+                ${agentName ? `<span style="font-weight:600;flex-shrink:0">${escapeHtml(agentName)}</span>` : ''}
+                <span style="flex:1;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(evt.message || '')}</span>
+                <span style="color:var(--text-tertiary);font-size:11px;flex-shrink:0">${relTime}</span>
+            `;
+            if (evt.agent_id && state.agents.has(evt.agent_id)) {
+                el.style.cursor = 'pointer';
+                el.onclick = () => { closeTimeline(); openDeepView(evt.agent_id); };
+            }
+            list.appendChild(el);
+        });
+    } catch (e) {
+        list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary)">Failed to load events</div>';
+    }
+}
+
+// ── Compare View ──
+
+let compareRefreshTimer = null;
+let _compareSyncScroll = true;
+let _compareSyncing = false;
+
+function openCompare(leftId, rightId) {
+    const agents = [...state.agents.entries()];
+    if (agents.length < 2) { showToast('Need at least 2 agents to compare', 'warning'); return; }
+    const leftSel = document.getElementById('compareLeftSelect');
+    const rightSel = document.getElementById('compareRightSelect');
+    leftSel.innerHTML = '';
+    rightSel.innerHTML = '';
+    agents.forEach(([id, a]) => {
+        leftSel.innerHTML += `<option value="${id}">${escapeHtml(a.name)}</option>`;
+        rightSel.innerHTML += `<option value="${id}">${escapeHtml(a.name)}</option>`;
+    });
+    leftSel.value = leftId || agents[0][0];
+    rightSel.value = rightId || (agents.length > 1 ? agents[1][0] : agents[0][0]);
+    document.getElementById('compareOverlay').classList.add('active');
+
+    // Wire synchronized scrolling (remove existing first to prevent leaks)
+    const leftTerm = document.getElementById('compareLeftTerminal');
+    const rightTerm = document.getElementById('compareRightTerminal');
+    if (leftTerm._compareSyncHandler) leftTerm.removeEventListener('scroll', leftTerm._compareSyncHandler);
+    if (rightTerm._compareSyncHandler) rightTerm.removeEventListener('scroll', rightTerm._compareSyncHandler);
+    leftTerm._compareSyncHandler = () => {
+        if (_compareSyncing || !_compareSyncScroll) return;
+        _compareSyncing = true;
+        const pct = leftTerm.scrollTop / Math.max(1, leftTerm.scrollHeight - leftTerm.clientHeight);
+        rightTerm.scrollTop = pct * (rightTerm.scrollHeight - rightTerm.clientHeight);
+        _compareSyncing = false;
+    };
+    rightTerm._compareSyncHandler = () => {
+        if (_compareSyncing || !_compareSyncScroll) return;
+        _compareSyncing = true;
+        const pct = rightTerm.scrollTop / Math.max(1, rightTerm.scrollHeight - rightTerm.clientHeight);
+        leftTerm.scrollTop = pct * (leftTerm.scrollHeight - leftTerm.clientHeight);
+        _compareSyncing = false;
+    };
+    leftTerm.addEventListener('scroll', leftTerm._compareSyncHandler);
+    rightTerm.addEventListener('scroll', rightTerm._compareSyncHandler);
+
+    refreshCompare();
+    compareRefreshTimer = setInterval(refreshCompare, 2000);
+}
+
+function closeCompare() {
+    document.getElementById('compareOverlay').classList.remove('active');
+    if (compareRefreshTimer) { clearInterval(compareRefreshTimer); compareRefreshTimer = null; }
+    // Clean up scroll handlers
+    const leftTerm = document.getElementById('compareLeftTerminal');
+    const rightTerm = document.getElementById('compareRightTerminal');
+    if (leftTerm?._compareSyncHandler) { leftTerm.removeEventListener('scroll', leftTerm._compareSyncHandler); leftTerm._compareSyncHandler = null; }
+    if (rightTerm?._compareSyncHandler) { rightTerm.removeEventListener('scroll', rightTerm._compareSyncHandler); rightTerm._compareSyncHandler = null; }
+}
+
+function toggleCompareSync() {
+    _compareSyncScroll = document.getElementById('compareSyncScroll').checked;
+}
+
+function refreshCompare() {
+    const leftId = document.getElementById('compareLeftSelect').value;
+    const rightId = document.getElementById('compareRightSelect').value;
+    renderComparePane(leftId, 'compareLeftHeader', 'compareLeftTerminal');
+    renderComparePane(rightId, 'compareRightHeader', 'compareRightTerminal');
+    renderCompareStats(leftId, rightId);
+    if (_compareMode === 'diff') renderCompareDiff();
+}
+
+function renderComparePane(agentId, headerElId, termElId) {
+    const agent = state.agents.get(agentId);
+    const header = document.getElementById(headerElId);
+    const term = document.getElementById(termElId);
+    if (!agent) {
+        header.innerHTML = '<span style="color:var(--text-tertiary)">No agent</span>';
+        term.innerHTML = '';
+        return;
+    }
+    const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
+    const ctxPct = Math.round((agent.context_pct || 0) * 100);
+    const healthPct = Math.round((agent.health_score ?? 1) * 100);
+    header.innerHTML = `${roleIcon(agent.role, 16)}<span style="font-weight:600">${escapeHtml(agent.name)}</span><span class="status-badge" style="font-size:9px">${escapeHtml(agent.status)}</span><span style="color:var(--text-tertiary);font-size:11px;margin-left:auto">ctx ${ctxPct}% · health ${healthPct}%</span>`;
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    const tail = lines.slice(-100);
+    const shouldScroll = term.scrollTop + term.clientHeight >= term.scrollHeight - 50;
+    term.innerHTML = tail.map(l => `<div class="terminal-line">${ansiToHtml(l)}</div>`).join('');
+    if (shouldScroll) term.scrollTop = term.scrollHeight;
+}
+
+let _compareMode = 'side'; // 'side' or 'diff'
+
+function setCompareMode(mode) {
+    _compareMode = mode;
+    document.getElementById('compareSideBtn').classList.toggle('active', mode === 'side');
+    document.getElementById('compareDiffBtn').classList.toggle('active', mode === 'diff');
+    document.getElementById('compareSideBody').style.display = mode === 'side' ? '' : 'none';
+    document.getElementById('compareDiffBody').style.display = mode === 'diff' ? '' : 'none';
+    if (mode === 'diff') renderCompareDiff();
+}
+
+function renderCompareDiff() {
+    const leftId = document.getElementById('compareLeftSelect').value;
+    const rightId = document.getElementById('compareRightSelect').value;
+    const left = state.agents.get(leftId);
+    const right = state.agents.get(rightId);
+    const term = document.getElementById('compareDiffTerminal');
+    if (!term) return;
+
+    if (!left && !right) { term.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary)">Select agents to compare</div>'; return; }
+
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const leftLines = (left?.output_lines || []).slice(-200).map(l => l.replace(ansiRe, '').trim()).filter(l => l);
+    const rightLines = (right?.output_lines || []).slice(-200).map(l => l.replace(ansiRe, '').trim()).filter(l => l);
+
+    // Build set-based diff: find common, left-only, right-only
+    const leftSet = new Set(leftLines);
+    const rightSet = new Set(rightLines);
+    const commonSet = new Set([...leftSet].filter(l => rightSet.has(l)));
+
+    const html = [];
+    const leftName = left?.name || leftId || 'Left';
+    const rightName = right?.name || rightId || 'Right';
+
+    // Left-only lines
+    const leftOnly = leftLines.filter(l => !commonSet.has(l));
+    const rightOnly = rightLines.filter(l => !commonSet.has(l));
+
+    if (leftOnly.length > 0) {
+        html.push(`<div class="diff-section-header">Only in ${escapeHtml(leftName)} (${leftOnly.length} lines)</div>`);
+        for (const l of leftOnly.slice(0, 100)) {
+            html.push(`<div class="diff-line diff-removed"><span class="diff-prefix">-</span>${escapeHtml(l)}</div>`);
+        }
+        if (leftOnly.length > 100) html.push(`<div class="diff-line diff-common" style="text-align:center">... ${leftOnly.length - 100} more lines</div>`);
+    }
+
+    if (rightOnly.length > 0) {
+        html.push(`<div class="diff-section-header">Only in ${escapeHtml(rightName)} (${rightOnly.length} lines)</div>`);
+        for (const l of rightOnly.slice(0, 100)) {
+            html.push(`<div class="diff-line diff-added"><span class="diff-prefix">+</span>${escapeHtml(l)}</div>`);
+        }
+        if (rightOnly.length > 100) html.push(`<div class="diff-line diff-common" style="text-align:center">... ${rightOnly.length - 100} more lines</div>`);
+    }
+
+    if (commonSet.size > 0) {
+        html.push(`<div class="diff-section-header">Common lines (${commonSet.size})</div>`);
+        const commonArr = [...commonSet];
+        for (const l of commonArr.slice(0, 50)) {
+            html.push(`<div class="diff-line diff-common"><span class="diff-prefix"> </span>${escapeHtml(l)}</div>`);
+        }
+        if (commonArr.length > 50) html.push(`<div class="diff-line diff-common" style="text-align:center">... ${commonArr.length - 50} more common lines</div>`);
+    }
+
+    if (html.length === 0) {
+        html.push('<div style="padding:24px;text-align:center;color:var(--text-tertiary)">No output to compare</div>');
+    }
+
+    term.innerHTML = html.join('');
+}
+
+function renderCompareStats(leftId, rightId) {
+    const left = state.agents.get(leftId);
+    const right = state.agents.get(rightId);
+    const statsEl = document.getElementById('compareStats');
+    if (!left || !right || !statsEl) return;
+
+    const metrics = [
+        { label: 'Output Lines', l: left.total_output_lines || (left.output_lines || []).length, r: right.total_output_lines || (right.output_lines || []).length, higherBetter: true },
+        { label: 'Context Used', l: Math.round((left.context_pct || 0) * 100), r: Math.round((right.context_pct || 0) * 100), unit: '%', higherBetter: false },
+        { label: 'Health', l: Math.round((left.health_score ?? 1) * 100), r: Math.round((right.health_score ?? 1) * 100), unit: '%', higherBetter: true },
+        { label: 'Memory', l: Math.round(left.memory_mb || 0), r: Math.round(right.memory_mb || 0), unit: 'MB', higherBetter: false },
+        { label: 'Cost', l: (left.estimated_cost_usd || 0).toFixed(4), r: (right.estimated_cost_usd || 0).toFixed(4), unit: '$', higherBetter: false, isFloat: true },
+        { label: 'Tools', l: left.tool_invocations_count || 0, r: right.tool_invocations_count || 0, higherBetter: true },
+        { label: 'Files', l: left.file_operations_count || 0, r: right.file_operations_count || 0, higherBetter: true },
+    ];
+
+    statsEl.innerHTML = metrics.map(m => {
+        const lv = m.isFloat ? parseFloat(m.l) : m.l;
+        const rv = m.isFloat ? parseFloat(m.r) : m.r;
+        const lBetter = m.higherBetter ? lv > rv : lv < rv;
+        const rBetter = m.higherBetter ? rv > lv : rv < lv;
+        const u = m.unit || '';
+        return `<div class="compare-stat"><span class="compare-stat-label">${m.label}</span><span class="compare-stat-val left${lBetter ? ' better' : rBetter ? ' worse' : ''}">${u === '$' ? '$' : ''}${m.l}${u !== '$' ? u : ''}</span><span style="font-size:9px;color:var(--text-tertiary)">vs</span><span class="compare-stat-val right${rBetter ? ' better' : lBetter ? ' worse' : ''}">${u === '$' ? '$' : ''}${m.r}${u !== '$' ? u : ''}</span></div>`;
+    }).join('');
+}
+
+function switchTimelineTab(tab) {
+    document.getElementById('tlTabEvents').classList.toggle('active', tab === 'events');
+    document.getElementById('tlTabHistory').classList.toggle('active', tab === 'history');
+    document.getElementById('timelineList').style.display = tab === 'events' ? '' : 'none';
+    document.getElementById('timelineHistoryList').style.display = tab === 'history' ? '' : 'none';
+    document.getElementById('timelineAgentFilter').style.display = tab === 'events' ? '' : 'none';
+    document.getElementById('timelineTypeFilter').style.display = tab === 'events' ? '' : 'none';
+    if (tab === 'history') loadSessionHistory();
+}
+
+// ── Fleet Timeline ──
+
+function openFleetTimeline() {
+    document.getElementById('fleetTimelineOverlay').classList.add('active');
+    renderFleetTimeline();
+}
+
+function closeFleetTimeline() {
+    document.getElementById('fleetTimelineOverlay').classList.remove('active');
+}
+
+function renderFleetTimeline() {
+    const canvas = document.getElementById('fleetTimelineCanvas');
+    if (!canvas) return;
+    const agents = [...state.agents.values()].filter(a => a.created_at);
+    if (!agents.length) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const isDk = document.documentElement.getAttribute('data-theme') !== 'light';
+        ctx.fillStyle = isDk ? '#5C6370' : '#6B7280';
+        ctx.font = '14px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText('No agents with timeline data', canvas.width / 2, canvas.height / 2);
+        return;
+    }
+
+    // Stats
+    const statsEl = document.getElementById('fleetTimelineStats');
+    if (statsEl) {
+        const active = agents.filter(a => ['working', 'planning', 'reading'].includes(a.status)).length;
+        statsEl.textContent = `${agents.length} agents · ${active} active`;
+    }
+
+    // Calculate time range
+    const now = Date.now();
+    const createdTimes = agents.map(a => new Date(a.created_at).getTime());
+    const earliest = Math.min(...createdTimes);
+    const timeRange = now - earliest;
+
+    const rowH = 36;
+    const labelW = 120;
+    const topPad = 40;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const W = rect.width;
+    const H = Math.max(rect.height, topPad + agents.length * rowH + 20);
+
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, W, H);
+
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    const chartW = W - labelW - 20;
+    const statusColors = {
+        spawning: '#64748B', planning: '#EAB308', working: '#6366F1',
+        reading: '#3B82F6', waiting: '#F97316', error: '#EF4444',
+        idle: '#475569', paused: '#5C6370', complete: '#22C55E',
+    };
+
+    // Time axis
+    const timeSteps = 6;
+    ctx.font = '10px system-ui';
+    ctx.fillStyle = isDark ? '#5C6370' : '#6B7280';
+    ctx.textAlign = 'center';
+    for (let i = 0; i <= timeSteps; i++) {
+        const x = labelW + (i / timeSteps) * chartW;
+        const t = earliest + (i / timeSteps) * timeRange;
+        const date = new Date(t);
+        const label = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        ctx.fillText(label, x, topPad - 8);
+
+        // Grid line
+        ctx.beginPath();
+        ctx.moveTo(x, topPad);
+        ctx.lineTo(x, H);
+        ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.06)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
+
+    // "Now" marker
+    const nowX = labelW + chartW;
+    ctx.beginPath();
+    ctx.moveTo(nowX, topPad);
+    ctx.lineTo(nowX, H);
+    ctx.strokeStyle = 'rgba(99,102,241,0.3)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = '9px system-ui';
+    ctx.fillStyle = '#6366F1';
+    ctx.textAlign = 'right';
+    ctx.fillText('now', nowX - 4, topPad - 8);
+
+    // Draw agents
+    agents.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+    for (let i = 0; i < agents.length; i++) {
+        const agent = agents[i];
+        const y = topPad + i * rowH;
+        const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
+
+        // Row background
+        if (i % 2 === 0) {
+            ctx.fillStyle = isDark ? 'rgba(255,255,255,0.015)' : 'rgba(0,0,0,0.025)';
+            ctx.fillRect(0, y, W, rowH);
+        }
+
+        // Agent label
+        ctx.font = '11px system-ui';
+        ctx.fillStyle = info.color;
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(agent.name, labelW - 10, y + rowH / 2);
+
+        // Timeline bar
+        const created = new Date(agent.created_at).getTime();
+
+        if (agent.status_timeline?.length > 0) {
+            // Use detailed status timeline
+            let segStart = created;
+            for (const seg of agent.status_timeline) {
+                const segDurMs = seg.duration_sec * 1000;
+                const x1 = labelW + ((segStart - earliest) / timeRange) * chartW;
+                const x2 = labelW + ((segStart + segDurMs - earliest) / timeRange) * chartW;
+                const barW = Math.max(2, x2 - x1);
+
+                ctx.fillStyle = statusColors[seg.status] || '#475569';
+                ctx.fillRect(x1, y + 8, barW, rowH - 16);
+
+                segStart += segDurMs;
+            }
+            // Draw current status to "now" if still running
+            if (segStart < now && !['complete', 'error'].includes(agent.status)) {
+                const x1 = labelW + ((segStart - earliest) / timeRange) * chartW;
+                const barW = Math.max(2, nowX - x1);
+                ctx.fillStyle = statusColors[agent.status] || '#475569';
+                ctx.globalAlpha = 0.6;
+                ctx.fillRect(x1, y + 8, barW, rowH - 16);
+                ctx.globalAlpha = 1;
+            }
+        } else {
+            // Simple bar from created to now
+            const x1 = labelW + ((created - earliest) / timeRange) * chartW;
+            const barW = Math.max(2, nowX - x1);
+            ctx.fillStyle = statusColors[agent.status] || '#475569';
+            ctx.fillRect(x1, y + 8, barW, rowH - 16);
+        }
+
+        // Status label at end
+        ctx.font = '9px system-ui';
+        ctx.fillStyle = statusColors[agent.status] || '#5C6370';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(agent.status, nowX + 4, y + rowH / 2);
+    }
+}
+
+// ── Collaboration Graph ──
+
+let _collabData = null;
+let _collabAnim = null;
+
+function openCollabGraph() {
+    document.getElementById('collabOverlay').classList.add('active');
+    loadCollabGraph();
+}
+
+function closeCollabGraph() {
+    document.getElementById('collabOverlay').classList.remove('active');
+    if (_collabAnim) { cancelAnimationFrame(_collabAnim); _collabAnim = null; }
+}
+
+async function loadCollabGraph() {
+    try {
+        const resp = await apiFetch('/api/collaboration');
+        if (!resp.ok) throw new Error('Failed');
+        _collabData = await resp.json();
+        renderCollabGraph();
+    } catch (e) {
+        showToast('Failed to load collaboration data', 'error');
+    }
+}
+
+function renderCollabGraph() {
+    const canvas = document.getElementById('collabCanvas');
+    if (!canvas || !_collabData) return;
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width * (window.devicePixelRatio || 1);
+    canvas.height = rect.height * (window.devicePixelRatio || 1);
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+    const W = rect.width, H = rect.height;
+    const nodes = _collabData.nodes;
+    const edges = _collabData.edges;
+
+    if (!nodes.length) {
+        ctx.fillStyle = '#5C6370';
+        ctx.font = '14px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText('No agents to visualize', W / 2, H / 2);
+        return;
+    }
+
+    // Force-directed layout: position nodes in a circle initially
+    const cx = W / 2, cy = H / 2;
+    const radius = Math.min(W, H) * 0.32;
+    const positions = nodes.map((n, i) => {
+        const angle = (i / nodes.length) * Math.PI * 2 - Math.PI / 2;
+        return { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius, vx: 0, vy: 0 };
+    });
+
+    // Simple force simulation (10 iterations)
+    const nodeMap = new Map(nodes.map((n, i) => [n.id, i]));
+    for (let iter = 0; iter < 30; iter++) {
+        // Repulsion between all nodes
+        for (let i = 0; i < positions.length; i++) {
+            for (let j = i + 1; j < positions.length; j++) {
+                let dx = positions[j].x - positions[i].x;
+                let dy = positions[j].y - positions[i].y;
+                let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                let force = 3000 / (dist * dist);
+                let fx = (dx / dist) * force;
+                let fy = (dy / dist) * force;
+                positions[i].vx -= fx;
+                positions[i].vy -= fy;
+                positions[j].vx += fx;
+                positions[j].vy += fy;
+            }
+        }
+        // Attraction along edges
+        for (const edge of edges) {
+            const fi = nodeMap.get(edge.from);
+            const ti = nodeMap.get(edge.to);
+            if (fi == null || ti == null) continue;
+            let dx = positions[ti].x - positions[fi].x;
+            let dy = positions[ti].y - positions[fi].y;
+            let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            let force = (dist - 120) * 0.01 * (edge.weight || 1);
+            let fx = (dx / dist) * force;
+            let fy = (dy / dist) * force;
+            positions[fi].vx += fx;
+            positions[fi].vy += fy;
+            positions[ti].vx -= fx;
+            positions[ti].vy -= fy;
+        }
+        // Center gravity
+        for (let i = 0; i < positions.length; i++) {
+            positions[i].vx += (cx - positions[i].x) * 0.005;
+            positions[i].vy += (cy - positions[i].y) * 0.005;
+            positions[i].x += positions[i].vx * 0.3;
+            positions[i].y += positions[i].vy * 0.3;
+            positions[i].vx *= 0.6;
+            positions[i].vy *= 0.6;
+            // Keep within bounds
+            positions[i].x = Math.max(50, Math.min(W - 50, positions[i].x));
+            positions[i].y = Math.max(50, Math.min(H - 50, positions[i].y));
+        }
+    }
+
+    // Draw
+    ctx.clearRect(0, 0, W, H);
+
+    // Edges
+    const edgeColors = { message: '#60A5FA', shared_file: '#4ADE80', project: '#F59E0B', conflict: '#EF4444' };
+    for (const edge of edges) {
+        const fi = nodeMap.get(edge.from);
+        const ti = nodeMap.get(edge.to);
+        if (fi == null || ti == null) continue;
+        const p1 = positions[fi], p2 = positions[ti];
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.strokeStyle = edgeColors[edge.type] || '#5C6370';
+        ctx.lineWidth = Math.min(4, 0.5 + (edge.weight || 1) * 0.5);
+        ctx.globalAlpha = 0.5;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+
+        // Edge label for conflicts/shared files
+        if (edge.file && (edge.type === 'conflict' || edge.type === 'shared_file')) {
+            const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+            ctx.font = '9px system-ui';
+            ctx.fillStyle = edgeColors[edge.type];
+            ctx.globalAlpha = 0.7;
+            ctx.textAlign = 'center';
+            ctx.fillText(edge.file, mx, my - 4);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // Nodes
+    const statusColors = { working: '#6366F1', planning: '#EAB308', waiting: '#F97316', error: '#EF4444', idle: '#64748B', paused: '#5C6370' };
+    for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        const pos = positions[i];
+        const info = ROLE_INFO[node.role] || ROLE_INFO.general;
+        const nodeRadius = 18 + Math.min(10, (node.tool_count || 0) / 10);
+
+        // Glow for active nodes
+        if (node.status === 'working' || node.status === 'planning') {
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, nodeRadius + 6, 0, Math.PI * 2);
+            ctx.fillStyle = (statusColors[node.status] || info.color) + '22';
+            ctx.fill();
+        }
+
+        // Node circle
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, nodeRadius, 0, Math.PI * 2);
+        ctx.fillStyle = '#131B2E';
+        ctx.fill();
+        ctx.strokeStyle = info.color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Status dot
+        ctx.beginPath();
+        ctx.arc(pos.x + nodeRadius * 0.6, pos.y - nodeRadius * 0.6, 5, 0, Math.PI * 2);
+        ctx.fillStyle = statusColors[node.status] || '#64748B';
+        ctx.fill();
+
+        // Health ring (partial arc)
+        const healthPct = node.health_score ?? 1;
+        if (healthPct < 1) {
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, nodeRadius + 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * healthPct);
+            ctx.strokeStyle = healthPct >= 0.6 ? '#4ADE80' : '#EF4444';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        // Icon (use first letter as fallback)
+        ctx.font = 'bold 14px system-ui';
+        ctx.fillStyle = info.color;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(node.name.charAt(0).toUpperCase(), pos.x, pos.y);
+
+        // Name label below
+        ctx.font = '11px system-ui';
+        ctx.fillStyle = '#EDEEF0';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(node.name, pos.x, pos.y + nodeRadius + 4);
+    }
+}
+
+// ── Multi-Agent Split View ──
+let _splitPanes = []; // [{agentId, refreshTimer}]
+let _splitRefreshTimer = null;
+
+function openSplitView(initialAgentId) {
+    _splitPanes = [];
+    const agents = [...state.agents.keys()];
+    // Start with 2 panes: the initial agent and the next one
+    const first = initialAgentId || agents[0] || '';
+    const second = agents.find(id => id !== first) || '';
+    _splitPanes.push({ agentId: first });
+    if (second) _splitPanes.push({ agentId: second });
+    else _splitPanes.push({ agentId: '' });
+    document.getElementById('splitViewOverlay').classList.add('active');
+    renderSplitPanes();
+    startSplitRefresh();
+}
+
+function closeSplitView() {
+    document.getElementById('splitViewOverlay').classList.remove('active');
+    stopSplitRefresh();
+    _splitPanes = [];
+}
+
+function addSplitPane() {
+    if (_splitPanes.length >= 4) { showToast('Maximum 4 panes', 'info'); return; }
+    const used = new Set(_splitPanes.map(p => p.agentId));
+    const next = [...state.agents.keys()].find(id => !used.has(id)) || '';
+    _splitPanes.push({ agentId: next });
+    renderSplitPanes();
+}
+
+function removeSplitPane(idx) {
+    if (_splitPanes.length <= 1) return;
+    _splitPanes.splice(idx, 1);
+    renderSplitPanes();
+}
+
+function setSplitAgent(idx, agentId) {
+    _splitPanes[idx].agentId = agentId;
+    refreshSplitPane(idx);
+}
+
+function renderSplitPanes() {
+    const body = document.getElementById('splitBody');
+    body.className = 'split-body panes-' + _splitPanes.length;
+    const addBtn = document.getElementById('splitAddBtn');
+    addBtn.style.display = _splitPanes.length >= 4 ? 'none' : '';
+    body.innerHTML = _splitPanes.map((pane, i) => {
+        const agents = [...state.agents.entries()];
+        const options = agents.map(([id, ag]) =>
+            `<option value="${id}" ${id === pane.agentId ? 'selected' : ''}>${ag.name} (${ag.status})</option>`
+        ).join('');
+        return `<div class="split-pane" id="splitPane${i}">
+            <div class="split-pane-header">
+                <select onchange="setSplitAgent(${i}, this.value)">${options}<option value="">None</option></select>
+                <span class="pane-status" id="splitStatus${i}"></span>
+                ${_splitPanes.length > 1 ? `<span class="pane-close" onclick="removeSplitPane(${i})">&times;</span>` : ''}
+            </div>
+            <div class="split-pane-terminal" id="splitTerminal${i}"></div>
+        </div>`;
+    }).join('');
+    _splitPanes.forEach((_, i) => refreshSplitPane(i));
+}
+
+function refreshSplitPane(idx) {
+    const pane = _splitPanes[idx];
+    if (!pane) return;
+    const terminal = document.getElementById(`splitTerminal${idx}`);
+    const statusEl = document.getElementById(`splitStatus${idx}`);
+    if (!terminal) return;
+    const agent = state.agents.get(pane.agentId);
+    if (!agent) {
+        terminal.innerHTML = '<div style="color:var(--text-tertiary);padding:20px;text-align:center">Select an agent</div>';
+        if (statusEl) statusEl.textContent = '';
+        return;
+    }
+    if (statusEl) statusEl.textContent = agent.status;
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    const last50 = lines.slice(-50);
+    terminal.innerHTML = last50.map(l => {
+        const html = ansiToHtml(l);
+        return `<div class="terminal-line">${html}</div>`;
+    }).join('');
+    terminal.scrollTop = terminal.scrollHeight;
+}
+
+function startSplitRefresh() {
+    stopSplitRefresh();
+    _splitRefreshTimer = setInterval(() => {
+        _splitPanes.forEach((_, i) => refreshSplitPane(i));
+    }, 2000);
+}
+
+function stopSplitRefresh() {
+    if (_splitRefreshTimer) { clearInterval(_splitRefreshTimer); _splitRefreshTimer = null; }
+}
+
+// ── Fleet Analytics ──
+function openAnalytics() {
+    document.getElementById('analyticsOverlay').classList.add('active');
+    loadAnalytics();
+}
+
+function closeAnalytics() {
+    document.getElementById('analyticsOverlay').classList.remove('active');
+}
+
+async function loadAnalytics() {
+    const body = document.getElementById('analyticsBody');
+    body.innerHTML = '<div style="text-align:center;color:var(--text-tertiary);padding:40px">Loading analytics...</div>';
+    try {
+        const resp = await apiFetch('/api/analytics');
+        if (!resp.ok) throw new Error('Failed');
+        const data = await resp.json();
+        renderAnalytics(data);
+    } catch (e) {
+        body.innerHTML = `<div style="text-align:center;color:var(--text-tertiary);padding:40px">Failed to load analytics</div>`;
+    }
+}
+
+function renderAnalytics(data) {
+    const body = document.getElementById('analyticsBody');
+    const formatCost = (v) => v < 0.01 ? '$0.00' : `$${v.toFixed(2)}`;
+    const formatTokens = (v) => v > 1000000 ? `${(v / 1000000).toFixed(1)}M` : v > 1000 ? `${(v / 1000).toFixed(1)}K` : String(v);
+
+    // Status color map
+    const statusColors = {
+        working: 'var(--accent)', planning: 'var(--yellow)', waiting: 'var(--orange)',
+        error: 'var(--danger)', idle: 'var(--text-tertiary)', paused: 'var(--text-tertiary)',
+        spawning: 'var(--accent)', reading: 'var(--accent)', complete: 'var(--success)',
+    };
+
+    // Role color map
+    const roleColors = {};
+    for (const [key, info] of Object.entries(ROLE_INFO)) {
+        roleColors[key] = info.color;
+    }
+
+    // KPI cards
+    let html = `<div class="analytics-kpi-row">`;
+    html += `<div class="analytics-kpi"><div class="analytics-kpi-label">Active Agents</div><div class="analytics-kpi-value">${data.total_agents}</div><div class="analytics-kpi-sub">${data.historical_agents || 0} historical</div></div>`;
+    html += `<div class="analytics-kpi"><div class="analytics-kpi-label">Total Cost</div><div class="analytics-kpi-value">${formatCost(data.total_cost_usd)}</div><div class="analytics-kpi-sub">${formatTokens(data.total_tokens_input)} in / ${formatTokens(data.total_tokens_output)} out</div></div>`;
+    html += `<div class="analytics-kpi"><div class="analytics-kpi-label">Avg Health</div><div class="analytics-kpi-value">${data.avg_health_score}%</div><div class="analytics-kpi-sub">${data.total_restarts} total restarts</div></div>`;
+    html += `<div class="analytics-kpi"><div class="analytics-kpi-label">Avg Lifespan</div><div class="analytics-kpi-value">${data.avg_lifespan_minutes < 60 ? data.avg_lifespan_minutes.toFixed(0) + 'm' : (data.avg_lifespan_minutes / 60).toFixed(1) + 'h'}</div><div class="analytics-kpi-sub">per agent</div></div>`;
+    html += `</div>`;
+
+    // Status distribution
+    const statusEntries = Object.entries(data.status_distribution || {});
+    if (statusEntries.length > 0) {
+        html += `<div class="analytics-section"><div class="analytics-section-title">Status Distribution</div><div class="analytics-dist-row">`;
+        for (const [status, count] of statusEntries.sort((a, b) => b[1] - a[1])) {
+            const color = statusColors[status] || 'var(--text-tertiary)';
+            html += `<div class="analytics-dist-chip"><div class="analytics-dist-dot" style="background:${color}"></div><span class="analytics-dist-name">${status}</span><span class="analytics-dist-val">${count}</span></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Role distribution
+    const roleEntries = Object.entries(data.role_distribution || {});
+    if (roleEntries.length > 0) {
+        html += `<div class="analytics-section"><div class="analytics-section-title">Role Distribution</div><div class="analytics-dist-row">`;
+        for (const [role, count] of roleEntries.sort((a, b) => b[1] - a[1])) {
+            const color = roleColors[role] || 'var(--text-tertiary)';
+            html += `<div class="analytics-dist-chip"><div class="analytics-dist-dot" style="background:${color}"></div><span class="analytics-dist-name">${role}</span><span class="analytics-dist-val">${count}</span></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Tool usage bar chart
+    const toolEntries = Object.entries(data.tool_usage || {}).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    if (toolEntries.length > 0) {
+        const maxTool = toolEntries[0][1];
+        html += `<div class="analytics-section"><div class="analytics-section-title">Tool Usage</div><div class="analytics-bar-chart">`;
+        for (const [tool, count] of toolEntries) {
+            const pct = Math.max(2, (count / maxTool) * 100);
+            html += `<div class="analytics-bar-row"><div class="analytics-bar-label" title="${tool}">${tool}</div><div class="analytics-bar-track"><div class="analytics-bar-fill" style="width:${pct}%;background:var(--accent)"></div></div><div class="analytics-bar-count">${count}</div></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Top files bar chart
+    const fileEntries = (data.top_files || []).slice(0, 10);
+    if (fileEntries.length > 0) {
+        const maxFile = fileEntries[0].count;
+        html += `<div class="analytics-section"><div class="analytics-section-title">Most Touched Files</div><div class="analytics-bar-chart">`;
+        for (const { path, count } of fileEntries) {
+            const shortPath = path.split('/').slice(-2).join('/');
+            const pct = Math.max(2, (count / maxFile) * 100);
+            html += `<div class="analytics-bar-row"><div class="analytics-bar-label" title="${escapeHtml(path)}">${escapeHtml(shortPath)}</div><div class="analytics-bar-track"><div class="analytics-bar-fill" style="width:${pct}%;background:var(--success)"></div></div><div class="analytics-bar-count">${count}</div></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Historical analytics — success rates by role
+    const hist = data.historical || {};
+    const srByRole = Object.entries(hist.success_rate_by_role || {});
+    if (srByRole.length > 0) {
+        html += `<div class="analytics-section"><div class="analytics-section-title">Historical Success Rate by Role</div><div class="analytics-bar-chart">`;
+        for (const [role, stats] of srByRole.sort((a, b) => b[1].total - a[1].total)) {
+            const pct = stats.success_rate;
+            const barColor = pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--orange)' : 'var(--danger)';
+            const roleName = ROLE_INFO[role]?.name || role;
+            const avgDur = stats.avg_duration_sec >= 3600 ? `${(stats.avg_duration_sec / 3600).toFixed(1)}h` : `${Math.round(stats.avg_duration_sec / 60)}m`;
+            html += `<div class="analytics-bar-row"><div class="analytics-bar-label" title="${roleName}: ${stats.successes}/${stats.total} succeeded, avg ${avgDur}, $${stats.total_cost_usd}">${roleName}</div><div class="analytics-bar-track"><div class="analytics-bar-fill" style="width:${pct}%;background:${barColor}"></div></div><div class="analytics-bar-count">${pct}%</div></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Success rates by backend
+    const srByBackend = Object.entries(hist.success_rate_by_backend || {});
+    if (srByBackend.length > 0) {
+        html += `<div class="analytics-section"><div class="analytics-section-title">Historical Success Rate by Backend</div><div class="analytics-bar-chart">`;
+        for (const [backend, stats] of srByBackend.sort((a, b) => b[1].total - a[1].total)) {
+            const pct = stats.success_rate;
+            const barColor = pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--orange)' : 'var(--danger)';
+            const avgDur = stats.avg_duration_sec >= 3600 ? `${(stats.avg_duration_sec / 3600).toFixed(1)}h` : `${Math.round(stats.avg_duration_sec / 60)}m`;
+            html += `<div class="analytics-bar-row"><div class="analytics-bar-label" title="${backend}: ${stats.successes}/${stats.total}, avg ${avgDur}, $${stats.total_cost_usd}">${backend}</div><div class="analytics-bar-track"><div class="analytics-bar-fill" style="width:${pct}%;background:${barColor}"></div></div><div class="analytics-bar-count">${pct}%</div></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Cost breakdown by role (recent 50 agents)
+    const costByRole = Object.entries(hist.recent_cost_by_role || {});
+    if (costByRole.length > 0) {
+        const maxCost = Math.max(...costByRole.map(e => e[1]));
+        html += `<div class="analytics-section"><div class="analytics-section-title">Recent Cost by Role (last 50 agents)</div><div class="analytics-bar-chart">`;
+        for (const [role, cost] of costByRole.sort((a, b) => b[1] - a[1])) {
+            const pct = maxCost > 0 ? Math.max(2, (cost / maxCost) * 100) : 2;
+            const roleName = ROLE_INFO[role]?.name || role;
+            html += `<div class="analytics-bar-row"><div class="analytics-bar-label">${roleName}</div><div class="analytics-bar-track"><div class="analytics-bar-fill" style="width:${pct}%;background:var(--orange)"></div></div><div class="analytics-bar-count">$${cost.toFixed(2)}</div></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Error patterns
+    const errPatterns = Object.entries(hist.error_patterns || {});
+    if (errPatterns.length > 0) {
+        html += `<div class="analytics-section"><div class="analytics-section-title">Error Patterns</div><div class="analytics-dist-row">`;
+        for (const [eventType, count] of errPatterns.slice(0, 8)) {
+            const label = eventType.replace(/_/g, ' ').replace('agent ', '');
+            html += `<div class="analytics-dist-chip"><div class="analytics-dist-dot" style="background:var(--danger)"></div><span class="analytics-dist-name">${escapeHtml(label)}</span><span class="analytics-dist-val">${count}</span></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Efficiency leaderboard (active agents)
+    const agentEntries = [...state.agents.values()]
+        .filter(a => a.efficiency?.score > 0)
+        .sort((a, b) => (b.efficiency?.score || 0) - (a.efficiency?.score || 0))
+        .slice(0, 8);
+    if (agentEntries.length > 0) {
+        html += `<div class="analytics-section"><div class="analytics-section-title">Efficiency Leaderboard</div><div class="analytics-bar-chart">`;
+        for (const agent of agentEntries) {
+            const score = agent.efficiency.score;
+            const pct = Math.max(2, score * 100);
+            const barColor = score >= 0.7 ? 'var(--success)' : score >= 0.4 ? 'var(--orange)' : 'var(--danger)';
+            const details = `${agent.efficiency.tools_per_min} tools/min, ${agent.efficiency.error_rate * 100}% errors`;
+            html += `<div class="analytics-bar-row"><div class="analytics-bar-label" title="${escapeHtml(details)}">${escapeHtml(agent.name)}</div><div class="analytics-bar-track"><div class="analytics-bar-fill" style="width:${pct}%;background:${barColor}"></div></div><div class="analytics-bar-count">${(score * 100).toFixed(0)}%</div></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Session activity sparkline (using active agents' output histories)
+    const allOutputHistories = [...state.agents.values()]
+        .filter(a => a._outputHistory?.length > 0)
+        .map(a => a._outputHistory);
+    if (allOutputHistories.length > 0) {
+        const maxLen = Math.max(...allOutputHistories.map(h => h.length));
+        const combined = new Array(maxLen).fill(0);
+        for (const hist of allOutputHistories) {
+            for (let i = 0; i < hist.length; i++) {
+                combined[maxLen - hist.length + i] += hist[i];
+            }
+        }
+        const maxVal = Math.max(1, ...combined);
+        const barWidth = Math.max(2, Math.floor(300 / combined.length));
+        html += `<div class="analytics-section"><div class="analytics-section-title">Fleet Output Rate (last ${combined.length} intervals)</div>`;
+        html += `<div style="display:flex;align-items:flex-end;gap:1px;height:40px;margin-top:8px">`;
+        for (let i = 0; i < combined.length; i++) {
+            const h = Math.max(1, Math.round((combined[i] / maxVal) * 36));
+            const opacity = Math.max(0.2, combined[i] / maxVal);
+            html += `<div style="width:${barWidth}px;height:${h}px;background:var(--accent);opacity:${opacity};border-radius:1px" title="${combined[i]} lines"></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // File conflict summary
+    if (state.conflicts.size > 0) {
+        html += `<div class="analytics-section"><div class="analytics-section-title" style="color:var(--danger)">Active File Conflicts</div><div style="font-family:var(--font-mono);font-size:11px;color:var(--text-secondary)">`;
+        state.conflicts.forEach((files, agentId) => {
+            const agent = state.agents.get(agentId);
+            if (agent) {
+                html += `<div style="margin-bottom:4px"><span style="color:${ROLE_INFO[agent.role]?.color || 'var(--text-primary)'}">${escapeHtml(agent.name)}</span>: ${[...files].map(f => `<span style="color:var(--danger)">${escapeHtml(f.split('/').pop())}</span>`).join(', ')}</div>`;
+            }
+        });
+        html += `</div></div>`;
+    }
+
+    body.innerHTML = html;
+}
+
+
+// ── Conflict Resolution Panel ──
+
+function openConflicts() {
+    document.getElementById('conflictsOverlay').classList.add('active');
+    loadConflicts();
+}
+
+function closeConflicts() {
+    document.getElementById('conflictsOverlay').classList.remove('active');
+}
+
+async function loadConflicts() {
+    const body = document.getElementById('conflictsBody');
+    body.innerHTML = '<div class="conflict-empty">Loading...</div>';
+    try {
+        const resp = await apiFetch('/api/conflicts');
+        if (!resp.ok) throw new Error('Failed');
+        const data = await resp.json();
+        renderConflicts(data);
+    } catch (e) {
+        body.innerHTML = '<div class="conflict-empty">Failed to load conflicts</div>';
+    }
+}
+
+function renderConflicts(data) {
+    const body = document.getElementById('conflictsBody');
+    const conflicts = data.conflicts || [];
+    const activeFiles = data.active_files || {};
+
+    if (conflicts.length === 0 && Object.keys(activeFiles).length === 0) {
+        body.innerHTML = '<div class="conflict-empty">No file conflicts detected. All agents are working on separate files.</div>';
+        return;
+    }
+
+    let html = '';
+
+    // Active conflicts
+    if (conflicts.length > 0) {
+        html += `<div style="font-size:12px;font-weight:700;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.8px;font-family:var(--font-mono);margin-bottom:4px">${conflicts.length} Active Conflict${conflicts.length !== 1 ? 's' : ''}</div>`;
+        for (const c of conflicts) {
+            const shortPath = c.file_path.split('/').slice(-3).join('/');
+            html += `<div class="conflict-card severity-${c.severity}">`;
+            html += `<div style="display:flex;justify-content:space-between;align-items:center">`;
+            html += `<div class="conflict-file" title="${escapeHtml(c.file_path)}">${escapeHtml(shortPath)}</div>`;
+            html += `<span class="conflict-severity ${c.severity}">${c.severity}</span>`;
+            html += `</div>`;
+            html += `<div class="conflict-agents">`;
+            for (const agent of c.agents) {
+                const info = ROLE_INFO[agent.role] || ROLE_INFO.general;
+                html += `<div class="conflict-agent-chip" onclick="closeConflicts();openDeepView('${agent.id}')" data-tip="View agent">`;
+                html += `${icon(info.icon, 12)} ${escapeHtml(agent.name)} <span style="color:var(--text-tertiary)">(${agent.status})</span>`;
+                html += `</div>`;
+            }
+            html += `</div>`;
+            html += `<div class="conflict-actions">`;
+            for (const agent of c.agents) {
+                html += `<button class="conflict-action-btn danger" onclick="pauseResumeAgent('${agent.id}')">Pause ${escapeHtml(agent.name)}</button>`;
+            }
+            html += `</div>`;
+            html += `</div>`;
+        }
+    }
+
+    // File activity summary
+    const multiAgentFiles = Object.entries(activeFiles).filter(([_, info]) => info.agent_count > 1);
+    if (multiAgentFiles.length > 0) {
+        html += `<div style="font-size:12px;font-weight:700;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.8px;font-family:var(--font-mono);margin-top:16px;margin-bottom:4px">Shared Files (${multiAgentFiles.length})</div>`;
+        html += `<div class="conflict-file-list">`;
+        for (const [fp, info] of multiAgentFiles.slice(0, 20)) {
+            const shortPath = fp.split('/').slice(-3).join('/');
+            const ops = Object.entries(info.operations).map(([aid, op]) => {
+                const agent = state.agents.get(aid);
+                return agent ? `${agent.name}: ${op}` : `${aid}: ${op}`;
+            }).join(', ');
+            html += `<div class="conflict-file-item"><span class="conflict-file-item-path" title="${escapeHtml(fp)}&#10;${escapeHtml(ops)}">${escapeHtml(shortPath)}</span><span class="conflict-file-item-count">${info.agent_count} agents</span></div>`;
+        }
+        html += `</div>`;
+    }
+
+    body.innerHTML = html;
+}
+
+// ── Event Log Panel ──
+
+let _eventlogOffset = 0;
+const _eventlogLimit = 50;
+
+function openEventLog() {
+    document.getElementById('eventlogOverlay').classList.add('active');
+    _eventlogOffset = 0;
+    loadEventLog();
+}
+
+function closeEventLog() {
+    document.getElementById('eventlogOverlay').classList.remove('active');
+}
+
+function eventlogPage(dir) {
+    _eventlogOffset = Math.max(0, _eventlogOffset + dir * _eventlogLimit);
+    loadEventLog();
+}
+
+async function loadEventLog() {
+    const body = document.getElementById('eventlogBody');
+    body.innerHTML = '<div class="eventlog-empty">Loading events...</div>';
+    const typeFilter = document.getElementById('eventlogTypeFilter').value;
+    const agentFilter = document.getElementById('eventlogAgentFilter').value.trim();
+    let url = `/api/events?limit=${_eventlogLimit}&offset=${_eventlogOffset}`;
+    if (typeFilter) url += `&event_type=${encodeURIComponent(typeFilter)}`;
+    if (agentFilter) url += `&agent_id=${encodeURIComponent(agentFilter)}`;
+    try {
+        const resp = await apiFetch(url);
+        if (!resp.ok) throw new Error('Failed');
+        const data = await resp.json();
+        renderEventLog(data);
+    } catch (e) {
+        body.innerHTML = '<div class="eventlog-empty">Failed to load events</div>';
+    }
+}
+
+function renderEventLog(data) {
+    const body = document.getElementById('eventlogBody');
+    const events = data.data || [];
+    const pagination = data.pagination || {};
+    const total = pagination.total || 0;
+
+    document.getElementById('eventlogCount').textContent = `${total} event${total !== 1 ? 's' : ''}`;
+
+    if (events.length === 0) {
+        body.innerHTML = '<div class="eventlog-empty">No events found matching your filters.</div>';
+        document.getElementById('eventlogPrev').disabled = true;
+        document.getElementById('eventlogNext').disabled = true;
+        document.getElementById('eventlogPageInfo').textContent = 'Page 0';
+        return;
+    }
+
+    const currentPage = Math.floor(_eventlogOffset / _eventlogLimit) + 1;
+    const totalPages = Math.ceil(total / _eventlogLimit);
+    document.getElementById('eventlogPrev').disabled = _eventlogOffset === 0;
+    document.getElementById('eventlogNext').disabled = _eventlogOffset + _eventlogLimit >= total;
+    document.getElementById('eventlogPageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+
+    // Categorize event types
+    const typeCategory = (type) => {
+        if (type.includes('error') || type.includes('crash')) return 'error';
+        if (type.includes('conflict') || type.includes('stale') || type.includes('warning')) return 'warning';
+        if (type.includes('agent')) return 'agent';
+        return 'system';
+    };
+
+    let html = '';
+    for (const evt of events) {
+        const ts = evt.timestamp ? new Date(evt.timestamp) : new Date();
+        const timeStr = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const cat = typeCategory(evt.event_type || '');
+        const shortType = (evt.event_type || 'unknown').replace('agent_', '').replace('workflow_', 'wf:');
+        const agentName = evt.agent_name || evt.agent_id || '';
+        const message = evt.message || '';
+        html += `<div class="eventlog-row">`;
+        html += `<span class="eventlog-time">${timeStr}</span>`;
+        html += `<span class="eventlog-type ${cat}">${escapeHtml(shortType)}</span>`;
+        if (agentName) {
+            html += `<span class="eventlog-agent" title="${escapeHtml(agentName)}">${escapeHtml(agentName)}</span>`;
+        }
+        html += `<span class="eventlog-message">${escapeHtml(message)}</span>`;
+        html += `</div>`;
+    }
+    body.innerHTML = html;
+}
+
+// ── Global Search ──
+
+function openGlobalSearch() {
+    const overlay = document.getElementById('gsearchOverlay');
+    overlay.classList.add('active');
+    // Populate agent filter dropdown
+    const select = document.getElementById('gsearchAgentFilter');
+    const current = select.value;
+    select.innerHTML = '<option value="">All Agents</option>';
+    for (const [id, agent] of state.agents) {
+        select.innerHTML += `<option value="${id}">${escapeHtml(agent.name)}</option>`;
+    }
+    select.value = current;
+    setTimeout(() => document.getElementById('gsearchInput').focus(), 100);
+}
+
+function closeGlobalSearch() {
+    document.getElementById('gsearchOverlay').classList.remove('active');
+}
+
+async function runGlobalSearch() {
+    const query = document.getElementById('gsearchInput').value.trim();
+    if (!query) return;
+    const body = document.getElementById('gsearchBody');
+    const statusEl = document.getElementById('gsearchStatus');
+    const countEl = document.getElementById('gsearchCount');
+    body.innerHTML = '<div class="gsearch-empty">Searching...</div>';
+
+    const useRegex = document.getElementById('gsearchRegex').classList.contains('active');
+    const caseSensitive = document.getElementById('gsearchCase').classList.contains('active');
+    const agentFilter = document.getElementById('gsearchAgentFilter').value;
+
+    const params = new URLSearchParams({ q: query, limit: '200' });
+    if (useRegex) params.set('regex', 'true');
+    if (caseSensitive) params.set('case', 'true');
+    if (agentFilter) params.set('agent_id', agentFilter);
+
+    try {
+        const resp = await apiFetch(`/api/search?${params}`);
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            body.innerHTML = `<div class="gsearch-empty">${escapeHtml(err.error || 'Search failed')}</div>`;
+            return;
+        }
+        const data = await resp.json();
+        const results = data.results || [];
+        countEl.textContent = `${results.length} result${results.length !== 1 ? 's' : ''}${data.truncated ? '+' : ''}`;
+
+        if (!results.length) {
+            body.innerHTML = '<div class="gsearch-empty">No results found</div>';
+            statusEl.style.display = 'none';
+            return;
+        }
+
+        // Group results by agent
+        const grouped = new Map();
+        for (const r of results) {
+            const key = r.agent_id;
+            if (!grouped.has(key)) grouped.set(key, { name: r.agent_name, id: r.agent_id, results: [] });
+            grouped.get(key).results.push(r);
+        }
+
+        let html = '';
+        for (const [agentId, group] of grouped) {
+            const agent = state.agents.get(agentId);
+            const roleColor = agent?.role_color || ROLE_INFO[agent?.role]?.color || '#64748B';
+            html += `<div class="gsearch-agent-group">`;
+            html += `<div class="gsearch-group-header" onclick="this.nextElementSibling.classList.toggle('collapsed')">`;
+            html += `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${roleColor};flex-shrink:0"></span>`;
+            html += `<span class="gsearch-group-name">${escapeHtml(group.name)}</span>`;
+            html += `<span class="gsearch-group-count">${group.results.length} match${group.results.length !== 1 ? 'es' : ''}</span>`;
+            html += `<span style="margin-left:auto;font-size:10px;color:var(--text-tertiary)">▾</span>`;
+            html += `</div>`;
+            html += `<div class="gsearch-group-results">`;
+            for (const r of group.results) {
+                const highlightedLine = highlightMatch(escapeHtml(r.line), query, useRegex, caseSensitive);
+                html += `<div class="gsearch-result" onclick="closeGlobalSearch();openDeepView('${r.agent_id}')">`;
+                html += `<div class="gsearch-result-header">`;
+                html += `<span class="gsearch-result-line-num">line ${r.line_index + 1}</span>`;
+                html += `</div>`;
+                if (r.context_before) html += `<div class="gsearch-result-context">${escapeHtml(r.context_before)}</div>`;
+                html += `<div class="gsearch-result-match">${highlightedLine}</div>`;
+                if (r.context_after) html += `<div class="gsearch-result-context">${escapeHtml(r.context_after)}</div>`;
+                html += `</div>`;
+            }
+            html += `</div></div>`;
+        }
+        body.innerHTML = html;
+
+        if (data.truncated) {
+            statusEl.textContent = `Results truncated to ${results.length}. Refine your search for more specific results.`;
+            statusEl.style.display = '';
+        } else {
+            statusEl.style.display = 'none';
+        }
+    } catch (e) {
+        body.innerHTML = `<div class="gsearch-empty">Search error: ${escapeHtml(e.message)}</div>`;
+    }
+}
+
+function highlightMatch(escapedLine, query, isRegex, caseSensitive) {
+    try {
+        const flags = caseSensitive ? 'g' : 'gi';
+        const pattern = isRegex ? new RegExp(query, flags) : new RegExp(escapeRegex(query), flags);
+        return escapedLine.replace(pattern, m => `<mark>${m}</mark>`);
+    } catch {
+        return escapedLine;
+    }
+}
+
+function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function loadSessionHistory() {
+    const list = document.getElementById('timelineHistoryList');
+    list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary)">Loading...</div>';
+    try {
+        const res = await apiFetch('/api/history?limit=50');
+        const result = await res.json();
+        const items = result.data || [];
+        if (!items.length) {
+            list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary)">No agent history yet</div>';
+            return;
+        }
+        list.innerHTML = '';
+        items.forEach(item => {
+            const el = document.createElement('div');
+            el.className = 'timeline-event';
+            el.style.cursor = 'default';
+            const info = ROLE_INFO[item.role] || ROLE_INFO.general;
+            const created = item.created_at ? timeAgo(item.created_at) : '';
+            const cost = item.estimated_cost_usd ? `$${item.estimated_cost_usd.toFixed(4)}` : '';
+            const restarts = item.restart_count || 0;
+            el.innerHTML = `
+                <span style="flex-shrink:0">${roleIcon(item.role, 16)}</span>
+                <span style="font-weight:600;flex-shrink:0;min-width:80px">${escapeHtml(item.name || item.id)}</span>
+                <span style="color:var(--text-tertiary);font-size:11px;flex-shrink:0">${escapeHtml(info.name)}</span>
+                <span style="flex:1;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${escapeHtml(item.task || item.summary || '')}</span>
+                ${cost ? `<span style="color:var(--text-tertiary);font-size:11px;font-family:var(--font-mono)">${cost}</span>` : ''}
+                ${restarts ? `<span style="color:var(--warning);font-size:10px">${restarts}x</span>` : ''}
+                <span style="color:var(--text-tertiary);font-size:11px;flex-shrink:0">${created}</span>
+            `;
+            list.appendChild(el);
+        });
+    } catch (e) {
+        list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary)">Failed to load history</div>';
+    }
+}
+
+// ── Pipeline Graph View ──
+
+let pipelineRefreshTimer = null;
+let currentPipelineRunId = null;
+
+function openPipeline(runId) {
+    currentPipelineRunId = runId || null;
+    if (pipelineRefreshTimer) { clearInterval(pipelineRefreshTimer); pipelineRefreshTimer = null; }
+    const overlay = document.getElementById('pipelineOverlay');
+    overlay.classList.add('active');
+    if (runId) {
+        refreshPipelineGraph(runId);
+        pipelineRefreshTimer = setInterval(() => refreshPipelineGraph(runId), 3000);
+    } else {
+        // Show all active workflow runs
+        loadWorkflowRuns();
+    }
+}
+
+function closePipeline() {
+    document.getElementById('pipelineOverlay').classList.remove('active');
+    if (pipelineRefreshTimer) { clearInterval(pipelineRefreshTimer); pipelineRefreshTimer = null; }
+    currentPipelineRunId = null;
+}
+
+async function loadWorkflowRuns() {
+    const graph = document.getElementById('pipelineGraph');
+    try {
+        const res = await apiFetch('/api/workflow-runs');
+        const body = await res.json();
+        const runs = Array.isArray(body) ? body : (body.data || []);
+        if (!runs.length) {
+            graph.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-tertiary)">No active pipeline runs</div>';
+            return;
+        }
+        graph.innerHTML = '';
+        runs.forEach(run => {
+            const card = document.createElement('div');
+            card.style.cssText = 'padding:12px;background:var(--bg-surface);border-radius:12px;margin-bottom:8px;cursor:pointer;border:1px solid var(--border-subtle)';
+            const statusColor = run.status === 'completed' ? 'var(--success)' : run.status === 'failed' ? 'var(--danger)' : 'var(--accent)';
+            card.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <span style="font-weight:600">${run.workflow_name || run.id}</span>
+                    <span style="color:${statusColor};font-size:12px;font-weight:600">${run.status}</span>
+                </div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">${Object.keys(run.agent_map || {}).length} agents</div>
+            `;
+            card.onclick = () => {
+                currentPipelineRunId = run.id;
+                refreshPipelineGraph(run.id);
+                if (pipelineRefreshTimer) clearInterval(pipelineRefreshTimer);
+                pipelineRefreshTimer = setInterval(() => refreshPipelineGraph(run.id), 3000);
+            };
+            graph.appendChild(card);
+        });
+    } catch (e) {
+        graph.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-tertiary)">Failed to load pipeline runs</div>';
+    }
+}
+
+async function refreshPipelineGraph(runId) {
+    const graph = document.getElementById('pipelineGraph');
+    try {
+        const res = await apiFetch(`/api/workflow-runs/${runId}`);
+        if (!res.ok) { graph.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-tertiary)">Run not found</div>'; return; }
+        const run = await res.json();
+
+        document.getElementById('pipelineName').textContent = run.workflow_name || 'Pipeline';
+        const statusEl = document.getElementById('pipelineStatus');
+        statusEl.textContent = run.status;
+        statusEl.style.color = run.status === 'completed' ? 'var(--success)' : run.status === 'failed' ? 'var(--danger)' : 'var(--accent)';
+
+        renderPipelineDAG(graph, run);
+
+        // Stop refresh if run is done
+        if (run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') {
+            if (pipelineRefreshTimer) { clearInterval(pipelineRefreshTimer); pipelineRefreshTimer = null; }
+        }
+    } catch (e) {
+        graph.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-tertiary)">Failed to load pipeline</div>';
+    }
+}
+
+function renderPipelineDAG(container, run) {
+    const specs = run.agent_specs || [];
+    const agentMap = run.agent_map || {};
+    const completedIds = new Set(run.completed_ids || []);
+    const failedIds = new Set(run.failed_ids || []);
+    const runningIds = new Set(run.running_ids || []);
+
+    // Build depth levels via iterative multi-pass relaxation (handles out-of-order deps)
+    const depths = new Array(specs.length).fill(0);
+    let changed = true;
+    let iterations = 0;
+    while (changed && iterations < specs.length) {
+        changed = false;
+        iterations++;
+        for (let i = 0; i < specs.length; i++) {
+            for (const d of (specs[i].depends_on || [])) {
+                const nd = depths[d] + 1;
+                if (nd > depths[i]) { depths[i] = nd; changed = true; }
+            }
+        }
+    }
+    const maxDepth = Math.max(0, ...depths);
+
+    container.innerHTML = '';
+    for (let d = 0; d <= maxDepth; d++) {
+        if (d > 0) {
+            const connector = document.createElement('div');
+            connector.className = 'pipeline-connector';
+            container.appendChild(connector);
+        }
+        const row = document.createElement('div');
+        row.className = 'pipeline-row';
+        specs.forEach((spec, idx) => {
+            if (depths[idx] !== d) return;
+            const agentId = agentMap[String(idx)];
+            let nodeState = 'pending';
+            if (agentId) {
+                if (completedIds.has(agentId)) nodeState = 'completed';
+                else if (failedIds.has(agentId)) nodeState = 'failed';
+                else if (runningIds.has(agentId)) nodeState = 'running';
+            }
+            const info = ROLE_INFO[spec.role] || ROLE_INFO.general;
+            const node = document.createElement('div');
+            node.className = `pipeline-node ${nodeState}`;
+            node.innerHTML = `
+                <div class="pipeline-node-icon">${info.icon}</div>
+                <div class="pipeline-node-name">${spec.name || info.name.split(' ')[0]}</div>
+                <div class="pipeline-node-status">${nodeState}</div>
+            `;
+            if (agentId && state.agents.has(agentId)) {
+                node.style.cursor = 'pointer';
+                node.onclick = () => { closePipeline(); openDeepView(agentId); };
+            }
+            row.appendChild(node);
+        });
+        container.appendChild(row);
+    }
+}
+
+// ── Keyboard Grid Navigation ──
+
+let keyboardFocusIdx = -1;
+
+function getVisibleCards() {
+    return [...document.querySelectorAll('.agent-card:not([style*="display: none"]):not(.exiting)')];
+}
+
+function setKeyboardFocus(idx) {
+    const cards = getVisibleCards();
+    // Remove previous focus
+    document.querySelectorAll('.agent-card.keyboard-focused').forEach(c => c.classList.remove('keyboard-focused'));
+    if (idx < 0 || idx >= cards.length) { keyboardFocusIdx = -1; return; }
+    keyboardFocusIdx = idx;
+    cards[idx].classList.add('keyboard-focused');
+    cards[idx].scrollIntoView({ block: 'nearest' });
+}
+
+function getGridColumns() {
+    const grid = document.getElementById('agentGrid');
+    const style = getComputedStyle(grid);
+    const columns = style.gridTemplateColumns;
+    return columns ? columns.split(' ').length : 4;
+}
+
+// ── View Mode Toggle (A2) ──
+
+function setViewMode(mode) {
+    state.viewMode = mode;
+    localStorage.setItem('ashlr_view_mode', mode);
+    document.getElementById('viewGridBtn').classList.toggle('active', mode === 'grid');
+    document.getElementById('viewCompactBtn').classList.toggle('active', mode === 'compact');
+    document.getElementById('viewTableBtn').classList.toggle('active', mode === 'table');
+    const grid = document.getElementById('agentGrid');
+    grid.style.display = mode === 'table' ? 'none' : '';
+    grid.classList.toggle('compact-mode', mode === 'compact');
+    document.getElementById('agentTable').style.display = mode === 'table' ? 'table' : 'none';
+    if (mode === 'table') renderAgentTable();
+}
+
+function renderAgentTable() {
+    const tbody = document.getElementById('agentTableBody');
+    if (!tbody) return;
+    const agents = [...state.agents.values()];
+    // Sort pinned first, then by selected column
+    const col = state.tableSortCol;
+    const asc = state.tableSortAsc;
+    agents.sort((a, b) => {
+        const pa = state.pinnedAgents.has(a.id) ? 0 : 1;
+        const pb = state.pinnedAgents.has(b.id) ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        let va = a[col] ?? '', vb = b[col] ?? '';
+        if (typeof va === 'number') return asc ? va - vb : vb - va;
+        va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
+        return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+    // Apply search filter
+    const query = gridSearchQuery;
+    const filtered = query ? agents.filter(a => {
+        const s = [a.name, a.role, a.status, a.task, a.summary, a.backend].filter(Boolean).join(' ').toLowerCase();
+        return s.includes(query);
+    }) : agents;
+
+    tbody.innerHTML = '';
+    for (const agent of filtered) {
+        const role = ROLE_INFO[agent.role] || ROLE_INFO.general;
+        const usedPctTbl = Math.round((agent.context_pct || 0) * 100);
+        const remainPctTbl = Math.max(0, 100 - usedPctTbl);
+        const hs = Math.round((agent.health_score ?? 1) * 100);
+        const cost = agent.estimated_cost_usd || 0;
+        const tr = document.createElement('tr');
+        tr.className = 'table-row' + (agent.needs_input ? ' waiting' : '');
+        tr.style.setProperty('--role-color', role.color);
+        tr.onclick = () => openDeepView(agent.id);
+        tr.innerHTML = `
+            <td><span class="table-status-dot ${agent.status}"></span>${agent.status}</td>
+            <td>${roleIcon(agent.role, 14)}</td>
+            <td>${state.pinnedAgents.has(agent.id) ? icon('pin', 12) + ' ' : ''}${escapeHtml(agent.name)}</td>
+            <td title="${escapeHtml((agent.task || ''))}">${escapeHtml((agent.task || '').substring(0, 60))}</td>
+            <td>${agent.phase || '-'}</td>
+            <td>${remainPctTbl}% left</td>
+            <td>${hs}%</td>
+            <td>${agent.files_touched || 0}</td>
+            <td>${cost > 0 ? '$' + cost.toFixed(4) : '-'}</td>
+            <td><button class="card-menu-btn" onclick="event.stopPropagation();toggleCardMenu('${agent.id}')" aria-haspopup="true" aria-label="Agent actions menu" style="border:none;background:none;cursor:pointer;color:var(--text-secondary)">⋯</button></td>
+        `;
+        tbody.appendChild(tr);
+    }
+    // Update sort arrows
+    document.querySelectorAll('.agent-table .sort-arrow').forEach(el => {
+        el.textContent = el.dataset.col === col ? (asc ? '▲' : '▼') : '';
+        el.classList.toggle('active', el.dataset.col === col);
+    });
+}
+
+function sortTable(col) {
+    if (state.tableSortCol === col) state.tableSortAsc = !state.tableSortAsc;
+    else { state.tableSortCol = col; state.tableSortAsc = true; }
+    renderAgentTable();
+}
+
+// ── Virtual Terminal Scroll (A1) ──
+
+let virtualTermData = [];
+let virtualTermLineH = 0;
+const VIRTUAL_BUFFER = 50;
+const VIRTUAL_THRESHOLD = 500;
+
+function openDeepViewVirtual(agentId) {
+    const agent = state.agents.get(agentId);
+    if (!agent) return;
+    virtualTermData = agent._outputBuffer || [];
+    if (virtualTermData.length <= VIRTUAL_THRESHOLD) return false; // use normal render
+    const terminal = document.getElementById('deepTerminal');
+    terminal.innerHTML = '';
+    // Measure line height
+    const probe = document.createElement('div');
+    probe.className = 'terminal-line';
+    probe.textContent = 'X';
+    terminal.appendChild(probe);
+    virtualTermLineH = probe.offsetHeight || 18;
+    terminal.removeChild(probe);
+    // Set up virtual scroll containers
+    terminal.innerHTML = '<div id="vtSpacer" style="pointer-events:none"></div><div id="vtContent"></div><div id="vtSpacerBottom" style="pointer-events:none"></div>';
+    renderVirtualRange(terminal);
+    // Scroll to bottom
+    terminal.scrollTop = terminal.scrollHeight;
+    return true;
+}
+
+function renderVirtualRange(terminal) {
+    if (!terminal) terminal = document.getElementById('deepTerminal');
+    if (!virtualTermData.length || !virtualTermLineH) return;
+    // If filter is active, use filtered rendering instead
+    if (_filteredVirtualData) { renderFilteredVirtual(); return; }
+    const scrollTop = terminal.scrollTop;
+    const viewH = terminal.clientHeight;
+    const totalH = virtualTermData.length * virtualTermLineH;
+    const firstVisible = Math.max(0, Math.floor(scrollTop / virtualTermLineH) - VIRTUAL_BUFFER);
+    const lastVisible = Math.min(virtualTermData.length - 1, Math.ceil((scrollTop + viewH) / virtualTermLineH) + VIRTUAL_BUFFER);
+    document.getElementById('vtSpacer').style.height = (firstVisible * virtualTermLineH) + 'px';
+    document.getElementById('vtSpacerBottom').style.height = ((virtualTermData.length - 1 - lastVisible) * virtualTermLineH) + 'px';
+    const content = document.getElementById('vtContent');
+    const markLine = state.focusedAgentId ? getOutputMarkLine(state.focusedAgentId) : -1;
+    // Reset code block state and pre-scan from start to firstVisible for correct state
+    const aid = state.focusedAgentId || '';
+    resetCodeBlockState(aid);
+    for (let i = 0; i < firstVisible; i++) {
+        const stripped = virtualTermData[i].replace(/\x1b\[[0-9;]*m/g, '').replace(/\x1b\[[^m]*[a-zA-Z]/g, '');
+        const fm = stripped.match(CODE_FENCE_RE);
+        if (fm) {
+            const st = getCodeBlockState(aid);
+            st.inBlock = !st.inBlock;
+            if (st.inBlock) st.language = fm[3] || '';
+            else st.language = '';
+        }
+    }
+    const frag = document.createDocumentFragment();
+    for (let i = firstVisible; i <= lastVisible; i++) {
+        const cl = classifyTerminalLine(virtualTermData[i], aid);
+        const div = document.createElement('div');
+        div.className = cl.className + (markLine >= 0 && i >= markLine ? ' marked-new' : '');
+        if (markLine >= 0 && i === markLine) div.className += ' mark-boundary';
+        div.innerHTML = cl.html;
+        frag.appendChild(div);
+    }
+    content.innerHTML = '';
+    content.appendChild(frag);
+}
+
+// Patch openDeepView to use virtual scroll for large output
+const _origOpenDeepView = openDeepView;
+openDeepView = function(agentId) {
+    _origOpenDeepView(agentId);
+    _filteredVirtualData = null;
+    _activeOutputFilter = 'all';
+    document.querySelectorAll('.deep-filter-chip').forEach(c => c.classList.toggle('active', c.dataset.filter === 'all'));
+    setTimeout(() => updateFilterCounts(), 100);
+    const agent = state.agents.get(agentId);
+    if (agent && (agent._outputBuffer?.length || 0) > VIRTUAL_THRESHOLD) {
+        if (openDeepViewVirtual(agentId)) {
+            const terminal = document.getElementById('deepTerminal');
+            // Remove the normal scroll handler to prevent dual-handler firing
+            if (terminal._ashlrScrollHandler) {
+                terminal.removeEventListener('scroll', terminal._ashlrScrollHandler);
+                terminal._ashlrScrollHandler = null;
+            }
+            if (terminal._ashlrVScrollHandler) terminal.removeEventListener('scroll', terminal._ashlrVScrollHandler);
+            terminal._ashlrVScrollHandler = () => {
+                renderVirtualRange(terminal);
+                // Also update auto-scroll state
+                const isBottom = terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 40;
+                deepAutoScroll = isBottom;
+                document.getElementById('jumpToBottom')?.classList.toggle('visible', !isBottom);
+                // Progressive load: trigger when scrolling near top
+                if (terminal.scrollTop < 200 && state.focusedAgentId && !_progressiveLoading) {
+                    const ag = state.agents.get(state.focusedAgentId);
+                    if (ag && _getProgressiveState(ag).hasMore) {
+                        loadOutputChunk(state.focusedAgentId, 'older');
+                    }
+                }
+            };
+            terminal.addEventListener('scroll', terminal._ashlrVScrollHandler);
+        }
+    }
+};
+
+// Patch appendDeepOutput for virtual mode
+const _origAppendDeep = appendDeepOutput;
+appendDeepOutput = function(lines) {
+    if (virtualTermData.length > 0 && document.getElementById('vtContent')) {
+        virtualTermData.push(...lines);
+        if (virtualTermData.length > 10000) virtualTermData = virtualTermData.slice(-10000);
+        if (deepAutoScroll) {
+            const terminal = document.getElementById('deepTerminal');
+            renderVirtualRange(terminal);
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+    } else {
+        _origAppendDeep(lines);
+    }
+};
+
+// Reset virtual + progressive state on close
+const _origCloseDeep = closeDeepView;
+closeDeepView = function() {
+    virtualTermData = [];
+    _virtualSearchMatches = [];
+    _filteredVirtualData = null;
+    _activeOutputFilter = 'all';
+    _progressiveLoading = false;
+    _srOriginalContent = null;
+    // Stop clipboard watcher when leaving deep view
+    if (_clipboardWatcherTimer) { clearInterval(_clipboardWatcherTimer); _clipboardWatcherTimer = null; }
+    _origCloseDeep();
+};
+
+// Recalculate virtual scroll line height on resize
+window.addEventListener('resize', debounce(() => {
+    if (virtualTermData.length > 0 && document.getElementById('vtContent')) {
+        const terminal = document.getElementById('deepTerminal');
+        const probe = document.createElement('div');
+        probe.className = 'terminal-line';
+        probe.textContent = 'X';
+        terminal.appendChild(probe);
+        virtualTermLineH = probe.offsetHeight || 18;
+        terminal.removeChild(probe);
+        renderVirtualRange(terminal);
+    }
+}, 200));
+
+// ── Progressive Output Loading ──
+
+const PROGRESSIVE_CHUNK_SIZE = 500;
+let _progressiveLoading = false; // mutex to prevent concurrent loads
+
+function _getProgressiveState(agent) {
+    if (!agent._progressive) agent._progressive = { loadedFrom: -1, total: 0, hasMore: false };
+    return agent._progressive;
+}
+
+async function loadOutputChunk(agentId, direction = 'initial') {
+    if (_progressiveLoading) return;
+    const agent = state.agents.get(agentId);
+    if (!agent) return;
+    const ps = _getProgressiveState(agent);
+
+    _progressiveLoading = true;
+    const indicator = document.getElementById('loadMoreIndicator');
+
+    try {
+        let offset, limit = PROGRESSIVE_CHUNK_SIZE;
+        if (direction === 'initial') {
+            // Load latest chunk — server returns from the end
+            const resp = await apiFetch(`/api/agents/${agentId}/full-output?limit=${limit}&offset=0`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const total = data.pagination?.total || 0;
+            // We want the LAST chunk, so re-fetch with correct offset
+            if (total > limit) {
+                offset = total - limit;
+                const resp2 = await apiFetch(`/api/agents/${agentId}/full-output?limit=${limit}&offset=${offset}`);
+                if (!resp2.ok) return;
+                const data2 = await resp2.json();
+                agent._outputBuffer = data2.data || [];
+                ps.loadedFrom = offset;
+                ps.total = total;
+                ps.hasMore = offset > 0;
+            } else {
+                agent._outputBuffer = data.data || [];
+                ps.loadedFrom = 0;
+                ps.total = total;
+                ps.hasMore = false;
+            }
+        } else if (direction === 'older') {
+            if (!ps.hasMore || ps.loadedFrom <= 0) return;
+            offset = Math.max(0, ps.loadedFrom - PROGRESSIVE_CHUNK_SIZE);
+            limit = ps.loadedFrom - offset;
+            if (indicator) { indicator.classList.add('loading'); indicator.innerHTML = '<span class="lm-spinner"></span>Loading...'; }
+            const resp = await apiFetch(`/api/agents/${agentId}/full-output?limit=${limit}&offset=${offset}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const olderLines = data.data || [];
+            if (olderLines.length > 0) {
+                agent._outputBuffer = [...olderLines, ...agent._outputBuffer];
+                ps.loadedFrom = offset;
+                ps.hasMore = offset > 0;
+                // Re-render: prepend to terminal
+                _prependOutputLines(olderLines);
+            }
+        }
+    } catch (e) {
+        console.warn('Progressive load failed:', e.message);
+    } finally {
+        _progressiveLoading = false;
+        _updateLoadMoreIndicator(agentId);
+    }
+}
+
+function _prependOutputLines(lines) {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    // For virtual scroll mode, prepend to virtualTermData
+    if (virtualTermData.length > 0 && document.getElementById('vtContent')) {
+        const prevH = virtualTermData.length * virtualTermLineH;
+        virtualTermData = [...lines, ...virtualTermData];
+        renderVirtualRange(terminal);
+        // Maintain scroll position after prepend
+        terminal.scrollTop += lines.length * virtualTermLineH;
+        return;
+    }
+    // Normal DOM mode: prepend elements
+    const prevScrollH = terminal.scrollHeight;
+    const prevScrollT = terminal.scrollTop;
+    const frag = document.createDocumentFragment();
+    const loadIndicator = document.getElementById('loadMoreIndicator');
+    const pAid = state.focusedAgentId || '';
+    // Note: prepended lines won't have perfect code block state tracking
+    // because we're inserting before the main content. Use simple ansiToHtml.
+    for (const line of lines) {
+        const div = document.createElement('div');
+        div.className = 'terminal-line';
+        div.innerHTML = ansiToHtml(line);
+        frag.appendChild(div);
+    }
+    // Insert after the load-more indicator (or at top)
+    if (loadIndicator && loadIndicator.nextSibling) {
+        terminal.insertBefore(frag, loadIndicator.nextSibling);
+    } else {
+        terminal.insertBefore(frag, terminal.firstChild);
+    }
+    // Maintain scroll position
+    const newScrollH = terminal.scrollHeight;
+    terminal.scrollTop = prevScrollT + (newScrollH - prevScrollH);
+}
+
+function _updateLoadMoreIndicator(agentId) {
+    const agent = state.agents.get(agentId);
+    if (!agent) return;
+    const ps = _getProgressiveState(agent);
+    const indicator = document.getElementById('loadMoreIndicator');
+    if (!indicator) return;
+    if (ps.hasMore) {
+        const remaining = ps.loadedFrom;
+        indicator.style.display = '';
+        indicator.classList.remove('loading');
+        indicator.innerHTML = `↑ Load ${Math.min(PROGRESSIVE_CHUNK_SIZE, remaining)} earlier lines (${remaining} remaining)`;
+    } else {
+        indicator.style.display = 'none';
+    }
+}
+
+function _addLoadMoreIndicator(terminal) {
+    let indicator = document.getElementById('loadMoreIndicator');
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'loadMoreIndicator';
+        indicator.className = 'load-more-indicator';
+        indicator.style.display = 'none';
+        indicator.onclick = () => {
+            if (state.focusedAgentId) loadOutputChunk(state.focusedAgentId, 'older');
+        };
+        terminal.insertBefore(indicator, terminal.firstChild);
+    }
+    return indicator;
+}
+
+// ── Agent Clone (B2) ──
+
+async function cloneAgent(id) {
+    if (activeMenu) { activeMenu.classList.remove('active'); activeMenu = null; }
+    const agent = state.agents.get(id);
+    if (!agent) return;
+    // Open spawn dialog pre-filled
+    openSpawnDialog();
+    document.getElementById('spawnName').value = agent.name + '-clone';
+    document.getElementById('spawnDir').value = agent.working_dir || '';
+    document.getElementById('spawnTask').value = agent.task || '';
+    // Select matching role
+    document.querySelectorAll('#roleGrid .role-option').forEach(o => {
+        o.classList.toggle('selected', o.dataset.role === agent.role);
+    });
+    state.selectedRole = agent.role;
+    // Set backend
+    const backendSel = document.getElementById('spawnBackend');
+    if (backendSel) backendSel.value = agent.backend || 'claude-code';
+    // Set model, tools, plan mode
+    const modelSel = document.getElementById('spawnModel');
+    if (modelSel) modelSel.value = agent.model || '';
+    const toolsInput = document.getElementById('spawnTools');
+    if (toolsInput) toolsInput.value = (agent.tools_allowed || []).join(', ');
+    const planToggle = document.getElementById('planModeToggle');
+    if (planToggle) planToggle.classList.toggle('active', !!agent.plan_mode);
+}
+
+// ── Agent Presets (B1) ──
+
+function populatePresetSelector() {
+    const sel = document.getElementById('spawnPresetSelect');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">From preset...</option>';
+    state.presets.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = `${p.name}`;
+        sel.appendChild(opt);
+    });
+}
+
+function loadPreset(presetId) {
+    if (!presetId) return;
+    const preset = state.presets.find(p => p.id === presetId);
+    if (!preset) return;
+    document.getElementById('spawnName').value = '';
+    document.getElementById('spawnDir').value = preset.working_dir || '';
+    document.getElementById('spawnTask').value = preset.task || '';
+    if (preset.role) {
+        document.querySelectorAll('#roleGrid .role-option').forEach(o => {
+            o.classList.toggle('selected', o.dataset.role === preset.role);
+        });
+        state.selectedRole = preset.role;
+    }
+    const backendSel = document.getElementById('spawnBackend');
+    if (backendSel && preset.backend) backendSel.value = preset.backend;
+    const modelInput = document.getElementById('spawnModel');
+    if (modelInput && preset.model) modelInput.value = preset.model;
+    const toolsInput = document.getElementById('spawnTools');
+    if (toolsInput && preset.tools_allowed) toolsInput.value = preset.tools_allowed;
+}
+
+async function saveAsPreset() {
+    const name = await promptInput('Save as Preset', 'Enter preset name...', { iconKey: 'save', confirmText: 'Save' });
+    if (!name) return;
+    const payload = {
+        name,
+        role: state.selectedRole,
+        backend: document.getElementById('spawnBackend')?.value || 'claude-code',
+        task: document.getElementById('spawnTask')?.value || '',
+        model: document.getElementById('spawnModel')?.value || '',
+        tools_allowed: document.getElementById('spawnTools')?.value || '',
+        working_dir: document.getElementById('spawnDir')?.value || '',
+    };
+    try {
+        const res = await apiFetch('/api/presets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+            const preset = await res.json();
+            state.presets.push(preset);
+            populatePresetSelector();
+            showToast(`Preset saved: ${name}`, 'success');
+        } else {
+            const err = await res.json();
+            showToast(err.error || 'Failed to save preset', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to save preset', 'error');
+    }
+}
+
+// ── Agent Pinning (E4) ──
+
+function togglePin(id) {
+    if (activeMenu) { activeMenu.classList.remove('active'); activeMenu = null; }
+    if (state.pinnedAgents.has(id)) state.pinnedAgents.delete(id);
+    else state.pinnedAgents.add(id);
+    localStorage.setItem('ashlr_pinned', JSON.stringify([...state.pinnedAgents]));
+    scheduleRender();
+    if (state.viewMode === 'table') renderAgentTable();
+}
+
+// ── Fuzzy Search in Command Palette (E1) ──
+
+function fuzzyScore(query, text) {
+    const lq = query.toLowerCase();
+    const lt = text.toLowerCase();
+    // Exact match gets highest score
+    if (lt.includes(lq)) return { score: 1.0, matches: [] };
+    let qi = 0, score = 0, matches = [], consecutiveBonus = 0;
+    for (let i = 0; i < lt.length && qi < lq.length; i++) {
+        if (lt[i] === lq[qi]) {
+            matches.push(i);
+            let bonus = 1;
+            // Word start bonus
+            if (i === 0 || lt[i - 1] === ' ' || lt[i - 1] === ':') bonus += 2;
+            // Consecutive bonus
+            if (matches.length > 1 && matches[matches.length - 2] === i - 1) {
+                consecutiveBonus += 1;
+                bonus += consecutiveBonus;
+            } else {
+                consecutiveBonus = 0;
+            }
+            score += bonus;
+            qi++;
+        }
+    }
+    if (qi < lq.length) return { score: 0, matches: [] };
+    return { score: score / (lq.length * 4), matches };
+}
+
+// ── Drag-and-Drop Workflow Reordering (E2) ──
+
+let dragSrcIdx = null;
+
+function enableWfAgentDragDrop() {
+    const list = document.getElementById('wfAgentsList');
+    if (!list) return;
+    if (list._dndEnabled) return;
+    list._dndEnabled = true;
+    list.querySelectorAll('.wf-agent-row').forEach((row, idx) => {
+        row.setAttribute('draggable', 'true');
+        row.dataset.wfIdx = idx;
+        row.addEventListener('dragstart', (e) => {
+            dragSrcIdx = idx;
+            row.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        });
+        row.addEventListener('dragend', () => {
+            row.classList.remove('dragging');
+            list.querySelectorAll('.wf-agent-row').forEach(r => r.classList.remove('drag-over'));
+        });
+        row.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            list.querySelectorAll('.wf-agent-row').forEach(r => r.classList.remove('drag-over'));
+            row.classList.add('drag-over');
+        });
+        row.addEventListener('drop', (e) => {
+            e.preventDefault();
+            row.classList.remove('drag-over');
+            const targetIdx = parseInt(row.dataset.wfIdx);
+            if (dragSrcIdx !== null && dragSrcIdx !== targetIdx) {
+                // Reorder the DOM
+                const rows = [...list.querySelectorAll('.wf-agent-row')];
+                const moved = rows[dragSrcIdx];
+                if (targetIdx < dragSrcIdx) row.parentNode.insertBefore(moved, row);
+                else row.parentNode.insertBefore(moved, row.nextSibling);
+                // Update data-wfIdx
+                list.querySelectorAll('.wf-agent-row').forEach((r, i) => r.dataset.wfIdx = i);
+            }
+            dragSrcIdx = null;
+        });
+    });
+}
+
+// ── Settings Import/Export (D1) ──
+
+async function exportSettings() {
+    try {
+        const res = await apiFetch('/api/config/export');
+        if (!res.ok) { showToast('Export failed', 'error'); return; }
+        const data = await res.json();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'ashlr_config.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Settings exported', 'success');
+    } catch (e) {
+        showToast('Export failed', 'error');
+    }
+}
+
+async function exportFleetState() {
+    try {
+        const res = await apiFetch('/api/fleet/export');
+        if (!res.ok) { showToast('Fleet export failed', 'error'); return; }
+        const data = await res.json();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        a.download = `ashlr_fleet_${ts}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast(`Fleet exported (${data.agents_count} agents)`, 'success');
+    } catch (e) {
+        showToast('Fleet export failed', 'error');
+    }
+}
+
+async function importSettings() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async () => {
+        const file = input.files[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            const data = JSON.parse(text);
+            const res = await apiFetch('/api/config/import', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+            const result = await res.json();
+            if (res.ok) {
+                const changes = result.changes || [];
+                if (changes.length > 0) {
+                    showToast(`Imported ${changes.length} config changes`, 'success');
+                } else {
+                    showToast('No changes detected', 'info');
+                }
+                // Refresh config
+                socket.send({ type: 'sync_request' });
+            } else {
+                showToast(result.error || 'Import failed', 'error');
+            }
+        } catch (e) {
+            showToast('Invalid config file', 'error');
+        }
+    };
+    input.click();
+}
+
+// ── Scratchpad (C2) ──
+
+let _scratchpadProjectId = null;
+
+async function loadScratchpad(projectId) {
+    if (!projectId) return [];
+    try {
+        const res = await apiFetch(`/api/scratchpad?project_id=${encodeURIComponent(projectId)}`);
+        if (res.ok) return await res.json();
+    } catch (e) { /* ignore */ }
+    return [];
+}
+
+function renderScratchpadTab(entries) {
+    const container = document.getElementById('scratchpadContent');
+    if (!container) return;
+    if (!entries.length) {
+        container.innerHTML = '<div class="scratchpad-empty">No scratchpad entries for this project</div>';
+        return;
+    }
+    let html = '';
+    entries.forEach((e, idx) => {
+        const safeKey = (e.key || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const safeVal = (e.value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const safeBy = (e.set_by || '-').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+        html += `<div class="scratchpad-entry">
+            <span class="scratchpad-key">${safeKey}</span>
+            <span class="scratchpad-val" title="${safeVal}">${safeVal}</span>
+            <span class="scratchpad-by">${safeBy}</span>
+            <div class="scratchpad-actions">
+                <button data-sp-action="edit" data-sp-idx="${idx}">Edit</button>
+                <button class="danger" data-sp-action="delete" data-sp-idx="${idx}">Delete</button>
+            </div>
+        </div>`;
+    });
+    container.innerHTML = html;
+    // Event delegation — avoids XSS via inline onclick in HTML attributes
+    // Remove previous delegate before adding new one (prevents listener stacking)
+    if (container._spDelegate) container.removeEventListener('click', container._spDelegate);
+    container._spDelegate = function(ev) {
+        const btn = ev.target.closest('[data-sp-action]');
+        if (!btn) return;
+        const idx = parseInt(btn.dataset.spIdx, 10);
+        const entry = entries[idx];
+        if (!entry) return;
+        if (btn.dataset.spAction === 'edit') editScratchpadEntry(entry.key, entry.value);
+        else if (btn.dataset.spAction === 'delete') deleteScratchpadEntry(entry.key);
+    };
+    container.addEventListener('click', container._spDelegate);
+}
+
+function switchDeepTab(tab) {
+    const terminal = document.getElementById('deepTerminal');
+    const scratchpad = document.getElementById('deepScratchpadPanel');
+    const activityPanel = document.getElementById('deepActivityPanel');
+    const notesPanel = document.getElementById('deepNotesPanel');
+    const snapshotsPanel = document.getElementById('deepSnapshotsPanel');
+    const wordcloudPanel = document.getElementById('deepWordCloudPanel');
+    const messagesPanel = document.getElementById('deepMessagesPanel');
+    const interactivePanel = document.getElementById('deepInteractivePanel');
+    const tabTerminal = document.getElementById('deepTabTerminal');
+    const tabScratchpad = document.getElementById('deepTabScratchpad');
+    const tabActivity = document.getElementById('deepTabActivity');
+    const tabNotes = document.getElementById('deepTabNotes');
+    const tabSnapshots = document.getElementById('deepTabSnapshots');
+    const tabWordCloud = document.getElementById('deepTabWordCloud');
+    const tabMessages = document.getElementById('deepTabMessages');
+    const tabInteractive = document.getElementById('deepTabInteractive');
+    const toolbar = document.getElementById('terminalToolbar');
+    const searchBar = document.getElementById('deepSearchBar');
+
+    // Hide all panels
+    terminal.style.display = 'none';
+    scratchpad.style.display = 'none';
+    activityPanel.style.display = 'none';
+    notesPanel.style.display = 'none';
+    snapshotsPanel.style.display = 'none';
+    if (wordcloudPanel) wordcloudPanel.style.display = 'none';
+    if (messagesPanel) messagesPanel.style.display = 'none';
+    if (interactivePanel) interactivePanel.style.display = 'none';
+    toolbar.style.display = 'none';
+    closeDeepSearch();
+    searchBar.style.display = 'none';
+    tabTerminal.classList.remove('active');
+    tabScratchpad.classList.remove('active');
+    tabActivity.classList.remove('active');
+    tabNotes.classList.remove('active');
+    tabSnapshots.classList.remove('active');
+    if (tabWordCloud) tabWordCloud.classList.remove('active');
+    if (tabMessages) tabMessages.classList.remove('active');
+    if (tabInteractive) tabInteractive.classList.remove('active');
+
+    if (tab === 'terminal') {
+        terminal.style.display = '';
+        toolbar.style.display = '';
+        searchBar.style.display = '';
+        tabTerminal.classList.add('active');
+    } else if (tab === 'interactive') {
+        if (interactivePanel) interactivePanel.style.display = 'flex';
+        if (tabInteractive) tabInteractive.classList.add('active');
+        // Auto-connect if not already connected and agent has tmux session
+        const agent = state.agents.get(state.focusedAgentId);
+        if (agent && agent.output_mode !== 'stream-json' && !_interactivePTY.ws) {
+            connectInteractiveTerminal(state.focusedAgentId);
+        }
+    } else if (tab === 'activity') {
+        activityPanel.style.display = 'block';
+        tabActivity.classList.add('active');
+        if (state.focusedAgentId) renderActivityFeed(state.focusedAgentId);
+    } else if (tab === 'notes') {
+        notesPanel.style.display = 'flex';
+        tabNotes.classList.add('active');
+        loadAgentNotesUI();
+    } else if (tab === 'snapshots') {
+        snapshotsPanel.style.display = 'flex';
+        tabSnapshots.classList.add('active');
+        if (state.focusedAgentId) loadSnapshots(state.focusedAgentId);
+    } else if (tab === 'wordcloud') {
+        if (wordcloudPanel) wordcloudPanel.style.display = 'flex';
+        if (tabWordCloud) tabWordCloud.classList.add('active');
+        refreshWordCloud();
+    } else if (tab === 'messages') {
+        if (messagesPanel) messagesPanel.style.display = 'flex';
+        if (tabMessages) tabMessages.classList.add('active');
+        loadMessages();
+    } else {
+        scratchpad.style.display = '';
+        tabScratchpad.classList.add('active');
+        if (_scratchpadProjectId) refreshScratchpad();
+    }
+}
+
+function refreshWordCloud() {
+    const container = document.getElementById('wordCloudContent');
+    if (!container) return;
+    const agent = state.agents.get(state.focusedAgentId);
+    if (!agent) { container.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px">No agent selected</div>'; return; }
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    if (lines.length === 0) { container.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px">No output yet</div>'; return; }
+    // Strip ANSI codes and extract words
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const stopWords = new Set(['the','a','an','is','are','was','were','be','been','being','have','has','had','do','does','did','will','would','could','should','may','might','shall','can','need','dare','to','of','in','for','on','with','at','by','from','as','into','through','during','before','after','above','below','between','out','off','over','under','again','further','then','once','here','there','when','where','why','how','all','each','every','both','few','more','most','other','some','such','no','nor','not','only','own','same','so','than','too','very','just','because','but','and','or','if','while','that','this','it','its','they','them','their','his','her','he','she','we','you','i','me','my','your','our','us','what','which','who','whom','these','those','am','get','got','let','make','like','also','about','up','one','two','new','now','old','see','way','may','said','file','line','use','used','using']);
+    const wordCounts = {};
+    const text = lines.join(' ').replace(ansiRe, '');
+    // Extract meaningful words (3+ chars, alphanumeric + common code chars)
+    const words = text.match(/[a-zA-Z_][a-zA-Z0-9_.-]{2,}/g) || [];
+    for (const w of words) {
+        const lower = w.toLowerCase();
+        if (stopWords.has(lower)) continue;
+        if (/^[0-9.]+$/.test(w)) continue;
+        wordCounts[lower] = (wordCounts[lower] || 0) + 1;
+    }
+    // Sort by frequency and take top 60
+    const sorted = Object.entries(wordCounts).sort((a, b) => b[1] - a[1]).slice(0, 60);
+    if (sorted.length === 0) { container.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px">No significant words found</div>'; return; }
+    const maxCount = sorted[0][1];
+    const minCount = sorted[sorted.length - 1][1];
+    const colors = ['#6366F1', '#8B5CF6', '#EC4899', '#F97316', '#EAB308', '#22C55E', '#06B6D4', '#3B82F6'];
+    container.innerHTML = sorted.map(([word, count]) => {
+        const ratio = maxCount === minCount ? 0.5 : (count - minCount) / (maxCount - minCount);
+        const size = 10 + Math.round(ratio * 22);
+        const opacity = 0.5 + ratio * 0.5;
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        return `<span class="wc-word" style="font-size:${size}px;color:${color};opacity:${opacity}" title="${word}: ${count} occurrences">${word}</span>`;
+    }).join('');
+}
+
+async function loadSnapshots(agentId) {
+    const container = document.getElementById('snapshotsListContent');
+    if (!container) return;
+    container.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px;padding:16px;text-align:center">Loading snapshots...</div>';
+    try {
+        const res = await apiFetch(`/api/agents/${agentId}/snapshots`);
+        const data = await res.json();
+        if (!data.snapshots || data.snapshots.length === 0) {
+            container.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px;padding:16px;text-align:center">No snapshots yet. Snapshots are auto-captured on errors, waiting states, and completion.</div>';
+            return;
+        }
+        container.innerHTML = data.snapshots.map(snap => {
+            const triggerColors = { error: 'var(--danger)', waiting: 'var(--warning)', complete: 'var(--success)', manual: 'var(--accent)' };
+            const color = triggerColors[snap.trigger] || 'var(--text-tertiary)';
+            const time = snap.created_at ? new Date(snap.created_at).toLocaleTimeString() : '?';
+            const preview = (snap.output_tail || '').split('\n').slice(-5).map(l => escapeHtml(l)).join('<br>');
+            return `<div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:8px;padding:10px 12px;margin-bottom:6px;cursor:pointer" onclick="this.querySelector('.snap-preview').style.display=this.querySelector('.snap-preview').style.display==='none'?'block':'none'">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                    <span style="background:${color};color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:4px;letter-spacing:0.5px">${escapeHtml(snap.trigger)}</span>
+                    <span style="font-size:11px;color:var(--text-secondary);font-weight:600">${escapeHtml(snap.status)}</span>
+                    <span style="font-size:10px;color:var(--text-tertiary);margin-left:auto;font-family:var(--font-mono)">${time}</span>
+                </div>
+                <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">${escapeHtml(snap.summary || 'No summary')}</div>
+                <div style="font-size:10px;color:var(--text-tertiary);display:flex;gap:8px">
+                    <span>${snap.line_count} lines</span>
+                    <span>ctx: ${(snap.context_pct * 100).toFixed(1)}%</span>
+                </div>
+                <div class="snap-preview" style="display:none;margin-top:8px;padding:8px;background:var(--bg-page);border-radius:4px;font-family:var(--font-mono);font-size:10px;line-height:1.4;color:var(--text-secondary);max-height:120px;overflow-y:auto;white-space:pre-wrap">${preview}</div>
+            </div>`;
+        }).reverse().join('');
+    } catch (e) {
+        container.innerHTML = '<div style="color:var(--danger);font-size:12px;padding:16px;text-align:center">Failed to load snapshots</div>';
+    }
+}
+
+async function createManualSnapshot() {
+    if (!state.focusedAgentId) return;
+    try {
+        const res = await apiFetch(`/api/agents/${state.focusedAgentId}/snapshots`, { method: 'POST' });
+        if (res.ok) {
+            showToast('Snapshot created', 'success');
+            loadSnapshots(state.focusedAgentId);
+        } else {
+            showToast('Failed to create snapshot', 'error');
+        }
+    } catch (e) {
+        showToast('Network error', 'error');
+    }
+}
+
+function loadAgentNotesUI() {
+    if (!state.focusedAgentId) return;
+    const agent = state.agents.get(state.focusedAgentId);
+    if (!agent) return;
+    document.getElementById('agentNotesTextarea').value = agent.notes || '';
+    renderAgentTags(agent.tags || []);
+}
+
+function renderAgentTags(tags) {
+    const container = document.getElementById('agentTagsContainer');
+    if (!tags || tags.length === 0) {
+        container.innerHTML = '<span style="font-size:11px;color:var(--text-tertiary)">No tags yet</span>';
+        return;
+    }
+    container.innerHTML = tags.map((tag, i) =>
+        `<span class="agent-tag-chip">${escapeHtml(tag)}<span class="tag-remove" data-tag-idx="${i}">&times;</span></span>`
+    ).join('');
+    container.querySelectorAll('.tag-remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = parseInt(btn.dataset.tagIdx, 10);
+            const agent = state.agents.get(state.focusedAgentId);
+            if (!agent) return;
+            const newTags = [...(agent.tags || [])];
+            newTags.splice(idx, 1);
+            agent.tags = newTags;
+            renderAgentTags(newTags);
+            apiFetch(`/api/agents/${state.focusedAgentId}/tags`, {
+                method: 'PUT', body: JSON.stringify({ tags: newTags })
+            }).catch(() => showToast('Failed to save tags', 'error'));
+        });
+    });
+}
+
+function addAgentTag() {
+    const input = document.getElementById('agentTagInput');
+    const tag = input.value.trim().toLowerCase();
+    if (!tag || !state.focusedAgentId) return;
+    const agent = state.agents.get(state.focusedAgentId);
+    if (!agent) return;
+    const tags = [...(agent.tags || [])];
+    if (tags.includes(tag)) { input.value = ''; return; }
+    if (tags.length >= 20) { showToast('Maximum 20 tags', 'warning'); return; }
+    tags.push(tag);
+    agent.tags = tags;
+    input.value = '';
+    renderAgentTags(tags);
+    apiFetch(`/api/agents/${state.focusedAgentId}/tags`, {
+        method: 'PUT', body: JSON.stringify({ tags })
+    }).catch(() => showToast('Failed to save tags', 'error'));
+}
+
+async function saveAgentNotes() {
+    if (!state.focusedAgentId) return;
+    const notes = document.getElementById('agentNotesTextarea').value;
+    const agent = state.agents.get(state.focusedAgentId);
+    if (agent) agent.notes = notes;
+    await apiFetch(`/api/agents/${state.focusedAgentId}/notes`, {
+        method: 'PUT', body: JSON.stringify({ notes })
+    });
+    showToast('Notes saved', 'success');
+}
+
+async function refreshScratchpad() {
+    if (!_scratchpadProjectId) return;
+    const entries = await loadScratchpad(_scratchpadProjectId);
+    renderScratchpadTab(entries);
+}
+
+// ── Activity Feed ──
+
+const ACTIVITY_PATTERNS = [
+    // Claude Code tool-call syntax
+    { pattern: /Read\(\s*["']?([^"'\s,)]+)/, iconKey: 'file-code', label: line => { const m = line.match(/Read\(\s*["']?([^"'\s,)]+)/); return `Read ${m?.[1] || 'file'}`; }, cat: 'files' },
+    { pattern: /(?:Edit|Write)\(\s*["']?([^"'\s,)]+)/, iconKey: 'edit', label: line => { const m = line.match(/(?:Edit|Write)\(\s*["']?([^"'\s,)]+)/); return `Edited ${m?.[1] || 'file'}`; }, cat: 'files' },
+    { pattern: /(?:Glob|Grep|LS)\(/, iconKey: 'search', label: () => 'Searching codebase', cat: 'search' },
+    { pattern: /Bash\(\s*["']?(.{1,60})/, iconKey: 'terminal', label: line => { const m = line.match(/Bash\(\s*["']?(.{1,60})/); return `$ ${m?.[1]?.replace(/["'].*/, '') || 'command'}`; }, cat: 'commands' },
+    // Natural language output patterns
+    { pattern: /Reading\s+(\S+)/i, iconKey: 'file-code', label: line => { const m = line.match(/Reading\s+(\S+)/i); return `Read ${m?.[1] || 'file'}`; }, cat: 'files' },
+    { pattern: /(?:Editing|Writing|Wrote)\s+(\S+)/i, iconKey: 'edit', label: line => { const m = line.match(/(?:Editing|Writing|Wrote)\s+(\S+)/i); return `Edited ${m?.[1] || 'file'}`; }, cat: 'files' },
+    { pattern: /(?:Checking|Auditing|Reviewing)\s+(.+)/i, iconKey: 'scan-search', label: line => { const m = line.match(/(?:Checking|Auditing|Reviewing)\s+(.+)/i); return `Checking ${m?.[1]?.replace(/\.\.\.$/, '').slice(0, 50) || ''}`; }, cat: 'search' },
+    { pattern: /Scanning\s+(.{1,50})/i, iconKey: 'search', label: line => { const m = line.match(/Scanning\s+(.{1,50})/i); return `Scanning ${m?.[1]?.replace(/\.\.\..*/, '') || ''}`; }, cat: 'search' },
+    { pattern: /Running\s+(prettier|linter|eslint|lint|tests?|build)\b/i, iconKey: 'terminal', label: line => { const m = line.match(/Running\s+(\S+(?:\s+\S+)?)/i); return `$ ${m?.[1] || 'command'}`; }, cat: 'commands' },
+    { pattern: /Found\s+(\d+)\s+(?:potential\s+)?(.{1,40})/i, iconKey: 'alert-triangle', label: line => { const m = line.match(/Found\s+(\d+)\s+(?:potential\s+)?(.{1,40})/i); return `Found ${m?.[1]} ${m?.[2]?.replace(/\s+in\s+.*/, '') || 'issues'}`; }, cat: 'errors' },
+    // Test results
+    { pattern: /(\d+)\s+(?:tests?\s+)?pass(?:ed|ing)?/i, iconKey: 'circle-check', label: line => { const m = line.match(/(\d+)\s+(?:tests?\s+)?pass/i); return `${m?.[1] || ''} tests passed`; }, cat: 'tests' },
+    { pattern: /(\d+)\s+(?:tests?\s+)?fail(?:ed|ing)?/i, iconKey: 'circle-alert', label: line => { const m = line.match(/(\d+)\s+(?:tests?\s+)?fail/i); return `${m?.[1] || ''} tests failed`; }, cat: 'tests' },
+    // Status patterns
+    { pattern: /<thinking>|Let me (?:think|analyze|plan)|Planning approach/i, iconKey: 'brain', label: () => 'Thinking...', cat: 'thinking' },
+    { pattern: /(?:error|exception|traceback)/i, iconKey: 'circle-alert', label: line => { const m = line.match(/(?:Error|Exception|Traceback)[:\s]*(.{0,50})/i); return m?.[1]?.trim() || 'Error detected'; }, cat: 'errors' },
+    { pattern: /(?:installing|npm install|pip install|yarn add)/i, iconKey: 'package', label: line => { const m = line.match(/(?:installing|npm install|pip install|yarn add)\s+(.{0,40})/i); return `Installing ${m?.[1] || 'dependencies'}`; }, cat: 'commands' },
+    { pattern: /(?:changes committed|git commit)/i, iconKey: 'git-branch', label: () => 'Committed changes', cat: 'git' },
+    { pattern: /Tool Result:/, iconKey: 'wrench', label: () => 'Tool executed', cat: 'tools' },
+    // Check results
+    { pattern: /[✓✔]\s+No\s+(.{1,40})/i, iconKey: 'circle-check', label: line => { const m = line.match(/[✓✔]\s+(.{1,50})/); return m?.[1] || 'Check passed'; }, cat: 'tests' },
+    { pattern: /[△⚠]\s+(\d+)\s+(.{1,40})/i, iconKey: 'alert-triangle', label: line => { const m = line.match(/[△⚠]\s+(.{1,50})/); return m?.[1] || 'Warning'; }, cat: 'errors' },
+];
+
+const _activityCache = new Map(); // agentId → { lastIdx, events[] }
+
+function parseActivityFromOutput(agentId) {
+    const agent = state.agents.get(agentId);
+    if (!agent) return [];
+
+    const lines = agent._outputBuffer || [];
+    let cache = _activityCache.get(agentId);
+    if (!cache) { cache = { lastIdx: 0, events: [] }; _activityCache.set(agentId, cache); }
+
+    // Only scan new lines
+    const newLineCount = lines.length - cache.lastIdx;
+    const isBulkScan = newLineCount > 10; // bulk load (API fetch / initial sync)
+    for (let i = cache.lastIdx; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line || !line.trim()) continue;
+        const stripped = line.replace(/\x1b\[[0-9;]*m/g, '');
+
+        for (const pat of ACTIVITY_PATTERNS) {
+            if (pat.pattern.test(stripped)) {
+                cache.events.push({
+                    icon: pat.iconKey,
+                    desc: pat.label(stripped),
+                    raw: stripped.trim().slice(0, 200),
+                    cat: pat.cat,
+                    lineIdx: i,
+                    time: isBulkScan ? null : new Date(), // null = historical (no misleading "just now")
+                });
+                break; // one event per line
+            }
+        }
+    }
+    cache.lastIdx = lines.length;
+    // Cap events to prevent unbounded memory growth on long-running agents
+    if (cache.events.length > 500) cache.events = cache.events.slice(-500);
+    return cache.events;
+}
+
+async function renderActivityFeed(agentId) {
+    const container = document.getElementById('activityFeedContent');
+    const statsEl = document.getElementById('activityStats');
+    const agent = state.agents.get(agentId);
+
+    // Try server structured data first, fall back to client-side parsing
+    let serverActivity = agent?._activity;
+    if (!serverActivity) {
+        try {
+            const resp = await apiFetch(`/api/agents/${agentId}/activity`);
+            if (resp.ok) {
+                serverActivity = await resp.json();
+                if (agent) agent._activity = serverActivity;
+            }
+        } catch (e) { console.debug('Activity fetch unavailable, using client parsing'); }
+    }
+
+    // Build unified event list from server structured data
+    const structuredEvents = [];
+    if (serverActivity) {
+        const toolIcons = { Read: 'file-code', Edit: 'edit', Write: 'edit', Bash: 'terminal', Glob: 'search', Grep: 'search', LS: 'folder', Task: 'bot', WebFetch: 'globe', WebSearch: 'search', NotebookEdit: 'file-code' };
+        const toolCats = { Read: 'files', Edit: 'files', Write: 'files', Bash: 'commands', Glob: 'search', Grep: 'search', LS: 'files', Task: 'tools', WebFetch: 'search', WebSearch: 'search', NotebookEdit: 'files' };
+        for (const t of (serverActivity.tool_invocations || [])) {
+            structuredEvents.push({
+                icon: toolIcons[t.tool] || 'wrench',
+                desc: `${t.tool}(${t.args?.slice(0, 60) || ''})`,
+                raw: t.result_snippet || '',
+                cat: toolCats[t.tool] || 'tools',
+                time: null,
+                status: t.result_status
+            });
+        }
+        for (const g of (serverActivity.git_operations || [])) {
+            structuredEvents.push({
+                icon: 'git-branch', desc: `git ${g.operation}: ${g.detail?.slice(0, 50) || ''}`,
+                raw: g.files_affected?.join(', ') || '', cat: 'git', time: null
+            });
+        }
+        for (const t of (serverActivity.test_results || [])) {
+            const parts = [];
+            if (t.passed) parts.push(`${t.passed} passed`);
+            if (t.failed) parts.push(`${t.failed} failed`);
+            if (t.skipped) parts.push(`${t.skipped} skipped`);
+            structuredEvents.push({
+                icon: t.failed > 0 ? 'circle-alert' : 'circle-check',
+                desc: `Tests: ${parts.join(', ')}${t.framework ? ` (${t.framework})` : ''}`,
+                raw: t.coverage_pct ? `Coverage: ${t.coverage_pct}%` : '',
+                cat: 'tests', time: null
+            });
+        }
+    }
+
+    // Merge with client-side parsed events (which have timestamps)
+    const clientEvents = parseActivityFromOutput(agentId);
+    const allEvents = structuredEvents.length > clientEvents.length ? structuredEvents : clientEvents;
+
+    if (!allEvents.length) {
+        container.innerHTML = '<div class="activity-empty">No activity detected yet — events appear as the agent reads, edits, and runs commands</div>';
+        statsEl.innerHTML = '';
+        return;
+    }
+
+    // Stats summary — prefer server summary if available
+    const summary = serverActivity?.summary;
+    if (summary && summary.total_tools > 0) {
+        const toolsByType = summary.tools_by_type || {};
+        const filesByOp = summary.files_by_operation || {};
+        const statParts = [];
+        if (summary.total_tools) statParts.push(`<span class="activity-stat"><span class="label">${icon('wrench',12)} Tools</span>${summary.total_tools}</span>`);
+        if (summary.unique_files) statParts.push(`<span class="activity-stat"><span class="label">${icon('file-text',12)} Files</span>${summary.unique_files}</span>`);
+        if (summary.total_git_ops) statParts.push(`<span class="activity-stat"><span class="label">${icon('git-branch',12)} Git</span>${summary.total_git_ops}</span>`);
+        if (summary.total_test_runs) statParts.push(`<span class="activity-stat"><span class="label">${icon('test-tube',12)} Tests</span>${summary.total_test_runs}</span>`);
+        // Tool breakdown
+        const topTools = Object.entries(toolsByType).sort((a,b) => b[1] - a[1]).slice(0, 5);
+        if (topTools.length) {
+            statParts.push(`<span class="activity-stat-break"></span>`);
+            for (const [tool, count] of topTools) {
+                statParts.push(`<span class="activity-stat minor"><span class="label">${tool}</span>${count}</span>`);
+            }
+        }
+        statsEl.innerHTML = statParts.join('');
+    } else {
+        // Fall back to client-side category counts
+        const cats = {};
+        for (const ev of allEvents) { cats[ev.cat] = (cats[ev.cat] || 0) + 1; }
+        const statLabels = { files: `${icon('file-text',12)} Files`, commands: `${icon('terminal',12)} Cmds`, tests: `${icon('test-tube',12)} Tests`, errors: `${icon('circle-alert',12)} Errors`, search: `${icon('search',12)} Search`, thinking: `${icon('brain',12)} Think`, git: `${icon('git-branch',12)} Git`, tools: `${icon('wrench',12)} Tools` };
+        statsEl.innerHTML = Object.entries(cats).map(([cat, count]) =>
+            `<span class="activity-stat"><span class="label">${statLabels[cat] || cat}</span>${count}</span>`
+        ).join('');
+    }
+
+    // Events in reverse chronological order (most recent first), limited to 200
+    const recent = allEvents.slice(-200).reverse();
+    container.innerHTML = recent.map(ev => {
+        const statusCls = ev.status === 'error' ? ' activity-error' : ev.status === 'success' ? ' activity-success' : '';
+        return `<div class="activity-event${statusCls}" onclick="this.classList.toggle('expanded')">` +
+        `<span class="activity-icon">${icon(ev.icon, 14)}</span>` +
+        `<div class="activity-body">` +
+        `<div class="activity-desc">${escapeHtml(ev.desc)}</div>` +
+        `<div class="activity-time">${formatActivityTime(ev.time)}</div>` +
+        `${ev.raw ? `<div class="activity-raw">${escapeHtml(ev.raw)}</div>` : ''}` +
+        `</div></div>`;
+    }).join('');
+}
+
+function formatActivityTime(date) {
+    if (!date) return ''; // historical event (bulk-loaded) — no misleading timestamp
+    const now = new Date();
+    const diff = Math.floor((now - date) / 1000);
+    if (diff < 5) return 'just now';
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+async function addScratchpadEntry() {
+    const container = document.getElementById('scratchpadContent');
+    // Remove existing inline form if any
+    container.querySelectorAll('.scratchpad-inline-form').forEach(f => f.remove());
+    const form = document.createElement('div');
+    form.className = 'scratchpad-inline-form';
+    form.innerHTML = `
+        <input type="text" placeholder="Key" id="spNewKey">
+        <input type="text" placeholder="Value" id="spNewVal" style="flex:2">
+        <button style="background:var(--accent);color:white" onclick="saveScratchpadEntry()">Save</button>
+        <button style="background:var(--bg-surface);color:var(--text-tertiary)" onclick="this.parentElement.remove()">Cancel</button>
+    `;
+    container.prepend(form);
+    form.querySelector('#spNewKey').focus();
+    // Allow Enter to save
+    form.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveScratchpadEntry(); });
+}
+
+async function saveScratchpadEntry() {
+    const key = document.getElementById('spNewKey')?.value.trim();
+    const value = document.getElementById('spNewVal')?.value.trim();
+    if (!key) { showToast('Key is required', 'error'); return; }
+    try {
+        const res = await apiFetch('/api/scratchpad', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_id: _scratchpadProjectId, key, value, set_by: 'dashboard' }),
+        });
+        if (res.ok) {
+            showToast(`Scratchpad entry saved: ${key}`, 'success');
+            refreshScratchpad();
+        } else {
+            const err = await res.json();
+            showToast(err.error || 'Failed to save', 'error');
+        }
+    } catch (e) { showToast('Failed to save entry', 'error'); }
+}
+
+async function editScratchpadEntry(key, currentValue) {
+    const newValue = await promptInput(`Edit "${key}"`, 'Enter new value...', { defaultValue: currentValue, iconKey: 'edit', confirmText: 'Update' });
+    if (newValue === null) return;
+    try {
+        const res = await apiFetch('/api/scratchpad', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_id: _scratchpadProjectId, key, value: newValue, set_by: 'dashboard' }),
+        });
+        if (res.ok) {
+            showToast(`Updated: ${key}`, 'success');
+            refreshScratchpad();
+        } else {
+            showToast('Failed to update', 'error');
+        }
+    } catch (e) { showToast('Failed to update entry', 'error'); }
+}
+
+async function deleteScratchpadEntry(key) {
+    const confirmed = await confirmAction('Delete Entry', `Delete scratchpad entry "${key}"?`, 'Delete');
+    if (!confirmed) return;
+    try {
+        const res = await apiFetch(`/api/scratchpad/${encodeURIComponent(key)}?project_id=${encodeURIComponent(_scratchpadProjectId)}`, {
+            method: 'DELETE',
+        });
+        if (res.ok) {
+            showToast(`Deleted: ${key}`, 'success');
+            refreshScratchpad();
+        } else {
+            showToast('Failed to delete', 'error');
+        }
+    } catch (e) { showToast('Failed to delete entry', 'error'); }
+}
+
+// ── Init ──
+
+// Restore view mode
+if (state.viewMode === 'table') {
+    document.getElementById('agentGrid').style.display = 'none';
+    document.getElementById('agentTable').style.display = '';
+    document.getElementById('viewGridBtn').classList.remove('active');
+    document.getElementById('viewTableBtn').classList.add('active');
+} else if (state.viewMode === 'compact') {
+    document.getElementById('agentGrid').classList.add('compact-mode');
+    document.getElementById('viewGridBtn').classList.remove('active');
+    document.getElementById('viewCompactBtn').classList.add('active');
+}
+
+// Add timeline + pipeline + new features to command palette
+PALETTE_ACTIONS.push(
+    { icon: 'clipboard', label: 'Activity Timeline', shortcut: '⌘T', action: () => { closePalette(); openTimeline(); } },
+    { icon: 'git-merge', label: 'Pipeline Graph', shortcut: '', action: () => { closePalette(); openPipeline(); } },
+    { icon: 'bar-chart-3', label: 'Fleet Analytics', shortcut: '', action: () => { closePalette(); openAnalytics(); }, section: 'view' },
+    { icon: 'alert-triangle', label: 'File Conflicts', shortcut: '', action: () => { closePalette(); openConflicts(); }, section: 'view' },
+    { icon: 'file-text', label: 'Event Log', shortcut: '', action: () => { closePalette(); openEventLog(); }, section: 'view' },
+    { icon: 'search', label: 'Search All Outputs', shortcut: '⌘⇧F', action: () => { closePalette(); openGlobalSearch(); }, section: 'view' },
+    { icon: 'table', label: 'Toggle Table View', shortcut: '', action: () => { closePalette(); setViewMode(state.viewMode === 'table' ? 'grid' : 'table'); }, section: 'view' },
+    { icon: 'list', label: 'Toggle Compact View', shortcut: '', action: () => { closePalette(); setViewMode(state.viewMode === 'compact' ? 'grid' : 'compact'); }, section: 'view' },
+    { icon: 'columns', label: 'Split Terminal View', shortcut: '', action: () => { closePalette(); openSplitView(); }, section: 'view' },
+    { icon: 'git-merge', label: 'Diff Compare Agents', shortcut: '', action: () => { closePalette(); openCompare(); setTimeout(() => setCompareMode('diff'), 100); }, section: 'view' },
+    { icon: 'hash', label: 'Go to Line', shortcut: '⌘G', action: () => { closePalette(); if (state.view === 'deep') openGoToLine(); else showToast('Open an agent first', 'info'); }, section: 'view' },
+    { icon: 'save', label: 'Manage Presets', shortcut: '', action: () => { closePalette(); openSettings(); }, section: 'config' },
+    { icon: 'file-text', label: 'View Scratchpad', shortcut: '', action: () => { closePalette(); if (state.focusedAgentId) { switchDeepTab('scratchpad'); } else { showToast('Open an agent first to view its scratchpad', 'info'); } }, section: 'view' },
+);
+
+// Override palette rendering for improved fuzzy scoring (E1)
+const _origRenderPalette = renderPaletteItems;
+renderPaletteItems = function(query) {
+    if (!query || query.length < 1) { _origRenderPalette(query); return; }
+    const list = document.getElementById('paletteList');
+    list.innerHTML = '';
+
+    const allItems = [...PALETTE_ACTIONS];
+    for (const [id, agent] of state.agents) {
+        allItems.push(
+            { icon: roleIcon(agent.role || agent, 14), label: `View: ${agent.name}`, shortcut: '', action: () => { closePalette(); openDeepView(id); }, section: 'agents' },
+            { icon: 'x', label: `Kill: ${agent.name}`, shortcut: '', action: () => { closePalette(); killAgent(id); }, section: 'agents' },
+        );
+    }
+
+    // Score and sort by fuzzy relevance
+    const scored = allItems.map(item => ({ item, ...fuzzyScore(query, item.label) }))
+        .filter(s => s.score > 0)
+        .sort((a, b) => b.score - a.score);
+
+    let lastSection = '';
+    scored.forEach((s, i) => {
+        if (s.item.section && s.item.section !== lastSection) {
+            const label = document.createElement('div');
+            label.className = 'palette-section-label';
+            label.textContent = s.item.section === 'agents' ? 'Agents' : s.item.section;
+            list.appendChild(label);
+            lastSection = s.item.section;
+        }
+        const el = document.createElement('div');
+        el.className = 'palette-item' + (i === state.paletteIndex ? ' selected' : '');
+        // Highlight matched characters
+        let labelHtml = '';
+        const matchSet = new Set(s.matches);
+        for (let ci = 0; ci < s.item.label.length; ci++) {
+            if (matchSet.has(ci)) labelHtml += `<mark>${s.item.label[ci]}</mark>`;
+            else labelHtml += s.item.label[ci];
+        }
+        el.innerHTML = `
+            <span class="palette-item-icon">${resolveItemIcon(s.item, 16)}</span>
+            <span class="palette-item-label">${labelHtml}</span>
+            ${s.item.shortcut ? `<span class="palette-item-shortcut">${s.item.shortcut}</span>` : ''}
+        `;
+        el.onclick = () => s.item.action();
+        el._action = s.item.action;
+        list.appendChild(el);
+    });
+};
+
+// Populate presets on spawn dialog open
+const _origOpenSpawn = openSpawnDialog;
+openSpawnDialog = function() {
+    _origOpenSpawn();
+    populatePresetSelector();
+};
+
+// Smart card sorting: pinned first, then by selected sort mode
+const _statusPriority = { error: 0, waiting: 1, working: 2, planning: 3, reading: 3, spawning: 4, idle: 5, paused: 6, complete: 7 };
+const _origRenderGrid = renderAgentGrid;
+renderAgentGrid = function() {
+    const entries = [...state.agents.entries()];
+    entries.sort((a, b) => {
+        // Pinned always first
+        const pa = state.pinnedAgents.has(a[0]) ? 0 : 1;
+        const pb = state.pinnedAgents.has(b[0]) ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+
+        const agA = a[1], agB = b[1];
+        switch (state.cardSort) {
+            case 'priority': {
+                const sa = _statusPriority[agA.status] ?? 5;
+                const sb = _statusPriority[agB.status] ?? 5;
+                if (sa !== sb) return sa - sb;
+                return (agB.updated_at || '').localeCompare(agA.updated_at || '');
+            }
+            case 'name':
+                return (agA.name || '').localeCompare(agB.name || '');
+            case 'status': {
+                const sa = _statusPriority[agA.status] ?? 5;
+                const sb = _statusPriority[agB.status] ?? 5;
+                return sa - sb;
+            }
+            case 'cost':
+                return (agB.estimated_cost_usd || 0) - (agA.estimated_cost_usd || 0);
+            case 'age':
+                return (agA.created_at || '').localeCompare(agB.created_at || '');
+            case 'output_rate': {
+                const rateA = agA.output_rate || (agA._outputHistory?.slice(-5).reduce((s, v) => s + v, 0) || 0);
+                const rateB = agB.output_rate || (agB._outputHistory?.slice(-5).reduce((s, v) => s + v, 0) || 0);
+                return rateB - rateA;
+            }
+            case 'context':
+                return (agB.context_pct || 0) - (agA.context_pct || 0);
+            case 'errors': {
+                const errA = _countAgentErrors(agA);
+                const errB = _countAgentErrors(agB);
+                if (errA !== errB) return errB - errA;
+                return (agB.updated_at || '').localeCompare(agA.updated_at || '');
+            }
+            case 'manual': {
+                const order = state.cardOrder;
+                const ia = order.indexOf(a[0]);
+                const ib = order.indexOf(b[0]);
+                // Unknown agents go to end in creation order
+                if (ia >= 0 && ib >= 0) return ia - ib;
+                if (ia >= 0) return -1;
+                if (ib >= 0) return 1;
+                return 0;
+            }
+            default:
+                return 0;
+        }
+    });
+    // Re-insert sorted entries without replacing the Map reference
+    state.agents.clear();
+    for (const [k, v] of entries) state.agents.set(k, v);
+    _origRenderGrid();
+};
+
+let _allPaused = false;
+async function togglePauseAll() {
+    const agents = [...state.agents.values()];
+    const btn = document.getElementById('pauseAllBtn');
+    if (_allPaused) {
+        // Resume all paused agents
+        const paused = agents.filter(a => a.status === 'paused');
+        if (paused.length === 0) { showToast('No paused agents to resume', 'info'); return; }
+        let resumeErrors = 0;
+        for (const a of paused) {
+            try { await apiFetch(`/api/agents/${a.id}/resume`, { method: 'POST' }); } catch (e) { resumeErrors++; }
+        }
+        _allPaused = false;
+        btn.textContent = '⏸ Pause All';
+        if (resumeErrors > 0) showToast(`Resumed ${paused.length - resumeErrors}/${paused.length} agents (${resumeErrors} failed)`, 'warning');
+        else showToast(`Resumed ${paused.length} agents`, 'success');
+    } else {
+        // Pause all active agents
+        const active = agents.filter(a => ['working', 'planning', 'reading', 'idle'].includes(a.status));
+        if (active.length === 0) { showToast('No active agents to pause', 'info'); return; }
+        let pauseErrors = 0;
+        for (const a of active) {
+            try { await apiFetch(`/api/agents/${a.id}/pause`, { method: 'POST' }); } catch (e) { pauseErrors++; }
+        }
+        _allPaused = true;
+        btn.textContent = '▶ Resume All';
+        if (pauseErrors > 0) showToast(`Paused ${active.length - pauseErrors}/${active.length} agents (${pauseErrors} failed)`, 'warning');
+        else showToast(`Paused ${active.length} agents`, 'warning');
+    }
+}
+
+function _countAgentErrors(agent) {
+    if (agent.error_count) return agent.error_count;
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    let count = 0;
+    for (const l of lines) {
+        if (/\b(error|exception|traceback|FAIL(ED)?|ERROR|panic|fatal)\b/i.test(l.replace(ansiRe, ''))) count++;
+    }
+    return count;
+}
+
+function setCardSort(mode) {
+    state.cardSort = mode;
+    localStorage.setItem('ashlr_card_sort', mode);
+    scheduleRender();
+    showToast(`Sorting by ${mode}`, 'info');
+}
+
+// Settings: populate alert thresholds + auto-pilot + load presets
+const _origOpenSettings = openSettings;
+openSettings = function() {
+    _origOpenSettings();
+    const cfg = state.config;
+    document.getElementById('setHealthLow').value = cfg.health_low_threshold ?? 0.3;
+    document.getElementById('setHealthCritical').value = cfg.health_critical_threshold ?? 0.1;
+    document.getElementById('setStallTimeout').value = cfg.stall_timeout_minutes ?? 5;
+    document.getElementById('setHungTimeout').value = cfg.hung_timeout_minutes ?? 10;
+    document.getElementById('setCostBudget').value = cfg.cost_budget_usd ?? 0;
+    document.getElementById('setCostAutoPause').classList.toggle('active', !!cfg.cost_budget_auto_pause);
+    // Auto-pilot toggles
+    document.getElementById('setAutoRestartStall').classList.toggle('active', cfg.auto_restart_on_stall !== false);
+    document.getElementById('setAutoApproveEnabled').classList.toggle('active', !!cfg.auto_approve_enabled);
+    document.getElementById('setAutoApprovePatterns').value = (cfg.auto_approve_patterns || []).join('\n');
+    document.getElementById('setAutoPauseCritical').classList.toggle('active', !!cfg.auto_pause_on_critical_health);
+    // Notification event prefs
+    const notifPrefs = safeParseJSON('ashlr_notif_events', {});
+    document.getElementById('notifEvtNeedsInput').checked = notifPrefs.agent_needs_input !== false;
+    document.getElementById('notifEvtError').checked = notifPrefs.agent_error !== false;
+    document.getElementById('notifEvtCompleted').checked = !!notifPrefs.agent_completed;
+    document.getElementById('notifEvtRestartExhausted').checked = notifPrefs.agent_restart_exhausted !== false;
+    if (typeof loadSettingsPresets === 'function') loadSettingsPresets();
+    if (typeof loadWebhooks === 'function') loadWebhooks();
+};
+
+// Settings: include alert thresholds + auto-pilot in save
+saveSettings = async function() {
+    const btn = document.querySelector('#settingsOverlay .btn-primary');
+    await withLoading(btn, async () => {
+        const payload = {
+            max_agents: parseInt(document.getElementById('setMaxAgents').value),
+            default_role: document.getElementById('setDefaultRole').value,
+            default_working_dir: document.getElementById('setDefaultDir').value,
+            default_backend: document.getElementById('setDefaultBackend').value,
+            output_capture_interval: parseFloat(document.getElementById('setOutputInterval').value),
+            memory_limit_mb: parseInt(document.getElementById('setMemoryLimit').value),
+            llm_enabled: document.getElementById('setLlmEnabled').classList.contains('active'),
+            llm_model: document.getElementById('setLlmModel').value,
+            llm_summary_interval: parseFloat(document.getElementById('setLlmInterval').value),
+            idle_agent_ttl: parseInt(document.getElementById('setIdleTtl').value),
+            voice_feedback: document.getElementById('setVoiceSounds').classList.contains('active'),
+            health_low_threshold: parseFloat(document.getElementById('setHealthLow').value),
+            health_critical_threshold: parseFloat(document.getElementById('setHealthCritical').value),
+            stall_timeout_minutes: parseInt(document.getElementById('setStallTimeout').value),
+            hung_timeout_minutes: parseInt(document.getElementById('setHungTimeout').value),
+            cost_budget_usd: parseFloat(document.getElementById('setCostBudget').value) || 0,
+            cost_budget_auto_pause: document.getElementById('setCostAutoPause').classList.contains('active'),
+            auto_restart_on_stall: document.getElementById('setAutoRestartStall').classList.contains('active'),
+            auto_approve_enabled: document.getElementById('setAutoApproveEnabled').classList.contains('active'),
+            auto_approve_patterns: document.getElementById('setAutoApprovePatterns').value.split('\n').map(s => s.trim()).filter(Boolean),
+            auto_pause_on_critical_health: document.getElementById('setAutoPauseCritical').classList.contains('active'),
+        };
+        // Save notification event prefs to localStorage
+        localStorage.setItem('ashlr_notif_events', JSON.stringify({
+            agent_needs_input: document.getElementById('notifEvtNeedsInput').checked,
+            agent_error: document.getElementById('notifEvtError').checked,
+            agent_completed: document.getElementById('notifEvtCompleted').checked,
+            agent_restart_exhausted: document.getElementById('notifEvtRestartExhausted').checked,
+        }));
+
+        // Validate
+        const errors = [];
+        if (isNaN(payload.max_agents) || payload.max_agents < 1 || payload.max_agents > 100) errors.push(['setMaxAgents', '1-100']);
+        if (isNaN(payload.output_capture_interval) || payload.output_capture_interval < 0.5 || payload.output_capture_interval > 30) errors.push(['setOutputInterval', '0.5-30']);
+        if (isNaN(payload.memory_limit_mb) || payload.memory_limit_mb < 256 || payload.memory_limit_mb > 65536) errors.push(['setMemoryLimit', '256-65536']);
+        if (isNaN(payload.llm_summary_interval) || payload.llm_summary_interval < 3 || payload.llm_summary_interval > 120) errors.push(['setLlmInterval', '3-120']);
+        if (isNaN(payload.idle_agent_ttl) || payload.idle_agent_ttl < 300 || payload.idle_agent_ttl > 86400) errors.push(['setIdleTtl', '300-86400']);
+        if (isNaN(payload.health_low_threshold) || payload.health_low_threshold <= 0 || payload.health_low_threshold > 1) errors.push(['setHealthLow', '0.01-1.0']);
+        if (isNaN(payload.health_critical_threshold) || payload.health_critical_threshold <= 0 || payload.health_critical_threshold > 1) errors.push(['setHealthCritical', '0.01-1.0']);
+        if (isNaN(payload.stall_timeout_minutes) || payload.stall_timeout_minutes < 1 || payload.stall_timeout_minutes > 60) errors.push(['setStallTimeout', '1-60']);
+        if (isNaN(payload.hung_timeout_minutes) || payload.hung_timeout_minutes < 1 || payload.hung_timeout_minutes > 120) errors.push(['setHungTimeout', '1-120']);
+        // Validate auto-approve patterns are valid regex
+        if (payload.auto_approve_patterns.length > 0) {
+            for (const pat of payload.auto_approve_patterns) {
+                try { new RegExp(pat); } catch { errors.push(['setAutoApprovePatterns', `Invalid regex: ${pat}`]); break; }
+            }
+        }
+        document.querySelectorAll('#settingsOverlay .field-error').forEach(e => e.remove());
+        document.querySelectorAll('#settingsOverlay .settings-input').forEach(e => e.style.borderColor = '');
+        if (errors.length) {
+            errors.forEach(([fid, msg]) => {
+                const f = document.getElementById(fid);
+                if (f) { f.style.borderColor = 'var(--danger)'; const e = document.createElement('div'); e.className = 'field-error'; e.style.cssText = 'color:var(--danger);font-size:11px;margin-top:2px'; e.textContent = msg; f.parentElement.appendChild(e); }
+            });
+            showToast('Fix validation errors', 'warning');
+            return;
+        }
+
+        try {
+            const res = await apiFetch('/api/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (res.ok) { state.config = data; updateIntelligenceStatus(); showToast('Settings saved', 'success'); closeSettings(); }
+            else showToast(data.error || 'Failed to save', 'error');
+        } catch (e) { showToast('Failed to save settings', 'error'); }
+    }, 'Saving...');
+};
+
+// Wire drag-and-drop on workflow editor
+const _origEditWf = typeof editWorkflow === 'function' ? editWorkflow : null;
+if (_origEditWf) {
+    const __origEditWf = editWorkflow;
+    editWorkflow = function(wfId) {
+        __origEditWf(wfId);
+        setTimeout(enableWfAgentDragDrop, 100);
+    };
+}
+
+// Add workflow editor fields for on_failure and skip_if (C1)
+const _origBuildWfRow = typeof buildWfAgentRow === 'function' ? buildWfAgentRow : null;
+if (_origBuildWfRow) {
+    const __origBuild = buildWfAgentRow;
+    buildWfAgentRow = function(idx, role, task, dependsOn, extra) {
+        let html = __origBuild(idx, role, task, dependsOn);
+        const onFailure = extra?.on_failure || 'abort';
+        const skipIf = extra?.skip_if || '';
+        const retryCount = extra?.retry_count || 0;
+        // Insert before closing div
+        const insertPoint = html.lastIndexOf('</div>');
+        const extraHtml = `
+            <div style="display:flex;gap:8px;margin-top:6px">
+                <div style="flex:1"><label class="form-label" style="font-size:10px">On failure</label>
+                    <select class="form-input wf-on-failure" data-idx="${idx}" style="font-size:11px;padding:4px 6px">
+                        <option value="abort" ${onFailure === 'abort' ? 'selected' : ''}>Abort</option>
+                        <option value="skip" ${onFailure === 'skip' ? 'selected' : ''}>Skip</option>
+                        <option value="retry" ${onFailure === 'retry' ? 'selected' : ''}>Retry</option>
+                    </select>
+                </div>
+                <div style="flex:1"><label class="form-label" style="font-size:10px">Retry count</label>
+                    <input class="form-input wf-retry-count" data-idx="${idx}" type="number" min="0" max="3" value="${retryCount}" style="font-size:11px;padding:4px 6px">
+                </div>
+            </div>
+            <div style="margin-top:4px"><label class="form-label" style="font-size:10px">Skip if (condition)</label>
+                <input class="form-input wf-skip-if" data-idx="${idx}" type="text" value="${skipIf}" placeholder="prev.status == 'complete'" style="font-size:11px;padding:4px 6px">
+            </div>`;
+        html = html.substring(0, insertPoint) + extraHtml + html.substring(insertPoint);
+        return html;
+    };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Split Pane (Terminal + Notes side-by-side) ──
+// ═══════════════════════════════════════════════════════════════════
+let _splitPaneActive = false;
+let _splitNotesSaveTimer = null;
+
+function toggleSplitPane() {
+    const wrap = document.querySelector('.deep-terminal-wrap');
+    const btn = document.getElementById('toolbarSplitPane');
+    if (!wrap) return;
+    _splitPaneActive = !_splitPaneActive;
+    wrap.classList.toggle('split-active', _splitPaneActive);
+    if (btn) btn.classList.toggle('active', _splitPaneActive);
+    if (_splitPaneActive) {
+        loadSplitNotes();
+        renderSplitAnnotations();
+    }
+}
+
+function closeSplitPane() {
+    _splitPaneActive = false;
+    const wrap = document.querySelector('.deep-terminal-wrap');
+    const btn = document.getElementById('toolbarSplitPane');
+    if (wrap) wrap.classList.remove('split-active');
+    if (btn) btn.classList.remove('active');
+}
+
+function switchSplitTab(tab) {
+    document.querySelectorAll('.split-notes-tab').forEach(t => t.classList.toggle('active', t.dataset.stab === tab));
+    document.getElementById('splitNotesBody').style.display = tab === 'notes' ? '' : 'none';
+    document.getElementById('splitAnnotationsBody').style.display = tab === 'annotations' ? '' : 'none';
+    if (tab === 'annotations') renderSplitAnnotations();
+}
+
+function loadSplitNotes() {
+    const ta = document.getElementById('splitNotesTextarea');
+    if (!ta || !state.focusedAgentId) return;
+    const key = `ashlr_notes_${state.focusedAgentId}`;
+    ta.value = localStorage.getItem(key) || '';
+}
+
+function debounceSplitNoteSave() {
+    clearTimeout(_splitNotesSaveTimer);
+    _splitNotesSaveTimer = setTimeout(() => {
+        const ta = document.getElementById('splitNotesTextarea');
+        if (ta && state.focusedAgentId) {
+            localStorage.setItem(`ashlr_notes_${state.focusedAgentId}`, ta.value);
+        }
+    }, 500);
+}
+
+// Split pane drag divider
+(function() {
+    const divider = document.getElementById('splitDivider');
+    if (!divider) return;
+    let dragging = false, startX = 0, startWidth = 0;
+    divider.addEventListener('mousedown', (e) => {
+        dragging = true; startX = e.clientX;
+        const pane = document.getElementById('splitNotesPane');
+        startWidth = pane.offsetWidth;
+        divider.classList.add('dragging');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const diff = startX - e.clientX;
+        const newWidth = Math.max(180, Math.min(600, startWidth + diff));
+        const wrap = document.querySelector('.deep-terminal-wrap');
+        if (wrap) wrap.style.gridTemplateColumns = `1fr 4px ${newWidth}px`;
+    });
+    document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        divider.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+    });
+})();
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Line Annotations ──
+// ═══════════════════════════════════════════════════════════════════
+function getAnnotations(agentId) {
+    try { return JSON.parse(localStorage.getItem(`ashlr_annot_${agentId}`) || '{}'); }
+    catch { return {}; }
+}
+
+function saveAnnotations(agentId, annots) {
+    localStorage.setItem(`ashlr_annot_${agentId}`, JSON.stringify(annots));
+}
+
+function addLineAnnotation(lineIdx) {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal || !state.focusedAgentId) return;
+    const lines = terminal.querySelectorAll('.terminal-line');
+    if (lineIdx < 0 || lineIdx >= lines.length) return;
+    const line = lines[lineIdx];
+
+    // Remove any existing input
+    terminal.querySelectorAll('.annotation-input-inline').forEach(el => el.remove());
+
+    const form = document.createElement('div');
+    form.className = 'annotation-input-inline';
+    form.innerHTML = '<input type="text" placeholder="Add annotation..." autofocus><button>Add</button>';
+    line.after(form);
+    const input = form.querySelector('input');
+    input.focus();
+
+    const submit = () => {
+        const text = input.value.trim();
+        if (text) {
+            const annots = getAnnotations(state.focusedAgentId);
+            annots[lineIdx] = text;
+            saveAnnotations(state.focusedAgentId, annots);
+            renderLineAnnotation(line, lineIdx, text);
+            renderSplitAnnotations();
+        }
+        form.remove();
+    };
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); submit(); }
+        if (e.key === 'Escape') form.remove();
+    });
+    form.querySelector('button').onclick = submit;
+}
+
+function renderLineAnnotation(lineEl, lineIdx, text) {
+    lineEl.classList.add('has-annotation');
+    // Remove existing annotation display
+    const next = lineEl.nextElementSibling;
+    if (next && next.classList.contains('line-annotation')) next.remove();
+    const annDiv = document.createElement('div');
+    annDiv.className = 'line-annotation';
+    annDiv.dataset.lineIdx = lineIdx;
+    annDiv.innerHTML = `<span class="line-annotation-icon">${icon('edit', 14)}</span> ${escapeHtml(text)} <button class="line-annotation-del" onclick="deleteLineAnnotation(${lineIdx}, this)" data-tip="Remove">✕</button>`;
+    lineEl.after(annDiv);
+}
+
+function deleteLineAnnotation(lineIdx, btn) {
+    if (!state.focusedAgentId) return;
+    const annots = getAnnotations(state.focusedAgentId);
+    delete annots[lineIdx];
+    saveAnnotations(state.focusedAgentId, annots);
+    // Remove from DOM
+    const annDiv = btn.closest('.line-annotation');
+    if (annDiv) {
+        const prevLine = annDiv.previousElementSibling;
+        if (prevLine) prevLine.classList.remove('has-annotation');
+        annDiv.remove();
+    }
+    renderSplitAnnotations();
+}
+
+function applyAnnotationsToTerminal() {
+    if (!state.focusedAgentId) return;
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const annots = getAnnotations(state.focusedAgentId);
+    const lines = terminal.querySelectorAll('.terminal-line');
+    for (const [idx, text] of Object.entries(annots)) {
+        const i = parseInt(idx);
+        if (i >= 0 && i < lines.length) {
+            renderLineAnnotation(lines[i], i, text);
+        }
+    }
+}
+
+function renderSplitAnnotations() {
+    const list = document.getElementById('splitAnnotationsList');
+    if (!list || !state.focusedAgentId) return;
+    const annots = getAnnotations(state.focusedAgentId);
+    const entries = Object.entries(annots).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+    if (entries.length === 0) {
+        list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-tertiary);font-size:11px">No annotations. Double-click a line to add one.</div>';
+        return;
+    }
+    list.innerHTML = entries.map(([idx, text]) =>
+        `<div class="split-annotation-item" onclick="scrollToAnnotation(${idx})">
+            <span class="split-annotation-line">L${parseInt(idx) + 1}</span>
+            <span class="split-annotation-text">${escapeHtml(text)}</span>
+            <button class="split-annotation-del" onclick="event.stopPropagation();deleteLineAnnotation(${idx},this);renderSplitAnnotations()">✕</button>
+        </div>`
+    ).join('');
+}
+
+function scrollToAnnotation(lineIdx) {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const lines = terminal.querySelectorAll('.terminal-line');
+    if (lineIdx >= 0 && lineIdx < lines.length) {
+        lines[lineIdx].scrollIntoView({ block: 'center', behavior: 'smooth' });
+        lines[lineIdx].style.background = 'rgba(99,102,241,0.2)';
+        setTimeout(() => { lines[lineIdx].style.background = ''; }, 2000);
+    }
+    // Switch to terminal tab if not visible
+    if (document.getElementById('deepTerminal').style.display === 'none') {
+        switchDeepTab('terminal');
+    }
+}
+
+// Wire double-click on terminal lines for annotations
+document.getElementById('deepTerminal')?.addEventListener('dblclick', (e) => {
+    const line = e.target.closest('.terminal-line');
+    if (!line) return;
+    const terminal = document.getElementById('deepTerminal');
+    const lines = Array.from(terminal.querySelectorAll('.terminal-line'));
+    const idx = lines.indexOf(line);
+    if (idx >= 0) addLineAnnotation(idx);
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Project Card Grouping ──
+// ═══════════════════════════════════════════════════════════════════
+let _groupByProject = safeParseJSON('ashlr_group_by_project', false);
+const _collapsedGroups = new Set(safeParseJSON('ashlr_collapsed_groups', []));
+
+function toggleGroupByProject() {
+    _groupByProject = !_groupByProject;
+    localStorage.setItem('ashlr_group_by_project', JSON.stringify(_groupByProject));
+    const btn = document.getElementById('groupByProjectBtn');
+    if (btn) btn.classList.toggle('active', _groupByProject);
+    scheduleRender();
+}
+
+function toggleProjectGroup(projectId) {
+    if (_collapsedGroups.has(projectId)) _collapsedGroups.delete(projectId);
+    else _collapsedGroups.add(projectId);
+    localStorage.setItem('ashlr_collapsed_groups', JSON.stringify([..._collapsedGroups]));
+    scheduleRender();
+}
+
+// Patch renderAgentGrid to support project grouping
+const _origRenderAgentGrid = renderAgentGrid;
+renderAgentGrid = function() {
+    if (!_groupByProject || state.agents.size === 0) {
+        // Remove any project group headers
+        document.querySelectorAll('.project-group-header').forEach(h => h.remove());
+        return _origRenderAgentGrid();
+    }
+
+    const grid = document.getElementById('agentGrid');
+    const emptyState = document.getElementById('emptyState');
+    updateCommandTarget();
+    updateFleetSummary();
+    updateConflictBanner();
+
+    emptyState.style.display = 'none';
+
+    // Group agents by project
+    const groups = new Map();
+    for (const [id, agent] of state.agents) {
+        if (state.selectedProjectId && agent.project_id !== state.selectedProjectId) continue;
+        const projKey = agent.project_id || '_ungrouped';
+        if (!groups.has(projKey)) groups.set(projKey, []);
+        groups.get(projKey).push([id, agent]);
+    }
+
+    // Remove old group headers
+    grid.querySelectorAll('.project-group-header').forEach(h => h.remove());
+
+    // Remove cards for deleted agents
+    for (const [id, el] of cardElements) {
+        if (!state.agents.has(id) && !el.classList.contains('exiting')) {
+            el.remove();
+            cardElements.delete(id);
+        }
+    }
+
+    const newCard = document.getElementById('newAgentCard') || createNewAgentCard();
+
+    for (const [projKey, agents] of groups) {
+        // Create or update group header
+        let header = document.createElement('div');
+        header.className = 'project-group-header' + (_collapsedGroups.has(projKey) ? ' collapsed' : '');
+        header.dataset.projectId = projKey;
+        header.onclick = () => toggleProjectGroup(projKey);
+
+        const projName = projKey === '_ungrouped' ? 'Ungrouped' :
+            (state.projects?.find(p => p.id === projKey)?.name || projKey);
+        header.innerHTML = `<span class="project-group-chevron">▾</span><span class="project-group-name">${escapeHtml(projName)}</span><span class="project-group-count">${agents.length}</span>`;
+        grid.insertBefore(header, newCard);
+
+        const collapsed = _collapsedGroups.has(projKey);
+        for (const [id, agent] of agents) {
+            let card = cardElements.get(id);
+            if (!card) {
+                card = createAgentCard(agent);
+                cardElements.set(id, card);
+            }
+            grid.insertBefore(card, newCard);
+            card.style.display = collapsed ? 'none' : '';
+            if (!collapsed) updateAgentCard(card, agent);
+        }
+    }
+
+    if (!newCard.parentNode) grid.appendChild(newCard);
+};
+
+// Init group button state
+if (_groupByProject) {
+    const btn = document.getElementById('groupByProjectBtn');
+    if (btn) btn.classList.add('active');
+}
+
+// Keyboard shortcuts for deep view features
+document.addEventListener('keydown', (e) => {
+    if (state.view !== 'deep') return;
+    if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
+        e.preventDefault();
+        toggleSplitPane();
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'h' && !e.shiftKey) {
+        e.preventDefault();
+        toggleSearchReplace();
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Search & Replace (visual only) ──
+// ═══════════════════════════════════════════════════════════════════
+let _srOriginalContent = null;
+
+function toggleSearchReplace() {
+    const pop = document.getElementById('searchReplacePopover');
+    const btn = document.getElementById('toolbarSearchReplace');
+    if (!pop) return;
+    const isActive = pop.classList.contains('active');
+    pop.classList.toggle('active', !isActive);
+    if (btn) btn.classList.toggle('active', !isActive);
+    if (!isActive) document.getElementById('srFindInput')?.focus();
+}
+
+function previewSearchReplace() {
+    const findVal = document.getElementById('srFindInput')?.value;
+    const countEl = document.getElementById('srCount');
+    if (!findVal) { if (countEl) countEl.textContent = ''; return; }
+    try {
+        const re = new RegExp(findVal, 'gi');
+        const terminal = document.getElementById('deepTerminal');
+        if (!terminal) return;
+        const lines = terminal.querySelectorAll('.terminal-line');
+        let count = 0;
+        lines.forEach(line => {
+            const text = line.textContent || '';
+            const matches = text.match(re);
+            if (matches) count += matches.length;
+        });
+        if (countEl) countEl.textContent = `${count} match${count !== 1 ? 'es' : ''}`;
+    } catch { if (countEl) countEl.textContent = 'invalid regex'; }
+}
+
+function applySearchReplace() {
+    const findVal = document.getElementById('srFindInput')?.value;
+    const replaceVal = document.getElementById('srReplaceInput')?.value || '';
+    if (!findVal) return;
+    // Validate regex before DOM mutation to avoid partial state on invalid patterns
+    let re;
+    try { re = new RegExp(findVal, 'gi'); } catch {
+        const countEl = document.getElementById('srCount');
+        if (countEl) countEl.textContent = 'invalid regex';
+        return;
+    }
+    try {
+        const terminal = document.getElementById('deepTerminal');
+        if (!terminal) return;
+        // Save original content for reset
+        if (!_srOriginalContent) {
+            _srOriginalContent = new Map();
+            terminal.querySelectorAll('.terminal-line').forEach((line, i) => {
+                _srOriginalContent.set(i, line.innerHTML);
+            });
+        }
+        let totalReplaced = 0;
+        terminal.querySelectorAll('.terminal-line').forEach(line => {
+            // Walk text nodes only to avoid breaking HTML structure
+            const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+            const nodes = [];
+            while (walker.nextNode()) nodes.push(walker.currentNode);
+            nodes.forEach(node => {
+                const text = node.textContent;
+                if (re.test(text)) {
+                    re.lastIndex = 0;
+                    const matches = text.match(re);
+                    if (matches) totalReplaced += matches.length;
+                    const span = document.createElement('span');
+                    span.innerHTML = text.replace(re, `<mark style="background:rgba(99,102,241,0.3);color:inherit">${escapeHtml(replaceVal)}</mark>`);
+                    node.parentNode.replaceChild(span, node);
+                }
+            });
+        });
+        const countEl = document.getElementById('srCount');
+        if (countEl) countEl.textContent = `${totalReplaced} replaced`;
+    } catch { /* invalid regex */ }
+}
+
+function clearSearchReplace() {
+    if (!_srOriginalContent) return;
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    terminal.querySelectorAll('.terminal-line').forEach((line, i) => {
+        if (_srOriginalContent.has(i)) line.innerHTML = _srOriginalContent.get(i);
+    });
+    _srOriginalContent = null;
+    const countEl = document.getElementById('srCount');
+    if (countEl) countEl.textContent = 'reset';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Auto-Collapse Long Tool Results ──
+// ═══════════════════════════════════════════════════════════════════
+let _autoCollapseEnabled = false;
+
+function toggleAutoCollapse() {
+    _autoCollapseEnabled = !_autoCollapseEnabled;
+    const btn = document.getElementById('toolbarAutoCollapse');
+    if (btn) btn.classList.toggle('active', _autoCollapseEnabled);
+    if (_autoCollapseEnabled) applyAutoCollapse();
+    else removeAutoCollapse();
+}
+
+function applyAutoCollapse() {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const lines = terminal.querySelectorAll('.terminal-line');
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const toolStartRe = /^(⎿|│|├|└)\s|^\s{2,}\d+│|^   \d+\s+/;
+    let blockStart = -1, blockLines = [];
+
+    const collapseBlock = (start, blockLns) => {
+        if (blockLns.length <= 5) return;
+        // Hide lines 3 through N-1, add expander after line 2
+        for (let j = 3; j < blockLns.length; j++) {
+            blockLns[j].classList.add('tool-result-collapsed');
+            blockLns[j].style.display = 'none';
+        }
+        const expander = document.createElement('div');
+        expander.className = 'tool-result-expander';
+        expander.textContent = `▸ Show ${blockLns.length - 3} more lines`;
+        expander.onclick = function() {
+            blockLns.forEach(l => { l.style.display = ''; l.classList.remove('tool-result-collapsed'); });
+            this.remove();
+        };
+        if (blockLns[2] && blockLns[2].nextSibling) {
+            blockLns[2].parentNode.insertBefore(expander, blockLns[2].nextSibling);
+        }
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+        const text = (lines[i].textContent || '').replace(ansiRe, '');
+        const isToolOutput = toolStartRe.test(text);
+        if (isToolOutput) {
+            if (blockStart === -1) blockStart = i;
+            blockLines.push(lines[i]);
+        } else {
+            if (blockLines.length > 5) collapseBlock(blockStart, blockLines);
+            blockStart = -1;
+            blockLines = [];
+        }
+    }
+    if (blockLines.length > 5) collapseBlock(blockStart, blockLines);
+}
+
+function removeAutoCollapse() {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    terminal.querySelectorAll('.tool-result-collapsed').forEach(el => {
+        el.style.display = '';
+        el.classList.remove('tool-result-collapsed');
+    });
+    terminal.querySelectorAll('.tool-result-expander').forEach(el => el.remove());
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Deep View Shortcuts Reference ──
+// ═══════════════════════════════════════════════════════════════════
+function toggleDeepShortcutsRef() {
+    const pop = document.getElementById('deepShortcutsPopover');
+    if (pop) pop.classList.toggle('active');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── New Lines Diff Highlight ──
+// ═══════════════════════════════════════════════════════════════════
+let _lastOutputLineCount = new Map();
+
+function markNewLines(agentId) {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal || state.focusedAgentId !== agentId) return;
+    const lines = terminal.querySelectorAll('.terminal-line');
+    const prevCount = _lastOutputLineCount.get(agentId) || 0;
+    if (lines.length > prevCount) {
+        for (let i = prevCount; i < lines.length; i++) {
+            lines[i].classList.add('new-line');
+        }
+        // Remove new-line class after animation
+        setTimeout(() => {
+            for (let i = prevCount; i < lines.length; i++) {
+                if (lines[i]) lines[i].classList.remove('new-line');
+            }
+        }, 3000);
+    }
+    _lastOutputLineCount.set(agentId, lines.length);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Card Expanded Preview (Shift+click) ──
+// ═══════════════════════════════════════════════════════════════════
+document.getElementById('agentGrid')?.addEventListener('click', (e) => {
+    if (!e.shiftKey) return;
+    const card = e.target.closest('.agent-card');
+    if (!card) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const agentId = card.dataset.agentId;
+    const agent = state.agents.get(agentId);
+    if (!agent) return;
+
+    // Remove any existing preview
+    document.querySelectorAll('.card-inline-preview').forEach(p => p.remove());
+
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    const last5 = lines.slice(-5);
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const cleaned = last5.map(l => l.replace(ansiRe, '')).join('\n') || '(no output)';
+
+    const preview = document.createElement('div');
+    preview.className = 'card-inline-preview';
+    preview.innerHTML = `<button class="preview-close" onclick="this.parentElement.remove()">✕</button>${escapeHtml(cleaned)}`;
+    card.after(preview);
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Fleet Output Statistics ──
+// ═══════════════════════════════════════════════════════════════════
+function toggleFleetStats() {
+    const panel = document.getElementById('fleetStatsPanel');
+    if (!panel) return;
+    const isActive = panel.classList.contains('active');
+    panel.classList.toggle('active', !isActive);
+    if (!isActive) updateFleetStatsPanel();
+}
+
+function closeFleetStats() {
+    document.getElementById('fleetStatsPanel')?.classList.remove('active');
+}
+
+function updateFleetStatsPanel() {
+    const grid = document.getElementById('fleetStatsGrid');
+    if (!grid) return;
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+
+    let totalLines = 0, totalTools = 0, totalErrors = 0;
+    let mostActive = { name: '-', lines: 0 };
+    let busiestAgent = { name: '-', rate: 0 };
+    const toolCounts = { read: 0, edit: 0, write: 0, bash: 0, grep: 0, glob: 0 };
+    const errorPatterns = {};
+
+    for (const [id, agent] of state.agents) {
+        const lines = agent._outputBuffer || agent.output_lines || [];
+        totalLines += lines.length;
+        if (lines.length > mostActive.lines) { mostActive = { name: agent.name, lines: lines.length }; }
+
+        const rate = agent.output_rate || 0;
+        if (rate > busiestAgent.rate) { busiestAgent = { name: agent.name, rate }; }
+
+        for (const l of lines) {
+            const clean = l.replace(ansiRe, '');
+            if (/\bRead\s*\(/.test(clean)) { toolCounts.read++; totalTools++; }
+            if (/\bEdit\s*\(/.test(clean)) { toolCounts.edit++; totalTools++; }
+            if (/\bWrite\s*\(/.test(clean)) { toolCounts.write++; totalTools++; }
+            if (/\bBash\s*\(/.test(clean)) { toolCounts.bash++; totalTools++; }
+            if (/\bGrep\s*\(/.test(clean)) { toolCounts.grep++; totalTools++; }
+            if (/\bGlob\s*\(/.test(clean)) { toolCounts.glob++; totalTools++; }
+            if (/\b(error|exception|traceback|FAILED|ERROR|panic|fatal)\b/i.test(clean)) {
+                totalErrors++;
+                const match = clean.match(/\b(TypeError|SyntaxError|ImportError|ValueError|KeyError|AttributeError|RuntimeError|ConnectionError|TimeoutError|PermissionError|FileNotFoundError|ModuleNotFoundError)\b/);
+                if (match) {
+                    errorPatterns[match[1]] = (errorPatterns[match[1]] || 0) + 1;
+                }
+            }
+        }
+    }
+
+    const topTools = Object.entries(toolCounts).sort((a, b) => b[1] - a[1]).filter(([, v]) => v > 0);
+    const topErrors = Object.entries(errorPatterns).sort((a, b) => b[1] - a[1]).slice(0, 3);
+
+    grid.innerHTML = `
+        <div class="fleet-stats-card"><div class="fsc-value">${totalLines > 1000 ? (totalLines / 1000).toFixed(1) + 'K' : totalLines}</div><div class="fsc-label">Total Output Lines</div></div>
+        <div class="fleet-stats-card"><div class="fsc-value">${totalTools}</div><div class="fsc-label">Tool Invocations</div><div class="fsc-detail">${topTools.slice(0, 3).map(([t, c]) => `${t}: ${c}`).join(', ') || 'none'}</div></div>
+        <div class="fleet-stats-card"><div class="fsc-value">${totalErrors}</div><div class="fsc-label">Errors Detected</div><div class="fsc-detail">${topErrors.map(([t, c]) => `${t}: ${c}`).join(', ') || 'none'}</div></div>
+        <div class="fleet-stats-card"><div class="fsc-value">${escapeHtml(mostActive.name)}</div><div class="fsc-label">Most Active Agent</div><div class="fsc-detail">${mostActive.lines} lines</div></div>
+        <div class="fleet-stats-card"><div class="fsc-value">${escapeHtml(busiestAgent.name)}</div><div class="fsc-label">Highest Output Rate</div><div class="fsc-detail">${busiestAgent.rate.toFixed(1)} lines/s</div></div>
+        <div class="fleet-stats-card"><div class="fsc-value">${state.agents.size}</div><div class="fsc-label">Active Agents</div></div>
+    `;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Terminal Color Themes ──
+// ═══════════════════════════════════════════════════════════════════
+let _termTheme = localStorage.getItem('ashlr_term_theme') || 'default';
+
+function toggleThemeSelector() {
+    document.getElementById('themeSelector')?.classList.toggle('active');
+}
+
+function setTermTheme(theme) {
+    _termTheme = theme;
+    localStorage.setItem('ashlr_term_theme', theme);
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    terminal.classList.remove('theme-solarized', 'theme-monokai', 'theme-dracula', 'theme-github-dark');
+    if (theme !== 'default') terminal.classList.add(`theme-${theme}`);
+    // Update swatch active state
+    document.querySelectorAll('.theme-swatch').forEach(s => s.classList.remove('active'));
+    const swatches = document.querySelectorAll('.theme-swatch');
+    const themeIdx = ['default', 'solarized', 'monokai', 'dracula', 'github-dark'].indexOf(theme);
+    if (themeIdx >= 0 && swatches[themeIdx]) swatches[themeIdx].classList.add('active');
+    document.getElementById('themeSelector')?.classList.remove('active');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Timepoint Comparison ──
+// ═══════════════════════════════════════════════════════════════════
+let _timepointLine = -1;
+
+function setTimepoint() {
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const lines = terminal.querySelectorAll('.terminal-line');
+    const btn = document.getElementById('toolbarTimepoint');
+
+    // Remove existing markers
+    terminal.querySelectorAll('.timepoint-marker').forEach(m => m.remove());
+    lines.forEach(l => l.classList.remove('diff-new'));
+
+    if (_timepointLine >= 0 && btn?.classList.contains('active')) {
+        // Clear timepoint
+        _timepointLine = -1;
+        if (btn) btn.classList.remove('active');
+        return;
+    }
+
+    _timepointLine = lines.length;
+    if (btn) {
+        btn.classList.add('active');
+        btn.textContent = `⏚ Marked (L${_timepointLine})`;
+    }
+
+    // Insert visual marker
+    const marker = document.createElement('div');
+    marker.className = 'timepoint-marker';
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    marker.innerHTML = `<span class="tp-label">▸ Timepoint at line ${_timepointLine} (${time})</span><button class="tp-close" onclick="clearTimepoint()">✕</button>`;
+    if (lines.length > 0) {
+        lines[lines.length - 1].after(marker);
+    }
+}
+
+function clearTimepoint() {
+    _timepointLine = -1;
+    const terminal = document.getElementById('deepTerminal');
+    if (terminal) {
+        terminal.querySelectorAll('.timepoint-marker').forEach(m => m.remove());
+        terminal.querySelectorAll('.diff-new').forEach(l => l.classList.remove('diff-new'));
+    }
+    const btn = document.getElementById('toolbarTimepoint');
+    if (btn) { btn.classList.remove('active'); btn.textContent = '⏚ Mark Point'; }
+}
+
+// Mark new lines after timepoint (called from appendDeepOutput)
+function markDiffLines() {
+    if (_timepointLine < 0) return;
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const lines = terminal.querySelectorAll('.terminal-line');
+    for (let i = _timepointLine; i < lines.length; i++) {
+        if (!lines[i].classList.contains('diff-new')) lines[i].classList.add('diff-new');
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Quick-Spawn Templates in Command Palette ──
+// ═══════════════════════════════════════════════════════════════════
+const QUICK_SPAWN_TEMPLATES = [
+    { label: 'Backend API Agent', role: 'backend', namePrefix: 'api-', task: 'Build and implement the REST API endpoints' },
+    { label: 'Test Suite Agent', role: 'tester', namePrefix: 'tests-', task: 'Write comprehensive tests for the codebase' },
+    { label: 'Security Audit Agent', role: 'security', namePrefix: 'audit-', task: 'Perform a security audit and report vulnerabilities' },
+    { label: 'Frontend UI Agent', role: 'frontend', namePrefix: 'ui-', task: 'Build and style the frontend user interface' },
+    { label: 'Documentation Agent', role: 'docs', namePrefix: 'docs-', task: 'Write comprehensive documentation' },
+    { label: 'Code Review Agent', role: 'reviewer', namePrefix: 'review-', task: 'Review recent changes for quality and correctness' },
+];
+
+// Patch command palette to include templates
+const _origOpenCommandPalette = typeof openCommandPalette === 'function' ? openCommandPalette : null;
+if (_origOpenCommandPalette) {
+    const _origBuildPaletteItems = typeof buildPaletteItems === 'function' ? buildPaletteItems : null;
+    if (_origBuildPaletteItems) {
+        const _realBuildPaletteItems = buildPaletteItems;
+        buildPaletteItems = function() {
+            const items = _realBuildPaletteItems();
+            // Add template section
+            const templateItems = QUICK_SPAWN_TEMPLATES.map(t => ({
+                label: `Quick: ${t.label}`,
+                detail: `Spawn ${t.role} agent with pre-configured task`,
+                action: () => {
+                    closePalette();
+                    const name = t.namePrefix + Math.random().toString(36).substring(2, 5);
+                    const msg = JSON.stringify({ type: 'spawn', role: t.role, name, task: t.task, working_dir: state.config?.agents?.default_working_dir || '~/Projects' });
+                    socket.send(msg);
+                    showToast(`Spawning ${t.label}: ${name}`, 'success');
+                },
+                section: 'Templates'
+            }));
+            return [...items, ...templateItems];
+        };
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Cost Forecasting ──
+// ═══════════════════════════════════════════════════════════════════
+function updateCostForecast() {
+    const row = document.getElementById('costForecastRow');
+    if (!row) return;
+    let totalBurnRate = 0;
+    let totalCost = 0;
+    for (const [, agent] of state.agents) {
+        totalCost += agent.estimated_cost_usd || 0;
+        // Calculate burn rate from cost and uptime
+        if (agent.created_at) {
+            const uptimeSec = (Date.now() - new Date(agent.created_at).getTime()) / 1000;
+            if (uptimeSec > 60 && agent.estimated_cost_usd > 0) {
+                totalBurnRate += (agent.estimated_cost_usd / uptimeSec) * 3600; // $/hr
+            }
+        }
+    }
+    if (state.agents.size === 0 || totalBurnRate === 0) {
+        row.innerHTML = '';
+        return;
+    }
+    const budget = state.config?.agents?.cost_budget_usd || 0;
+    const forecasts = [
+        { label: '1h', cost: totalCost + totalBurnRate * 1 },
+        { label: '4h', cost: totalCost + totalBurnRate * 4 },
+        { label: '8h', cost: totalCost + totalBurnRate * 8 },
+        { label: '24h', cost: totalCost + totalBurnRate * 24 },
+    ];
+    row.innerHTML = forecasts.map(f => {
+        const warn = budget > 0 && f.cost > budget * 0.8;
+        const danger = budget > 0 && f.cost > budget;
+        return `<div class="cost-forecast-item ${danger ? 'cf-danger' : warn ? 'cf-warn' : ''}"><div class="cf-time">${f.label}</div><div class="cf-cost">$${f.cost.toFixed(2)}</div></div>`;
+    }).join('') + `<div class="cost-forecast-item"><div class="cf-time">Rate</div><div class="cf-cost">$${totalBurnRate.toFixed(2)}/hr</div></div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Card Micro-Interaction: Entrance Animation ──
+// ═══════════════════════════════════════════════════════════════════
+const _origCreateAgentCard = createAgentCard;
+createAgentCard = function(agent) {
+    const card = _origCreateAgentCard(agent);
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        card.classList.add('card-entering');
+        card.addEventListener('animationend', () => card.classList.remove('card-entering'), { once: true });
+    }
+    return card;
+};
+
+// Wire cost forecast into fleet summary updates
+const _origUpdateFleetSummary = updateFleetSummary;
+updateFleetSummary = function() {
+    _origUpdateFleetSummary();
+    updateCostForecast();
+};
+
+// Wire diff marking into appendDeepOutput
+const _origAppendDeepOutput = appendDeepOutput;
+appendDeepOutput = function(lines) {
+    _origAppendDeepOutput(lines);
+    markDiffLines();
+};
+
+// Apply saved terminal theme on deep view open
+const _origOpenDeepView2 = openDeepView;
+openDeepView = function(agentId) {
+    _origOpenDeepView2(agentId);
+    if (_termTheme !== 'default') {
+        const terminal = document.getElementById('deepTerminal');
+        if (terminal) terminal.classList.add(`theme-${_termTheme}`);
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Pinned Messages Panel ──
+// ═══════════════════════════════════════════════════════════════════
+function getPinnedMessages(agentId) {
+    try { return JSON.parse(localStorage.getItem(`ashlr_pinned_${agentId}`) || '[]'); }
+    catch { return []; }
+}
+
+function savePinnedMessages(agentId, pins) {
+    localStorage.setItem(`ashlr_pinned_${agentId}`, JSON.stringify(pins));
+}
+
+function pinLine(lineIdx) {
+    if (!state.focusedAgentId) return;
+    const terminal = document.getElementById('deepTerminal');
+    if (!terminal) return;
+    const lines = terminal.querySelectorAll('.terminal-line');
+    if (lineIdx < 0 || lineIdx >= lines.length) return;
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const text = (lines[lineIdx].textContent || '').replace(ansiRe, '').trim();
+    const pins = getPinnedMessages(state.focusedAgentId);
+    if (pins.some(p => p.line === lineIdx)) return;
+    pins.push({ line: lineIdx, text: text.substring(0, 200) });
+    savePinnedMessages(state.focusedAgentId, pins);
+    renderPinnedMessages();
+}
+
+function unpinLine(lineIdx) {
+    if (!state.focusedAgentId) return;
+    const pins = getPinnedMessages(state.focusedAgentId).filter(p => p.line !== lineIdx);
+    savePinnedMessages(state.focusedAgentId, pins);
+    renderPinnedMessages();
+}
+
+function renderPinnedMessages() {
+    const panel = document.getElementById('pinnedMessagesPanel');
+    const list = document.getElementById('pinnedMessagesList');
+    if (!panel || !list || !state.focusedAgentId) return;
+    const pins = getPinnedMessages(state.focusedAgentId);
+    if (pins.length === 0) { panel.classList.remove('active'); return; }
+    panel.classList.add('active');
+    list.innerHTML = pins.map(p =>
+        `<div class="pinned-message">
+            <span class="pm-line">L${p.line + 1}</span>
+            <span class="pm-text">${escapeHtml(p.text)}</span>
+            <button class="pm-unpin" onclick="unpinLine(${p.line})" data-tip="Unpin">✕</button>
+        </div>`
+    ).join('');
+}
+
+function closePinnedPanel() {
+    document.getElementById('pinnedMessagesPanel')?.classList.remove('active');
+}
+
+// Right-click to pin a line
+document.getElementById('deepTerminal')?.addEventListener('contextmenu', (e) => {
+    const line = e.target.closest('.terminal-line');
+    if (!line) return;
+    // Only intercept if shift is held (to not block normal right-click)
+    if (!e.shiftKey) return;
+    e.preventDefault();
+    const terminal = document.getElementById('deepTerminal');
+    const lines = Array.from(terminal.querySelectorAll('.terminal-line'));
+    const idx = lines.indexOf(line);
+    if (idx >= 0) pinLine(idx);
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Focus Mode ──
+// ═══════════════════════════════════════════════════════════════════
+document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'F' && state.view === 'deep') {
+        e.preventDefault();
+        toggleFocusMode();
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Priority Badges ──
+// ═══════════════════════════════════════════════════════════════════
+function updatePriorityBadge(card, agent) {
+    let badge = card.querySelector('.card-priority-badge');
+    const needsBadge = agent.status === 'waiting' || agent.status === 'error' ||
+                       (agent.plan_mode && agent.status === 'waiting');
+    if (!needsBadge) {
+        if (badge) badge.remove();
+        return;
+    }
+    if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'card-priority-badge';
+        card.style.position = 'relative';
+        card.appendChild(badge);
+    }
+    if (agent.status === 'error') {
+        badge.className = 'card-priority-badge priority-error';
+        badge.textContent = '!!';
+    } else if (agent.plan_mode && agent.status === 'waiting') {
+        badge.className = 'card-priority-badge priority-review';
+        badge.textContent = '✓';
+    } else {
+        badge.className = 'card-priority-badge priority-waiting';
+        badge.textContent = '!';
+    }
+}
+
+// Patch updateAgentCard to add priority badges
+const _origUpdateAgentCard = updateAgentCard;
+updateAgentCard = function(card, agent) {
+    _origUpdateAgentCard(card, agent);
+    updatePriorityBadge(card, agent);
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Language Detection Badge ──
+// ═══════════════════════════════════════════════════════════════════
+const LANG_MAP = {
+    '.py': 'Python', '.js': 'JavaScript', '.ts': 'TypeScript', '.tsx': 'React/TSX',
+    '.jsx': 'React/JSX', '.rs': 'Rust', '.go': 'Go', '.java': 'Java',
+    '.rb': 'Ruby', '.php': 'PHP', '.cs': 'C#', '.cpp': 'C++', '.c': 'C',
+    '.swift': 'Swift', '.kt': 'Kotlin', '.html': 'HTML', '.css': 'CSS',
+    '.sql': 'SQL', '.sh': 'Shell', '.yml': 'YAML', '.json': 'JSON',
+    '.md': 'Markdown', '.vue': 'Vue', '.svelte': 'Svelte',
+};
+
+function detectPrimaryLanguage(agent) {
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const extCounts = {};
+    const fileRe = /(?:Read|Edit|Write|Glob|Grep)\s*\(\s*["']?([^"'\s)]+)/g;
+    for (const l of lines) {
+        const clean = l.replace(ansiRe, '');
+        let m;
+        while ((m = fileRe.exec(clean)) !== null) {
+            const file = m[1];
+            const dot = file.lastIndexOf('.');
+            if (dot > 0) {
+                const ext = file.substring(dot).toLowerCase();
+                if (LANG_MAP[ext]) extCounts[ext] = (extCounts[ext] || 0) + 1;
+            }
+        }
+    }
+    const sorted = Object.entries(extCounts).sort((a, b) => b[1] - a[1]);
+    return sorted.length > 0 ? LANG_MAP[sorted[0][0]] : null;
+}
+
+function updateLangBadge() {
+    const badge = document.getElementById('deepLangBadge');
+    if (!badge || !state.focusedAgentId) return;
+    const agent = state.agents.get(state.focusedAgentId);
+    if (!agent) { badge.style.display = 'none'; return; }
+    const lang = detectPrimaryLanguage(agent);
+    if (lang) {
+        badge.textContent = lang;
+        badge.style.display = '';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+// Wire lang badge into deep view header updates
+const _origUpdateDeepViewHeader = updateDeepViewHeader;
+updateDeepViewHeader = function(agent) {
+    _origUpdateDeepViewHeader(agent);
+    updateLangBadge();
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Fleet Stats Auto-Refresh ──
+// ═══════════════════════════════════════════════════════════════════
+let _statsRefreshTimer = null;
+
+function setStatsRefreshInterval(seconds) {
+    clearInterval(_statsRefreshTimer);
+    _statsRefreshTimer = null;
+    const sec = parseInt(seconds);
+    if (sec > 0) {
+        _statsRefreshTimer = setInterval(() => {
+            if (document.getElementById('fleetStatsPanel')?.classList.contains('active')) {
+                updateFleetStatsPanel();
+            }
+        }, sec * 1000);
+    }
+}
+
+// Wire pinned messages into deep view open
+const _origOpenDeepView3 = openDeepView;
+openDeepView = function(agentId) {
+    _origOpenDeepView3(agentId);
+    renderPinnedMessages();
+    _focusMode = false;
+    document.getElementById('deepView')?.classList.remove('focus-mode');
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Smart Error Grouping ──
+// ═══════════════════════════════════════════════════════════════════
+function groupErrors(agent) {
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const errorRe = /\b(error|exception|traceback|FAILED|ERROR|panic|fatal)\b/i;
+    const groups = new Map();
+    for (let i = 0; i < lines.length; i++) {
+        const clean = lines[i].replace(ansiRe, '').trim();
+        if (!errorRe.test(clean)) continue;
+        // Normalize: strip line numbers and paths for grouping
+        const key = clean.replace(/\d+/g, 'N').replace(/["'].*?["']/g, '"..."').substring(0, 100);
+        if (!groups.has(key)) groups.set(key, { msg: clean.substring(0, 120), lines: [], count: 0 });
+        const g = groups.get(key);
+        g.count++;
+        if (g.lines.length < 3) g.lines.push(i + 1);
+    }
+    return [...groups.values()].sort((a, b) => b.count - a.count);
+}
+
+function renderGroupedErrors() {
+    const list = document.getElementById('errorSummaryList');
+    if (!list || !state.focusedAgentId) return;
+    const agent = state.agents.get(state.focusedAgentId);
+    if (!agent) return;
+    const groups = groupErrors(agent);
+    if (groups.length === 0) { list.innerHTML = '<div style="padding:8px;font-size:11px;color:var(--text-tertiary)">No errors</div>'; return; }
+    list.innerHTML = groups.slice(0, 20).map(g =>
+        `<div class="error-group">
+            <span class="error-group-count">${g.count}</span>
+            <span class="error-group-msg">${escapeHtml(g.msg)}</span>
+            <span class="error-group-lines">L${g.lines.join(', ')}</span>
+        </div>`
+    ).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Role Filter Chips ──
+// ═══════════════════════════════════════════════════════════════════
+let _roleFilter = 'all';
+
+function updateRoleFilterChips() {
+    const container = document.getElementById('roleFilterChips');
+    if (!container) return;
+    const roleCounts = {};
+    for (const [, agent] of state.agents) {
+        if (state.selectedProjectId && agent.project_id !== state.selectedProjectId) continue;
+        const role = agent.role || 'general';
+        roleCounts[role] = (roleCounts[role] || 0) + 1;
+    }
+    const roles = Object.entries(roleCounts).sort((a, b) => b[1] - a[1]);
+    if (roles.length <= 1) { container.innerHTML = ''; return; }
+    let html = `<button class="role-filter-chip ${_roleFilter === 'all' ? 'active' : ''}" onclick="setRoleFilter('all')">All</button>`;
+    for (const [role, count] of roles) {
+        html += `<button class="role-filter-chip ${_roleFilter === role ? 'active' : ''}" onclick="setRoleFilter('${role}')">${role}<span class="rfc-count">${count}</span></button>`;
+    }
+    container.innerHTML = html;
+}
+
+function setRoleFilter(role) {
+    _roleFilter = role;
+    updateRoleFilterChips();
+    filterAgentGrid(document.getElementById('gridSearch')?.value || '');
+}
+
+// Patch filterAgentGrid to include role filter
+const _origFilterAgentGrid = filterAgentGrid;
+filterAgentGrid = function(query) {
+    _origFilterAgentGrid(query);
+    if (_roleFilter !== 'all') {
+        const grid = document.getElementById('agentGrid');
+        grid.querySelectorAll('.agent-card').forEach(card => {
+            const agentId = card.dataset.agentId;
+            const agent = state.agents.get(agentId);
+            if (agent && agent.role !== _roleFilter) {
+                card.style.display = 'none';
+            }
+        });
+    }
+};
+
+// Wire role chips into render
+const _origScheduleRender2 = scheduleRender;
+scheduleRender = function() {
+    _origScheduleRender2();
+    setTimeout(updateRoleFilterChips, 0);
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// ── URL Hash Line Linking ──
+// ═══════════════════════════════════════════════════════════════════
+function handleHashLink() {
+    const hash = window.location.hash;
+    if (!hash) return;
+    const params = new URLSearchParams(hash.substring(1));
+    const agentId = params.get('agent');
+    const line = parseInt(params.get('line'));
+    if (!agentId) return;
+    // Wait for sync to have agents, then open deep view (max 20 attempts = ~10s)
+    let attempts = 0;
+    const tryOpen = () => {
+        if (state.agents.has(agentId)) {
+            openDeepView(agentId);
+            if (line >= 0) {
+                setTimeout(() => goToLine(line + 1), 500);
+            }
+            window.location.hash = '';
+        } else if (++attempts < 20) {
+            setTimeout(tryOpen, 500);
+        } else {
+            showToast(`Agent ${agentId} not found`, 'warning');
+            window.location.hash = '';
+        }
+    };
+    setTimeout(tryOpen, 1000);
+}
+
+function copyLineLink(lineIdx) {
+    if (!state.focusedAgentId) return;
+    const url = `${window.location.origin}${window.location.pathname}#agent=${state.focusedAgentId}&line=${lineIdx}`;
+    navigator.clipboard.writeText(url);
+    showToast('Line link copied', 'success');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Progress Bar Extraction ──
+// ═══════════════════════════════════════════════════════════════════
+function extractProgress(agent) {
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    // Scan last 20 lines for progress indicators
+    for (let i = lines.length - 1; i >= Math.max(0, lines.length - 20); i--) {
+        const clean = lines[i].replace(ansiRe, '');
+        // Percentage: 75%, 75.2%
+        const pctMatch = clean.match(/(\d{1,3}(?:\.\d+)?)\s*%/);
+        if (pctMatch) {
+            const pct = parseFloat(pctMatch[1]);
+            if (pct >= 0 && pct <= 100) return pct;
+        }
+        // Fraction: 14/20, 14 of 20
+        const fracMatch = clean.match(/(\d+)\s*(?:\/|of)\s*(\d+)/);
+        if (fracMatch) {
+            const num = parseInt(fracMatch[1]);
+            const den = parseInt(fracMatch[2]);
+            if (den > 0 && num <= den) return (num / den) * 100;
+        }
+    }
+    return null;
+}
+
+function updateProgressBar() {
+    const wrap = document.getElementById('deepProgressBar');
+    const fill = document.getElementById('deepProgressFill');
+    if (!wrap || !fill || !state.focusedAgentId) return;
+    const agent = state.agents.get(state.focusedAgentId);
+    if (!agent) { wrap.classList.remove('active'); return; }
+    const pct = extractProgress(agent);
+    if (pct !== null) {
+        wrap.classList.add('active');
+        fill.style.width = `${pct}%`;
+    } else {
+        wrap.classList.remove('active');
+    }
+}
+
+// Wire progress into deep view header update
+const _origUpdateDeepViewHeader2 = updateDeepViewHeader;
+updateDeepViewHeader = function(agent) {
+    _origUpdateDeepViewHeader2(agent);
+    updateProgressBar();
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Last Command Tooltip on Card Hover ──
+// ═══════════════════════════════════════════════════════════════════
+function getLastCommands(agent, count) {
+    const lines = agent._outputBuffer || agent.output_lines || [];
+    const ansiRe = /\x1b\[[0-9;]*m|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]/g;
+    const toolRe = /\b(Read|Edit|Write|Bash|Grep|Glob)\s*\(\s*["']?([^"'\s)]{1,80})/;
+    const cmds = [];
+    for (let i = lines.length - 1; i >= 0 && cmds.length < count; i--) {
+        const clean = lines[i].replace(ansiRe, '');
+        const m = clean.match(toolRe);
+        if (m) cmds.push({ tool: m[1], path: m[2] });
+    }
+    return cmds;
+}
+
+// Add hover tooltip functionality to agent cards
+document.getElementById('agentGrid')?.addEventListener('mouseover', (e) => {
+    const card = e.target.closest('.agent-card');
+    if (!card || card._tooltipShown) return;
+    const agentId = card.dataset.agentId;
+    const agent = state.agents.get(agentId);
+    if (!agent) return;
+    const cmds = getLastCommands(agent, 3);
+    if (cmds.length === 0) return;
+    card._tooltipShown = true;
+    const tooltip = document.createElement('div');
+    tooltip.className = 'card-cmd-tooltip active';
+    tooltip.innerHTML = cmds.map(c =>
+        `<div class="cmd-tooltip-row"><span class="cmd-tooltip-tool">${c.tool}</span><span class="cmd-tooltip-path">${escapeHtml(c.path)}</span></div>`
+    ).join('');
+    card.style.position = 'relative';
+    card.appendChild(tooltip);
+    const cleanup = () => {
+        tooltip.remove();
+        card._tooltipShown = false;
+        card.removeEventListener('mouseleave', cleanup);
+    };
+    card.addEventListener('mouseleave', cleanup);
+});
+
+// Handle URL hash on load
+handleHashLink();
+
+// Wire error grouping into error summary
+const _origToggleErrorSummary = typeof toggleErrorSummary === 'function' ? toggleErrorSummary : null;
+if (_origToggleErrorSummary) {
+    const _realToggleErrorSummary = toggleErrorSummary;
+    toggleErrorSummary = function() {
+        _realToggleErrorSummary();
+        renderGroupedErrors();
+    };
+}
+
+// ── Clipboard Watcher ──
+let _clipboardLastText = '';
+let _clipboardWatcherTimer = null;
+let _clipboardToastEl = null;
+function startClipboardWatcher() {
+    if (_clipboardWatcherTimer) return;
+    _clipboardWatcherTimer = setInterval(async () => {
+        try {
+            if (!document.hasFocus()) return;
+            const text = await navigator.clipboard.readText();
+            if (!text || text === _clipboardLastText || text.length < 3 || text.length > 10000) return;
+            _clipboardLastText = text;
+            // Only show if deep view is open and agent is waiting
+            if (!state.focusedAgentId) return;
+            const agent = state.agents.get(state.focusedAgentId);
+            if (!agent || agent.status !== 'waiting') return;
+            showClipboardToast(text, state.focusedAgentId);
+        } catch { /* clipboard permission denied — stop watching */ clearInterval(_clipboardWatcherTimer); _clipboardWatcherTimer = null; }
+    }, 2000);
+}
+function showClipboardToast(text, agentId) {
+    dismissClipboardToast();
+    const el = document.createElement('div');
+    el.className = 'clipboard-toast';
+    const preview = text.length > 60 ? text.substring(0, 60) + '...' : text;
+    el.innerHTML = `
+        <span style="font-size:14px">${icon('clipboard', 16)}</span>
+        <span class="clipboard-toast-text" title="${escapeHtml(text).substring(0, 200)}">${escapeHtml(preview)}</span>
+        <div class="clipboard-toast-actions">
+            <button class="btn btn-primary btn-sm" style="font-size:10px;padding:3px 10px" onclick="pasteClipboardToAgent('${agentId}')">Paste to Agent</button>
+            <button class="btn btn-secondary btn-sm" style="font-size:10px;padding:3px 6px" onclick="dismissClipboardToast()">✕</button>
+        </div>
+    `;
+    document.body.appendChild(el);
+    _clipboardToastEl = el;
+    setTimeout(() => dismissClipboardToast(), 8000);
+}
+function dismissClipboardToast() {
+    if (_clipboardToastEl) { _clipboardToastEl.remove(); _clipboardToastEl = null; }
+}
+async function pasteClipboardToAgent(agentId) {
+    dismissClipboardToast();
+    if (!_clipboardLastText) return;
+    try {
+        await apiFetch(`/api/agents/${agentId}/send`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message: _clipboardLastText }) });
+        showToast('Clipboard content sent to agent', 'success');
+    } catch { showToast('Failed to send clipboard content', 'error'); }
+}
+// Start clipboard watcher when deep view opens — requires user interaction first for permissions
+document.addEventListener('click', () => { if (!_clipboardWatcherTimer) startClipboardWatcher(); }, { once: true });
+
+// ── Preset Management (Settings) ──
+async function loadSettingsPresets() {
+    const list = document.getElementById('settingsPresetList');
+    if (!list) return;
+    try {
+        const res = await apiFetch('/api/presets');
+        if (!res.ok) throw new Error();
+        const presets = await res.json();
+        if (!presets.length) {
+            list.innerHTML = '<span style="color:var(--text-tertiary);font-size:11px">No presets saved yet</span>';
+            return;
+        }
+        list.innerHTML = presets.map(p => `
+            <div class="preset-item">
+                <span class="preset-item-role">${escapeHtml(p.role || 'general')}</span>
+                <span class="preset-item-name">${escapeHtml((p.name || 'Unnamed').substring(0, 60))}</span>
+                <span style="font-size:10px;color:var(--text-tertiary)">${escapeHtml((p.task || '').substring(0, 40))}</span>
+                <div class="preset-item-actions" data-preset-id="${escapeHtml(p.id)}">
+                    <button data-action="spawn">Spawn</button>
+                    <button data-action="edit">Edit</button>
+                    <button class="danger" data-action="delete">Delete</button>
+                </div>
+            </div>
+        `).join('');
+        list.querySelectorAll('[data-preset-id]').forEach(el => {
+            const pid = el.dataset.presetId;
+            el.querySelector('[data-action="spawn"]').addEventListener('click', () => spawnFromPreset(pid));
+            el.querySelector('[data-action="edit"]').addEventListener('click', () => editPreset(pid));
+            el.querySelector('[data-action="delete"]').addEventListener('click', () => deletePreset(pid));
+        });
+    } catch { list.innerHTML = '<span style="color:var(--danger);font-size:11px">Failed to load presets</span>'; }
+}
+
+async function createPresetFromSettings() {
+    const name = await promptInput('Preset name', 'e.g. Auth API Setup', { confirmText: 'Next', iconKey: 'bookmark' });
+    if (!name) return;
+    const role = document.getElementById('setDefaultRole')?.value || 'general';
+    const task = await promptInput('Default task', 'Task for this preset (optional)', { confirmText: 'Create', iconKey: 'clipboard' }) || '';
+    const dir = document.getElementById('setDefaultDir')?.value || '';
+    try {
+        const res = await apiFetch('/api/presets', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name, role, task, working_dir: dir })
+        });
+        if (res.ok) { showToast('Preset created', 'success'); loadSettingsPresets(); }
+        else showToast('Failed to create preset', 'error');
+    } catch { showToast('Failed to create preset', 'error'); }
+}
+
+async function deletePreset(id) {
+    const ok = await confirmAction('Delete Preset', 'Are you sure you want to delete this preset?', 'Delete', { iconKey: 'trash-2' });
+    if (!ok) return;
+    try {
+        const res = await apiFetch(`/api/presets/${id}`, { method: 'DELETE' });
+        if (res.ok) { showToast('Preset deleted', 'success'); loadSettingsPresets(); }
+        else showToast('Failed to delete preset', 'error');
+    } catch { showToast('Failed to delete preset', 'error'); }
+}
+
+async function editPreset(id) {
+    try {
+        const res = await apiFetch('/api/presets');
+        if (!res.ok) return;
+        const presets = await res.json();
+        const preset = presets.find(p => p.id === id);
+        if (!preset) return;
+        const name = await promptInput('Preset name', 'Preset name', { defaultValue: preset.name, confirmText: 'Next', iconKey: 'bookmark' });
+        if (!name) return;
+        const task = await promptInput('Default task', 'Task for this preset', { defaultValue: preset.task || '', confirmText: 'Next', iconKey: 'clipboard' }) || '';
+        const role = await promptInput('Role', 'frontend, backend, tester, etc.', { defaultValue: preset.role || 'general', confirmText: 'Save', iconKey: 'user' }) || 'general';
+        const body = { ...preset, name, task, role };
+        const upd = await apiFetch(`/api/presets/${id}`, {
+            method: 'PUT', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        });
+        if (upd.ok) { showToast('Preset updated', 'success'); loadSettingsPresets(); }
+    } catch { showToast('Failed to edit preset', 'error'); }
+}
+
+async function spawnFromPreset(id) {
+    try {
+        const res = await apiFetch('/api/presets');
+        if (!res.ok) return;
+        const presets = await res.json();
+        const preset = presets.find(p => p.id === id);
+        if (!preset) return;
+        closeSettings();
+        openSpawnDialog();
+        if (preset.name) document.getElementById('spawnName').value = preset.name;
+        if (preset.task) document.getElementById('spawnTask').value = preset.task;
+        if (preset.working_dir) document.getElementById('spawnDir').value = preset.working_dir;
+        if (preset.role) {
+            document.querySelectorAll('#roleGrid .role-option').forEach(o => o.classList.toggle('selected', o.dataset.role === preset.role));
+            state.selectedRole = preset.role;
+        }
+    } catch { showToast('Failed to load preset', 'error'); }
+}
+
+// (Preset loading merged into _origOpenSettings patch above)
+
+const EMPTY_STATE_HTML = document.getElementById('emptyState').innerHTML;
+socket.connect();
+renderAgentGrid();
+
+// ── Custom Tooltip System ──
+(function initTooltips() {
+    const tip = document.createElement('div');
+    tip.className = 'ao-tip';
+    document.body.appendChild(tip);
+    let showTimer = null, hideTimer = null, currentTarget = null;
+
+    function positionTip(el) {
+        const r = el.getBoundingClientRect();
+        const tw = tip.offsetWidth, th = tip.offsetHeight;
+        let top = r.top - th - 6, left = r.left + (r.width - tw) / 2;
+        if (top < 4) top = r.bottom + 6; // flip below if no room above
+        if (left < 4) left = 4;
+        if (left + tw > window.innerWidth - 4) left = window.innerWidth - tw - 4;
+        tip.style.top = top + 'px';
+        tip.style.left = left + 'px';
+    }
+
+    document.body.addEventListener('pointerover', function(e) {
+        const el = e.target.closest('[data-tip]');
+        if (!el) return;
+        clearTimeout(hideTimer);
+        if (currentTarget === el) return;
+        clearTimeout(showTimer);
+        currentTarget = el;
+        showTimer = setTimeout(() => {
+            const text = el.getAttribute('data-tip');
+            const key = el.getAttribute('data-tip-key');
+            if (!text) return;
+            // Suppress tooltips when modal overlays are active
+            if (document.querySelector('.confirm-overlay.active, .modal-overlay.active')) return;
+            tip.innerHTML = escapeHtml(text) + (key ? `<span class="ao-tip-key">${escapeHtml(key)}</span>` : '');
+            tip.classList.add('visible');
+            positionTip(el);
+        }, 400);
+    });
+
+    document.body.addEventListener('pointerout', function(e) {
+        const el = e.target.closest('[data-tip]');
+        if (!el) return;
+        clearTimeout(showTimer);
+        hideTimer = setTimeout(() => {
+            tip.classList.remove('visible');
+            currentTarget = null;
+        }, 100);
+    });
+
+    // Hide on scroll or click
+    document.addEventListener('scroll', () => { tip.classList.remove('visible'); currentTarget = null; }, true);
+    document.addEventListener('pointerdown', () => { tip.classList.remove('visible'); currentTarget = null; });
+})();
+
+// ── Onboarding Tour Engine ──
+const TOUR_STEPS = [
+    { target: '.top-bar', title: 'Welcome to Ashlr', body: 'Your command center for AI coding agents. Each agent runs in its own terminal — you monitor, interact, and orchestrate from here.' },
+    { target: '#metricsBar', title: 'Live System Metrics', body: 'CPU, RAM, active agents, cost, and fleet health — all updating in real-time. Click any metric to expand details.' },
+    { target: '#planBadge', title: 'Your License', body: 'Shows your current plan and tier. Manage your license key and see feature limits in Settings.' },
+    { target: '#projectSelector', title: 'Projects', body: 'Filter agents by project. Add repos and each gets its own default backend, model, and role settings.' },
+    { target: '.status-filter-chips', title: 'Filter & Monitor', body: 'Filter by status — see which agents are working, waiting for input, or hit errors. Orange badges mean agents need your attention.' },
+    { target: '#agentGrid', title: 'Agent Grid', body: 'Each card is a live agent. Hover for quick actions (pause, restart, kill). Click to open the full terminal view. Use arrow keys to navigate.' },
+    { target: '.btn-new-agent', title: 'Spawn Agents', body: 'Create new agents with a role, task, and working directory. Use Quick Templates for common tasks or Fleet Presets to launch coordinated teams.' },
+    { target: '#commandInput', title: 'Command Bar', body: 'Type commands, @mention agents, or use /slash commands. With an AI key configured, use natural language like "spawn 3 agents on auth-service".' },
+    { target: null, title: 'You\'re Ready!', body: '⌘K command palette  •  ⌘N new agent  •  ⌘, settings\nV toggle voice input  •  Space push-to-talk  •  ? cheatsheet\n\nArrow keys navigate agent cards. Click any card to dive in.' }
+];
+
+let tourStep = -1, tourOverlay = null, tourCard = null, tourArrow = null;
+
+function startTour() {
+    tourStep = 0;
+    renderTourStep();
+}
+
+function endTour() {
+    if (tourOverlay) { tourOverlay.remove(); tourOverlay = null; }
+    if (tourCard) { tourCard.remove(); tourCard = null; }
+    if (tourArrow) { tourArrow.remove(); tourArrow = null; }
+    tourStep = -1;
+    localStorage.setItem('ashlr_tour_done', '1');
+}
+
+function renderTourStep() {
+    if (tourStep < 0 || tourStep >= TOUR_STEPS.length) { endTour(); return; }
+    const step = TOUR_STEPS[tourStep];
+    const targetEl = step.target ? document.querySelector(step.target) : null;
+
+    // Build overlay
+    if (!tourOverlay) {
+        tourOverlay = document.createElement('div');
+        tourOverlay.className = 'tour-overlay';
+        tourOverlay.addEventListener('click', (e) => { if (e.target === tourOverlay || e.target.tagName === 'svg' || e.target.tagName === 'rect') nextTourStep(); });
+        document.body.appendChild(tourOverlay);
+    }
+
+    // Build SVG spotlight mask
+    const W = window.innerWidth, H = window.innerHeight;
+    let svgHtml;
+    if (targetEl) {
+        const r = targetEl.getBoundingClientRect();
+        const pad = 10, rx = 14;
+        const mx = r.left - pad, my = r.top - pad, mw = r.width + pad * 2, mh = r.height + pad * 2;
+        svgHtml = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+            <defs><mask id="tourMask">
+                <rect width="100%" height="100%" fill="white"/>
+                <rect x="${mx}" y="${my}" width="${mw}" height="${mh}" rx="${rx}" fill="black"/>
+            </mask></defs>
+            <rect width="100%" height="100%" fill="rgba(0,0,0,0.55)" mask="url(#tourMask)"/>
+        </svg>`;
+    } else {
+        svgHtml = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+            <rect width="100%" height="100%" fill="rgba(0,0,0,0.55)"/>
+        </svg>`;
+    }
+    tourOverlay.innerHTML = svgHtml;
+
+    // Build card
+    if (!tourCard) {
+        tourCard = document.createElement('div');
+        tourCard.className = 'tour-card';
+        document.body.appendChild(tourCard);
+    }
+
+    // Build arrow
+    if (!tourArrow) {
+        tourArrow = document.createElement('div');
+        tourArrow.className = 'tour-arrow';
+        document.body.appendChild(tourArrow);
+    }
+
+    const pct = Math.round(((tourStep + 1) / TOUR_STEPS.length) * 100);
+    const isFirst = tourStep === 0, isLast = tourStep === TOUR_STEPS.length - 1;
+    const bodyHtml = escapeHtml(step.body).replace(/\n/g, '<br>');
+    tourCard.innerHTML = `
+        <div class="tour-card-step">Step ${tourStep + 1} of ${TOUR_STEPS.length}</div>
+        <div class="tour-card-title">${escapeHtml(step.title)}</div>
+        <div class="tour-card-body">${bodyHtml}</div>
+        <div class="tour-progress">
+            <div class="tour-progress-bar"><div class="tour-progress-fill" style="width:${pct}%"></div></div>
+            <span class="tour-progress-text">${pct}%</span>
+        </div>
+        <div class="tour-actions">
+            <button class="tour-btn tour-btn-skip" onclick="endTour()">Skip tour</button>
+            ${!isFirst ? '<button class="tour-btn tour-btn-back" onclick="prevTourStep()">Back</button>' : ''}
+            <button class="tour-btn tour-btn-next" onclick="${isLast ? 'endTour()' : 'nextTourStep()'}">${isLast ? 'Get Started' : 'Next →'}</button>
+        </div>`;
+
+    // Position card with edge-safe logic + arrow
+    tourCard.style.animation = 'none';
+    tourCard.style.transform = '';
+    tourCard.offsetHeight; // reflow
+    tourCard.style.animation = '';
+
+    if (targetEl) {
+        const r = targetEl.getBoundingClientRect();
+        const cardW = Math.min(400, W - 40);
+        const cardH = tourCard.offsetHeight || 240;
+        const gap = 20; // gap between target and card
+        let top, left, arrowDir;
+
+        // Prefer placing below, then above, then right
+        if (r.bottom + gap + cardH < H - 20) {
+            top = r.bottom + gap;
+            arrowDir = 'up';
+        } else if (r.top - gap - cardH > 20) {
+            top = r.top - gap - cardH;
+            arrowDir = 'down';
+        } else {
+            // Place beside target
+            top = Math.max(20, Math.min(r.top, H - cardH - 20));
+            if (r.right + gap + cardW < W - 20) {
+                left = r.right + gap;
+                arrowDir = 'left';
+            } else {
+                left = Math.max(20, r.left - gap - cardW);
+                arrowDir = 'right';
+            }
+        }
+
+        // Horizontal centering for above/below
+        if (arrowDir === 'up' || arrowDir === 'down') {
+            left = r.left + r.width / 2 - cardW / 2;
+            if (left + cardW > W - 20) left = W - cardW - 20;
+            if (left < 20) left = 20;
+        }
+
+        tourCard.style.top = top + 'px';
+        tourCard.style.left = left + 'px';
+
+        // Position arrow
+        tourArrow.style.display = '';
+        tourArrow.className = 'tour-arrow arrow-' + arrowDir;
+        const arrowSize = 14;
+        const centerX = Math.max(left + 20, Math.min(r.left + r.width / 2, left + cardW - 20));
+        if (arrowDir === 'up') {
+            tourArrow.style.top = (top - arrowSize / 2) + 'px';
+            tourArrow.style.left = (centerX - arrowSize / 2) + 'px';
+        } else if (arrowDir === 'down') {
+            tourArrow.style.top = (top + cardH - arrowSize / 2) + 'px';
+            tourArrow.style.left = (centerX - arrowSize / 2) + 'px';
+        } else if (arrowDir === 'left') {
+            tourArrow.style.left = (left - arrowSize / 2) + 'px';
+            tourArrow.style.top = (top + Math.min(40, cardH / 2) - arrowSize / 2) + 'px';
+        } else {
+            tourArrow.style.left = (left + cardW - arrowSize / 2) + 'px';
+            tourArrow.style.top = (top + Math.min(40, cardH / 2) - arrowSize / 2) + 'px';
+        }
+    } else {
+        // Center for the final step
+        tourCard.style.top = '50%';
+        tourCard.style.left = '50%';
+        tourCard.style.transform = 'translate(-50%, -50%)';
+        tourArrow.style.display = 'none';
+    }
+}
+
+function nextTourStep() { tourStep++; renderTourStep(); }
+function prevTourStep() { if (tourStep > 0) { tourStep--; renderTourStep(); } }
+
+// Tour keyboard handler
+document.addEventListener('keydown', (e) => {
+    if (tourStep < 0) return;
+    if (e.key === 'Escape') { endTour(); e.stopPropagation(); return; }
+    if (e.key === 'ArrowRight' || e.key === 'Enter') { e.preventDefault(); nextTourStep(); return; }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); prevTourStep(); return; }
+}, true); // capture phase so we intercept before the global Escape handler
+
+// Auto-trigger tour on first sync
+const _origHandleSync = handleSync;
+handleSync = async function(data) {
+    await _origHandleSync(data);
+    const authLogin = document.getElementById('authLogin');
+    const authVisible = authLogin && authLogin.style.display !== 'none';
+    if (!localStorage.getItem('ashlr_tour_done') && tourStep < 0 && !authVisible) {
+        setTimeout(startTour, 800);
+    }
+};
+
+// ── Webhook Management ──
+
+async function loadWebhooks() {
+    const container = document.getElementById('webhookList');
+    if (!container) return;
+    try {
+        const res = await apiFetch('/api/webhooks');
+        if (!res.ok) { container.innerHTML = '<span style="color:var(--text-tertiary);font-size:11px">Failed to load webhooks</span>'; return; }
+        const webhooks = await res.json();
+        if (!webhooks.length) {
+            container.innerHTML = '<span style="color:var(--text-tertiary);font-size:11px">No webhooks configured</span>';
+            return;
+        }
+        container.innerHTML = webhooks.map(wh => `
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg-secondary);border-radius:8px;border:1px solid var(--border-subtle)">
+                <span style="width:8px;height:8px;border-radius:50%;background:${wh.active ? 'var(--success)' : 'var(--text-tertiary)'};flex-shrink:0" data-tip="${wh.active ? 'Active' : 'Disabled'}"></span>
+                <div style="flex:1;min-width:0">
+                    <div style="font-size:12px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(wh.name || wh.url)}</div>
+                    <div style="font-size:10px;color:var(--text-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(wh.url)}</div>
+                    ${wh.events && wh.events.length ? `<div style="font-size:10px;color:var(--text-secondary);margin-top:2px">Events: ${wh.events.map(e => `<span style="background:var(--bg-tertiary);padding:1px 4px;border-radius:3px;margin-right:2px">${escapeHtml(e)}</span>`).join('')}</div>` : '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px">All events</div>'}
+                </div>
+                <button class="btn btn-ghost btn-sm" onclick="viewWebhookDeliveries('${wh.id}')" style="font-size:10px;padding:2px 6px;color:var(--text-secondary)" data-tip="View delivery history">History</button>
+                <button class="btn btn-ghost btn-sm" onclick="testWebhook('${wh.id}')" style="font-size:10px;padding:2px 6px;color:var(--text-secondary)" data-tip="Send a test event to this webhook">Test</button>
+                <button class="btn btn-ghost btn-sm" onclick="toggleWebhook('${wh.id}', ${!wh.active})" style="font-size:10px;padding:2px 6px;color:var(--text-secondary)">${wh.active ? 'Disable' : 'Enable'}</button>
+                <button class="btn btn-ghost btn-sm" onclick="deleteWebhook('${wh.id}')" style="font-size:10px;padding:2px 6px;color:var(--danger)" data-tip="Remove this webhook">✕</button>
+            </div>
+        `).join('');
+    } catch (e) {
+        container.innerHTML = '<span style="color:var(--text-tertiary);font-size:11px">Could not reach server</span>';
+    }
+}
+
+async function addWebhook() {
+    const url = prompt('Webhook URL (must be HTTPS):');
+    if (!url) return;
+    const name = prompt('Name (optional):', '') || '';
+    const eventsStr = prompt('Events to subscribe (comma-separated, leave empty for all):\nagent_spawned, agent_killed, agent_needs_input, agent_error, agent_completed, agent_restart_exhausted', '');
+    const events = eventsStr ? eventsStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const secret = prompt('Signing secret (optional, for HMAC-SHA256):', '') || '';
+    try {
+        const res = await apiFetch('/api/webhooks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, name, events, secret }),
+        });
+        if (res.ok) {
+            showToast('Webhook added', 'success');
+            loadWebhooks();
+        } else {
+            const data = await res.json();
+            showToast(data.error || 'Failed to add webhook', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to add webhook', 'error');
+    }
+}
+
+async function deleteWebhook(id) {
+    const confirmed = await confirmAction('Delete Webhook', 'Delete this webhook?', 'Delete', { danger: true, iconKey: 'trash-2' });
+    if (!confirmed) return;
+    try {
+        const res = await apiFetch(`/api/webhooks/${id}`, { method: 'DELETE' });
+        if (res.ok) { showToast('Webhook deleted', 'success'); loadWebhooks(); }
+        else showToast('Failed to delete webhook', 'error');
+    } catch (e) { showToast('Failed to delete webhook', 'error'); }
+}
+
+async function testWebhook(id) {
+    try {
+        const res = await apiFetch(`/api/webhooks/${id}/test`, { method: 'POST' });
+        if (res.ok) showToast('Test event sent', 'success');
+        else { const d = await res.json(); showToast(d.error || 'Test failed', 'error'); }
+    } catch (e) { showToast('Test failed', 'error'); }
+}
+
+async function toggleWebhook(id, active) {
+    try {
+        const res = await apiFetch(`/api/webhooks/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ active }),
+        });
+        if (res.ok) { showToast(active ? 'Webhook enabled' : 'Webhook disabled', 'success'); loadWebhooks(); }
+        else showToast('Failed to update webhook', 'error');
+    } catch (e) { showToast('Failed to update webhook', 'error'); }
+}
+
+async function viewWebhookDeliveries(id) {
+    try {
+        const res = await apiFetch(`/api/webhooks/${id}/deliveries`);
+        if (!res.ok) { showToast('Failed to load deliveries', 'error'); return; }
+        const deliveries = await res.json();
+        const content = deliveries.length ? deliveries.map(d => {
+            const statusColor = d.status === 'delivered' ? 'var(--success)' : d.status === 'failed' ? 'var(--danger)' : 'var(--text-tertiary)';
+            const ts = d.created_at ? new Date(d.created_at).toLocaleString() : '';
+            return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:11px;border-bottom:1px solid var(--border-subtle)">
+                <span style="width:6px;height:6px;border-radius:50%;background:${statusColor};flex-shrink:0"></span>
+                <span style="flex:1;color:var(--text-primary)">${escapeHtml(d.event || '')}</span>
+                <span style="color:var(--text-tertiary)">${d.http_status || ''}</span>
+                <span style="color:var(--text-tertiary)">${ts}</span>
+            </div>`;
+        }).join('') : '<div style="padding:12px;font-size:11px;color:var(--text-tertiary);text-align:center">No deliveries yet</div>';
+        // Show in a lightweight overlay
+        let overlay = document.getElementById('webhookDeliveryOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'webhookDeliveryOverlay';
+            overlay.style.cssText = 'position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px)';
+            overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+            document.body.appendChild(overlay);
+        }
+        overlay.innerHTML = `<div style="background:var(--bg-primary);border:1px solid var(--border-default);border-radius:12px;width:500px;max-width:90vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:var(--shadow-lg)">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border-subtle)">
+                <span style="font-weight:600;font-size:13px;color:var(--text-primary)">Webhook Deliveries</span>
+                <button onclick="this.closest('#webhookDeliveryOverlay').remove()" style="background:none;border:none;color:var(--text-tertiary);cursor:pointer;font-size:16px">✕</button>
+            </div>
+            <div style="overflow-y:auto;flex:1">${content}</div>
+        </div>`;
+    } catch (e) { showToast('Failed to load deliveries', 'error'); }
+}
+
+// ── Agent Messages Panel ──
+
+const _messageHistory = new Map(); // agentId -> [{sender, message, timestamp}]
+
+async function loadMessages() {
+    const container = document.getElementById('messagesContent');
+    if (!container || !state.focusedAgentId) return;
+    const agent = state.agents.get(state.focusedAgentId);
+    if (!agent) return;
+
+    // Load from message history stored in agent's events
+    const history = _messageHistory.get(state.focusedAgentId) || [];
+
+    // Also pull from agent's sent messages count
+    if (history.length === 0 && agent.messages_sent > 0) {
+        container.innerHTML = `<div style="color:var(--text-tertiary);font-size:12px;text-align:center;padding:16px">${agent.messages_sent} message(s) sent previously. New messages will appear here.</div>`;
+        return;
+    }
+
+    if (history.length === 0) {
+        container.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px;text-align:center;padding:32px 0">No messages yet. Send a message below.</div>';
+        return;
+    }
+
+    container.innerHTML = history.map(msg => `
+        <div style="display:flex;gap:8px;align-items:start;${msg.sender === 'user' ? 'flex-direction:row-reverse' : ''}">
+            <div style="width:28px;height:28px;border-radius:50%;background:${msg.sender === 'user' ? 'var(--accent)' : roleColor(agent.role)};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                ${msg.sender === 'user'
+                    ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'
+                    : icon(ROLE_ICONS[agent.role] || 'bot', 14, 'icon-white')}
+            </div>
+            <div style="max-width:75%;padding:8px 12px;border-radius:12px;background:${msg.sender === 'user' ? 'var(--accent)' : 'var(--bg-elevated)'};color:${msg.sender === 'user' ? 'white' : 'var(--text-primary)'};font-size:12px;line-height:1.5;word-break:break-word">
+                ${escapeHtml(msg.message)}
+                <div style="font-size:9px;margin-top:4px;opacity:0.7">${msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}</div>
+            </div>
+        </div>
+    `).join('');
+    container.scrollTop = container.scrollHeight;
+}
+
+async function sendDeepMessage() {
+    const input = document.getElementById('deepMessageInput');
+    if (!input || !state.focusedAgentId) return;
+    const message = input.value.trim();
+    if (!message) return;
+
+    input.value = '';
+    input.style.height = '36px';
+
+    // Track in local history
+    const history = _messageHistory.get(state.focusedAgentId) || [];
+    history.push({ sender: 'user', message, timestamp: new Date().toISOString() });
+    _messageHistory.set(state.focusedAgentId, history);
+    loadMessages();
+
+    try {
+        const res = await apiFetch(`/api/agents/${state.focusedAgentId}/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message }),
+        });
+        if (!res.ok) {
+            const d = await res.json();
+            showToast(d.error || 'Failed to send message', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to send message', 'error');
+    }
+}
+
+function exportMessages() {
+    if (!state.focusedAgentId) return;
+    const history = _messageHistory.get(state.focusedAgentId) || [];
+    const agent = state.agents.get(state.focusedAgentId);
+    const data = { agent_id: state.focusedAgentId, agent_name: agent?.name || '', messages: history };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `messages-${agent?.name || state.focusedAgentId}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function roleColor(role) {
+    return ROLE_INFO[role]?.color || '#64748B';
+}
+
+// ── Cost Alert Banner ──
+
+let _lastCostAlertLevel = null;
+
+function checkCostAlerts(costData) {
+    if (!costData || !costData.budget_usd || costData.budget_usd <= 0) return;
+    const pct = (costData.total_cost_usd / costData.budget_usd) * 100;
+    let level = null;
+    if (pct >= 100) level = 'critical';
+    else if (pct >= 90) level = 'danger';
+    else if (pct >= 75) level = 'warning';
+    if (level && level !== _lastCostAlertLevel) {
+        _lastCostAlertLevel = level;
+        const colors = { warning: '#F59E0B', danger: '#F97316', critical: '#EF4444' };
+        showCostBanner(pct, costData.total_cost_usd, costData.budget_usd, colors[level]);
+    } else if (!level) {
+        _lastCostAlertLevel = null;
+        hideCostBanner();
+    }
+}
+
+function showCostBanner(pct, spent, budget, color) {
+    let banner = document.getElementById('costAlertBanner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'costAlertBanner';
+        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9998;padding:8px 16px;display:flex;align-items:center;gap:8px;font-size:12px;font-family:var(--font-mono);transition:all 0.3s ease;cursor:pointer';
+        banner.onclick = () => { hideCostBanner(); openSettings(); };
+        document.body.appendChild(banner);
+    }
+    banner.style.background = color;
+    banner.style.color = 'white';
+    const pctStr = pct >= 100 ? 'OVER BUDGET' : `${pct.toFixed(0)}% of budget`;
+    banner.innerHTML = `${icon('dollar-sign', 14)} <strong>${pctStr}</strong> — $${spent.toFixed(4)} / $${budget.toFixed(2)} <span style="opacity:0.8;margin-left:auto">Click to manage budget</span>`;
+    banner.style.display = 'flex';
+}
+
+function hideCostBanner() {
+    const banner = document.getElementById('costAlertBanner');
+    if (banner) banner.style.display = 'none';
+}
+
+// ── Audit Event Export ──
+
+async function exportAuditLog(format) {
+    const fmt = format || 'json';
+    try {
+        const res = await apiFetch(`/api/events/export?format=${fmt}&limit=5000`);
+        if (!res.ok) { showToast('Failed to export events', 'error'); return; }
+        if (fmt === 'csv') {
+            const text = await res.text();
+            const blob = new Blob([text], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `ashlr-events-${new Date().toISOString().slice(0,10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } else {
+            const data = await res.json();
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `ashlr-events-${new Date().toISOString().slice(0,10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        showToast(`Events exported as ${fmt.toUpperCase()}`, 'success');
+    } catch (e) {
+        showToast('Export failed', 'error');
+    }
+}
+
+// ── Hook cost alerts into metrics updates ──
+
+const _origHandleMetrics = handleMetrics;
+handleMetrics = function(data) {
+    _origHandleMetrics(data);
+    // Check cost alerts from state
+    if (state.config?.cost_budget_usd > 0) {
+        const totalCost = Array.from(state.agents.values()).reduce((sum, a) => sum + (a.estimated_cost_usd || 0), 0);
+        checkCostAlerts({ total_cost_usd: totalCost, budget_usd: state.config.cost_budget_usd });
+    }
+};
+
+// ── File Browser & Code Viewer ──
+
+const _fileBrowser = {
+    currentPath: null,
+    currentProjectId: null,
+    expandedDirs: new Set(),
+    sidebarTab: 'files', // 'files' | 'git'
+};
+
+const _codeViewer = {
+    openFiles: [],  // [{path, content, language, modified, originalContent}]
+    activeIdx: -1,
+    editMode: false,
+};
+
+function toggleFileSidebar() {
+    const sidebar = document.getElementById('fileSidebar');
+    const main = document.getElementById('mainContent');
+    if (!sidebar) return;
+    const isOpen = sidebar.classList.contains('open');
+    if (isOpen) {
+        closeFileSidebar();
+    } else {
+        sidebar.classList.add('open');
+        main.classList.add('files-open');
+        // Auto-load current project files
+        if (!_fileBrowser.currentPath) {
+            const proj = _getCurrentProject();
+            if (proj) loadFileTree(proj.path, proj.id);
+        }
+    }
+}
+
+function closeFileSidebar() {
+    const sidebar = document.getElementById('fileSidebar');
+    const main = document.getElementById('mainContent');
+    if (sidebar) sidebar.classList.remove('open');
+    if (main) main.classList.remove('files-open');
+}
+
+function _getCurrentProject() {
+    // Find the current/focused project
+    const focused = state.focusedProjectId;
+    if (focused) {
+        const projects = state.projects || [];
+        const p = projects.find(p => p.id === focused);
+        if (p) return p;
+    }
+    // Fall back to first project
+    const projects = state.projects || [];
+    return projects.length > 0 ? projects[0] : null;
+}
+
+function switchFileSidebarTab(tab) {
+    _fileBrowser.sidebarTab = tab;
+    const tabFiles = document.getElementById('fileSidebarTabFiles');
+    const tabGit = document.getElementById('fileSidebarTabGit');
+    const tree = document.getElementById('fileTreeContainer');
+    const git = document.getElementById('gitPanel');
+    tabFiles.classList.toggle('active', tab === 'files');
+    tabGit.classList.toggle('active', tab === 'git');
+    tree.style.display = tab === 'files' ? '' : 'none';
+    git.style.display = tab === 'git' ? '' : 'none';
+    git.classList.toggle('active', tab === 'git');
+    if (tab === 'git' && _fileBrowser.currentPath) loadGitStatus(_fileBrowser.currentPath);
+}
+
+async function loadFileTree(dirPath, projectId) {
+    _fileBrowser.currentPath = dirPath;
+    _fileBrowser.currentProjectId = projectId;
+    const title = document.getElementById('fileSidebarTitle');
+    if (title) {
+        const parts = dirPath.split('/').filter(Boolean);
+        title.textContent = parts.length > 2 ? '.../' + parts.slice(-2).join('/') : parts.join('/') || 'Files';
+        title.title = dirPath;
+    }
+    const container = document.getElementById('fileTreeContainer');
+    container.innerHTML = '<div class="file-tree-loading">Loading...</div>';
+
+    try {
+        const resp = await apiFetch(`/api/files/tree?path=${encodeURIComponent(dirPath)}&depth=1`);
+        if (!resp.ok) { container.innerHTML = '<div class="file-tree-empty">Failed to load files</div>'; return; }
+        const data = await resp.json();
+        renderFileTree(container, data.entries || [], dirPath, 0);
+    } catch (e) {
+        container.innerHTML = '<div class="file-tree-empty">Error loading files</div>';
+    }
+}
+
+function renderFileTree(container, entries, parentPath, depth) {
+    if (entries.length === 0) {
+        container.innerHTML = '<div class="file-tree-empty">Empty directory</div>';
+        return;
+    }
+    let html = '';
+    for (const entry of entries) {
+        const indent = '<span class="file-tree-indent"></span>'.repeat(depth);
+        const fullPath = parentPath + '/' + entry.name;
+        const safeName = escapeHtml(entry.name);
+        const safePath = escapeHtml(fullPath);
+
+        if (entry.type === 'dir') {
+            const expanded = _fileBrowser.expandedDirs.has(fullPath);
+            const arrow = expanded ? '▾' : '▸';
+            html += `<div class="file-tree-item" data-path="${safePath}" data-type="dir" data-depth="${depth}">
+                ${indent}<span class="file-tree-icon dir">${arrow}</span><span class="file-tree-name">${safeName}</span>
+                ${entry.children_count != null ? `<span style="font-size:10px;color:var(--text-tertiary);margin-left:auto">${entry.children_count}</span>` : ''}
+            </div>`;
+            if (expanded && entry.children) {
+                html += `<div class="file-tree-children">`;
+                for (const child of entry.children) {
+                    html += _renderFileTreeEntry(child, fullPath, depth + 1);
+                }
+                html += '</div>';
+            }
+        } else {
+            const gitBadge = entry.git_status ? `<span class="file-tree-git ${entry.git_status === '??' ? 'QQ' : escapeHtml(entry.git_status)}">${escapeHtml(entry.git_status)}</span>` : '';
+            html += `<div class="file-tree-item" data-path="${safePath}" data-type="file">
+                ${indent}<span class="file-tree-icon">·</span><span class="file-tree-name">${safeName}</span>${gitBadge}
+                <button class="file-tree-delete" data-delete-path="${safePath}" title="Delete">✕</button>
+            </div>`;
+        }
+    }
+    container.innerHTML = html;
+}
+
+function _renderFileTreeEntry(entry, parentPath, depth) {
+    const indent = '<span class="file-tree-indent"></span>'.repeat(depth);
+    const fullPath = parentPath + '/' + entry.name;
+    const safeName = escapeHtml(entry.name);
+    const safePath = escapeHtml(fullPath);
+    if (entry.type === 'dir') {
+        return `<div class="file-tree-item" data-path="${safePath}" data-type="dir" data-depth="${depth}">
+            ${indent}<span class="file-tree-icon dir">▸</span><span class="file-tree-name">${safeName}</span>
+        </div>`;
+    }
+    const gitBadge = entry.git_status ? `<span class="file-tree-git ${entry.git_status === '??' ? 'QQ' : escapeHtml(entry.git_status)}">${escapeHtml(entry.git_status)}</span>` : '';
+    return `<div class="file-tree-item" data-path="${safePath}" data-type="file">
+        ${indent}<span class="file-tree-icon">·</span><span class="file-tree-name">${safeName}</span>${gitBadge}
+    </div>`;
+}
+
+// File tree event delegation (replaces inline onclick handlers)
+document.addEventListener('click', (ev) => {
+    // Delete button takes priority over item click
+    const delBtn = ev.target.closest('#fileTreeContainer [data-delete-path]');
+    if (delBtn) {
+        ev.stopPropagation();
+        deleteFileTreeItem(delBtn.dataset.deletePath);
+        return;
+    }
+    const item = ev.target.closest('#fileTreeContainer .file-tree-item');
+    if (!item) return;
+    const path = item.dataset.path;
+    const type = item.dataset.type;
+    if (!path) return;
+    if (type === 'dir') {
+        const depth = parseInt(item.dataset.depth || '0', 10);
+        toggleFileTreeDir(path, item, depth);
+    } else if (type === 'file') {
+        openFileInViewer(path);
+    }
+});
+
+async function toggleFileTreeDir(dirPath, el, depth) {
+    if (_fileBrowser.expandedDirs.has(dirPath)) {
+        _fileBrowser.expandedDirs.delete(dirPath);
+        // Remove children
+        const next = el.nextElementSibling;
+        if (next && next.classList.contains('file-tree-children')) next.remove();
+        const icon = el.querySelector('.file-tree-icon');
+        if (icon) icon.textContent = '▸';
+    } else {
+        _fileBrowser.expandedDirs.add(dirPath);
+        const icon = el.querySelector('.file-tree-icon');
+        if (icon) icon.textContent = '▾';
+        // Load children
+        try {
+            const resp = await apiFetch(`/api/files/tree?path=${encodeURIComponent(dirPath)}&depth=1`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const childDiv = document.createElement('div');
+            childDiv.className = 'file-tree-children';
+            let html = '';
+            for (const entry of data.entries || []) {
+                html += _renderFileTreeEntry(entry, dirPath, depth + 1);
+            }
+            childDiv.innerHTML = html;
+            el.after(childDiv);
+        } catch (e) { console.warn('Failed to load dir:', e); }
+    }
+}
+
+// ── Code Viewer ──
+
+async function openFileInViewer(filePath) {
+    // Check if already open
+    const existingIdx = _codeViewer.openFiles.findIndex(f => f.path === filePath);
+    if (existingIdx >= 0) {
+        switchCodeTab(existingIdx);
+        return;
+    }
+
+    try {
+        const resp = await apiFetch(`/api/files/read?path=${encodeURIComponent(filePath)}`);
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            showToast(err.error || 'Failed to read file', 'error');
+            return;
+        }
+        const data = await resp.json();
+        _codeViewer.openFiles.push({
+            path: data.path,
+            content: data.content,
+            originalContent: data.content,
+            language: data.language || 'plaintext',
+            modified: false,
+            lineCount: data.line_count || 0,
+            size: data.size || 0,
+        });
+        _codeViewer.activeIdx = _codeViewer.openFiles.length - 1;
+        renderCodeViewer();
+        document.getElementById('codeViewer').classList.add('open');
+    } catch (e) {
+        showToast('Error reading file', 'error');
+    }
+}
+
+function closeCodeViewer() {
+    document.getElementById('codeViewer').classList.remove('open');
+    _codeViewer.editMode = false;
+}
+
+async function closeCodeTab(idx) {
+    const file = _codeViewer.openFiles[idx];
+    if (file && file.modified) {
+        const confirmed = await confirmAction('Unsaved Changes', `${file.path.split('/').pop()} has unsaved changes. Close anyway?`, 'Close', { danger: true, iconKey: 'alert-triangle' });
+        if (!confirmed) return;
+    }
+    _codeViewer.openFiles.splice(idx, 1);
+    if (_codeViewer.openFiles.length === 0) {
+        closeCodeViewer();
+        return;
+    }
+    if (_codeViewer.activeIdx >= _codeViewer.openFiles.length) {
+        _codeViewer.activeIdx = _codeViewer.openFiles.length - 1;
+    }
+    renderCodeViewer();
+}
+
+function switchCodeTab(idx) {
+    _codeViewer.activeIdx = idx;
+    renderCodeViewer();
+}
+
+function renderCodeViewer() {
+    const tabsEl = document.getElementById('codeViewerTabs');
+    const bodyEl = document.getElementById('codeViewerBody');
+    if (!tabsEl || !bodyEl) return;
+
+    // Render tabs
+    tabsEl.innerHTML = _codeViewer.openFiles.map((file, i) => {
+        const name = file.path.split('/').pop().replace(/</g, '&lt;');
+        const active = i === _codeViewer.activeIdx ? ' active' : '';
+        const mod = file.modified ? ' modified' : '';
+        return `<button class="code-viewer-tab${active}${mod}" onclick="switchCodeTab(${i})">
+            ${name}<span class="modified-dot"></span>
+            <span class="tab-close" onclick="event.stopPropagation();closeCodeTab(${i})">×</span>
+        </button>`;
+    }).join('');
+
+    // Render active file content
+    const file = _codeViewer.openFiles[_codeViewer.activeIdx];
+    if (!file) return;
+
+    const fileName = file.path.split('/').pop().replace(/</g, '&lt;');
+    const sizeStr = file.size > 1024 ? `${(file.size / 1024).toFixed(1)} KB` : `${file.size} B`;
+
+    bodyEl.innerHTML = `<div class="code-viewer-content active">
+        <div class="code-viewer-info">
+            <span>${file.path.replace(/</g, '&lt;')}</span>
+            <span>${file.language}</span>
+            <span>${file.lineCount} lines</span>
+            <span>${sizeStr}</span>
+        </div>
+        <div class="code-editor-wrap" id="codeEditorWrap">
+            <div class="code-line-numbers" id="codeLineNumbers"></div>
+            <pre><code class="language-${file.language}" id="codeHighlighted"></code></pre>
+            <textarea class="code-editor-textarea" id="codeTextarea" spellcheck="false"></textarea>
+        </div>
+    </div>`;
+
+    const codeEl = document.getElementById('codeHighlighted');
+    const textarea = document.getElementById('codeTextarea');
+    const lineNumEl = document.getElementById('codeLineNumbers');
+    if (codeEl) {
+        codeEl.textContent = file.content;
+        if (typeof hljs !== 'undefined') {
+            try { hljs.highlightElement(codeEl); } catch (e) {}
+        }
+    }
+    // Populate line numbers
+    if (lineNumEl && file.lineCount) {
+        const nums = [];
+        for (let i = 1; i <= file.lineCount; i++) nums.push(`<span>${i}</span>`);
+        lineNumEl.innerHTML = nums.join('');
+    }
+    if (textarea) {
+        textarea.value = file.content;
+        textarea.oninput = () => {
+            file.content = textarea.value;
+            file.modified = file.content !== file.originalContent;
+            renderCodeViewerTabs();
+            document.getElementById('codeSaveBtn').style.display = file.modified ? '' : 'none';
+        };
+    }
+
+    // Update edit/save buttons
+    const editBtn = document.getElementById('codeEditToggle');
+    const saveBtn = document.getElementById('codeSaveBtn');
+    if (editBtn) editBtn.textContent = _codeViewer.editMode ? 'View' : 'Edit';
+    if (saveBtn) saveBtn.style.display = file.modified ? '' : 'none';
+    if (textarea) textarea.style.display = _codeViewer.editMode ? '' : 'none';
+    if (codeEl && codeEl.parentElement) codeEl.parentElement.style.display = _codeViewer.editMode ? 'none' : '';
+    if (lineNumEl) lineNumEl.style.display = (_codeViewer.editMode || file.isDiff) ? 'none' : '';
+}
+
+function renderCodeViewerTabs() {
+    const tabsEl = document.getElementById('codeViewerTabs');
+    if (!tabsEl) return;
+    tabsEl.innerHTML = _codeViewer.openFiles.map((file, i) => {
+        const name = file.path.split('/').pop().replace(/</g, '&lt;');
+        const active = i === _codeViewer.activeIdx ? ' active' : '';
+        const mod = file.modified ? ' modified' : '';
+        return `<button class="code-viewer-tab${active}${mod}" onclick="switchCodeTab(${i})">
+            ${name}<span class="modified-dot"></span>
+            <span class="tab-close" onclick="event.stopPropagation();closeCodeTab(${i})">×</span>
+        </button>`;
+    }).join('');
+}
+
+function toggleCodeEdit() {
+    _codeViewer.editMode = !_codeViewer.editMode;
+    renderCodeViewer();
+    if (_codeViewer.editMode) {
+        const textarea = document.getElementById('codeTextarea');
+        if (textarea) textarea.focus();
+    }
+}
+
+async function saveCurrentFile() {
+    const file = _codeViewer.openFiles[_codeViewer.activeIdx];
+    if (!file) return;
+    try {
+        const resp = await apiFetch('/api/files/write', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: file.path, content: file.content }),
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            showToast(err.error || 'Save failed', 'error');
+            return;
+        }
+        file.originalContent = file.content;
+        file.modified = false;
+        renderCodeViewer();
+        showToast(`Saved ${file.path.split('/').pop()}`, 'success');
+    } catch (e) {
+        showToast('Save failed', 'error');
+    }
+}
+
+// Cmd+S to save in code viewer
+document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 's' && document.getElementById('codeViewer').classList.contains('open')) {
+        e.preventDefault();
+        saveCurrentFile();
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+        e.preventDefault();
+        toggleFileSidebar();
+    }
+});
+
+// ── Git Panel ──
+
+async function loadGitStatus(repoPath) {
+    const fileList = document.getElementById('gitFileList');
+    const branchEl = document.getElementById('gitBranchName');
+    const aheadBehind = document.getElementById('gitAheadBehind');
+    const commitBtn = document.getElementById('gitCommitBtn');
+
+    fileList.innerHTML = '<div class="file-tree-loading">Loading git status...</div>';
+
+    try {
+        const resp = await apiFetch(`/api/git/status?path=${encodeURIComponent(repoPath)}`);
+        if (!resp.ok) {
+            fileList.innerHTML = '<div class="file-tree-empty">Not a git repository</div>';
+            return;
+        }
+        const data = await resp.json();
+        branchEl.textContent = data.branch || '—';
+        const parts = [];
+        if (data.ahead > 0) parts.push(`↑${data.ahead}`);
+        if (data.behind > 0) parts.push(`↓${data.behind}`);
+        aheadBehind.textContent = parts.join(' ');
+
+        if (!data.files || data.files.length === 0) {
+            fileList.innerHTML = '<div class="file-tree-empty">Working tree clean</div>';
+            commitBtn.disabled = true;
+            return;
+        }
+
+        const staged = data.files.filter(f => f.staged);
+        const unstaged = data.files.filter(f => !f.staged);
+
+        let html = '';
+        if (staged.length > 0) {
+            html += '<div class="git-section-header">Staged Changes</div>';
+            for (const f of staged) {
+                html += _renderGitFileItem(f, repoPath, true);
+            }
+        }
+        if (unstaged.length > 0) {
+            html += '<div class="git-section-header" style="display:flex;align-items:center;justify-content:space-between">Changes <button class="git-file-action-btn" data-git-action="stage-all" style="font-size:9px;padding:1px 6px" title="Stage all changes">+ All</button></div>';
+            for (const f of unstaged) {
+                html += _renderGitFileItem(f, repoPath, false);
+            }
+        }
+        fileList.innerHTML = html;
+        commitBtn.disabled = staged.length === 0;
+    } catch (e) {
+        fileList.innerHTML = '<div class="file-tree-empty">Error loading git status</div>';
+    }
+}
+
+// Click git file path to open in viewer
+document.addEventListener('click', (ev) => {
+    const pathEl = ev.target.closest('#gitPanel [data-open-file]');
+    if (pathEl && _fileBrowser.currentPath) {
+        openFileInViewer(_fileBrowser.currentPath + '/' + pathEl.dataset.openFile);
+    }
+});
+
+// Git file action delegation (attached once, not per-render)
+document.addEventListener('click', async (ev) => {
+    const btn = ev.target.closest('#gitPanel [data-git-action]');
+    if (!btn || !_fileBrowser.currentPath) return;
+    const action = btn.dataset.gitAction;
+    const filePath = btn.dataset.gitFile;
+    const repoPath = _fileBrowser.currentPath;
+    try {
+        if (action === 'stage-all') {
+            const resp = await apiFetch('/api/git/stage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: repoPath, files: ['.'] }) });
+            if (!resp.ok) { const err = await resp.json().catch(() => ({})); showToast(err.error || 'Stage failed', 'error'); return; }
+            loadGitStatus(repoPath);
+        } else if (action === 'stage') {
+            const resp = await apiFetch('/api/git/stage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: repoPath, files: [filePath] }) });
+            if (!resp.ok) { const err = await resp.json().catch(() => ({})); showToast(err.error || 'Stage failed', 'error'); return; }
+            loadGitStatus(repoPath);
+        } else if (action === 'unstage') {
+            const resp = await apiFetch('/api/git/unstage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: repoPath, files: [filePath] }) });
+            if (!resp.ok) { const err = await resp.json().catch(() => ({})); showToast(err.error || 'Unstage failed', 'error'); return; }
+            loadGitStatus(repoPath);
+        } else if (action === 'diff') {
+            openGitDiff(repoPath, filePath, btn.dataset.gitStaged === 'true');
+        } else if (action === 'discard') {
+            const discardOk = await confirmAction('Discard Changes', `Discard changes to ${filePath}?`, 'Discard', { danger: true, iconKey: 'undo' });
+            if (discardOk) {
+                const resp = await apiFetch('/api/git/discard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: repoPath, files: [filePath] }) });
+                if (!resp.ok) { const err = await resp.json().catch(() => ({})); showToast(err.error || 'Discard failed', 'error'); return; }
+                loadGitStatus(repoPath);
+            }
+        }
+    } catch (e) {
+        showToast('Git operation failed', 'error');
+    }
+});
+
+function _renderGitFileItem(file, repoPath, isStaged) {
+    const safePath = escapeHtml(file.path);
+    const statusClass = file.status === '??' ? 'QQ' : escapeHtml(file.status);
+    const statusLabel = {'M':'Modified','A':'Added','D':'Deleted','??':'Untracked','R':'Renamed','C':'Copied','U':'Conflict'}[file.status] || 'Unknown';
+    return `<div class="git-file-item">
+        <span class="git-file-status ${statusClass}" title="${statusLabel}">${file.status}</span>
+        <span class="git-file-path" data-open-file="${safePath}" title="${safePath}" style="cursor:pointer">${safePath}</span>
+        <div class="git-file-actions">
+            <button class="git-file-action-btn" data-git-action="diff" data-git-file="${safePath}" data-git-staged="${isStaged}" title="View diff">D</button>
+            ${isStaged
+                ? `<button class="git-file-action-btn" data-git-action="unstage" data-git-file="${safePath}" title="Unstage">−</button>`
+                : `<button class="git-file-action-btn" data-git-action="stage" data-git-file="${safePath}" title="Stage">+</button>
+                   ${file.status !== '??' ? `<button class="git-file-action-btn" data-git-action="discard" data-git-file="${safePath}" title="Discard changes">✕</button>` : ''}`
+            }
+        </div>
+    </div>`;
+}
+
+async function openGitDiff(repoPath, filePath, staged) {
+    try {
+        const params = new URLSearchParams({ path: repoPath });
+        if (filePath) params.set('file', filePath);
+        if (staged) params.set('staged', 'true');
+        const resp = await apiFetch(`/api/git/diff?${params}`);
+        if (!resp.ok) { showToast('Failed to load diff', 'error'); return; }
+        const data = await resp.json();
+        const diffText = data.diff || '(no changes)';
+
+        // Open in code viewer as a diff view
+        const name = filePath ? filePath.split('/').pop() : 'Full Diff';
+        const existingIdx = _codeViewer.openFiles.findIndex(f => f.path === `diff:${filePath || 'all'}`);
+        if (existingIdx >= 0) {
+            _codeViewer.openFiles[existingIdx].content = diffText;
+            _codeViewer.activeIdx = existingIdx;
+        } else {
+            _codeViewer.openFiles.push({
+                path: `diff:${filePath || 'all'}`,
+                content: diffText,
+                originalContent: diffText,
+                language: 'diff',
+                modified: false,
+                lineCount: diffText.split('\n').length,
+                size: diffText.length,
+                isDiff: true,
+            });
+            _codeViewer.activeIdx = _codeViewer.openFiles.length - 1;
+        }
+        renderCodeViewer();
+        document.getElementById('codeViewer').classList.add('open');
+
+        // Override content rendering for diff (limit to 2000 lines for performance)
+        const wrap = document.getElementById('codeEditorWrap');
+        if (wrap && _codeViewer.openFiles[_codeViewer.activeIdx]?.isDiff) {
+            const diffLines = diffText.split('\n');
+            const maxLines = 2000;
+            const truncated = diffLines.length > maxLines;
+            const visibleLines = truncated ? diffLines.slice(0, maxLines) : diffLines;
+            wrap.innerHTML = '<div class="diff-view">' + visibleLines.map(line => {
+                const safeLine = line.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+                if (line.startsWith('@@')) return `<div class="diff-line hunk">${safeLine}</div>`;
+                if (line.startsWith('+')) return `<div class="diff-line added">${safeLine}</div>`;
+                if (line.startsWith('-')) return `<div class="diff-line removed">${safeLine}</div>`;
+                return `<div class="diff-line context">${safeLine}</div>`;
+            }).join('') + (truncated ? `<div class="diff-line hunk" style="text-align:center;padding:12px">... ${diffLines.length - maxLines} more lines truncated ...</div>` : '') + '</div>';
+            // Hide edit button for diffs
+            const editBtn = document.getElementById('codeEditToggle');
+            if (editBtn) editBtn.style.display = 'none';
+        }
+    } catch (e) {
+        showToast('Error loading diff', 'error');
+    }
+}
+
+// Enter to commit
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && e.target.id === 'gitCommitMsg') {
+        e.preventDefault();
+        doGitCommit();
+    }
+});
+
+async function doGitCommit() {
+    const input = document.getElementById('gitCommitMsg');
+    const message = input?.value?.trim();
+    if (!message || !_fileBrowser.currentPath) return;
+
+    try {
+        const resp = await apiFetch('/api/git/commit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: _fileBrowser.currentPath, message }),
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            showToast(err.error || 'Commit failed', 'error');
+            return;
+        }
+        const data = await resp.json();
+        input.value = '';
+        showToast(`Committed: ${data.hash?.slice(0, 7)} ${message.slice(0, 40)}`, 'success');
+        loadGitStatus(_fileBrowser.currentPath);
+        // Refresh log if open
+        const logContainer = document.getElementById('gitLogContainer');
+        if (logContainer && logContainer.style.display !== 'none') loadGitLog(_fileBrowser.currentPath);
+    } catch (e) {
+        showToast('Commit failed', 'error');
+    }
+}
+
+// Git log toggle + load
+document.addEventListener('click', (ev) => {
+    if (ev.target.closest('#gitLogToggle')) {
+        const container = document.getElementById('gitLogContainer');
+        const icon = document.getElementById('gitLogToggleIcon');
+        const isOpen = container.style.display !== 'none';
+        container.style.display = isOpen ? 'none' : 'block';
+        icon.classList.toggle('open', !isOpen);
+        if (!isOpen && _fileBrowser.currentPath) loadGitLog(_fileBrowser.currentPath);
+    }
+});
+
+async function loadGitLog(repoPath) {
+    const container = document.getElementById('gitLogContainer');
+    container.innerHTML = '<div class="file-tree-loading">Loading commits...</div>';
+    try {
+        const resp = await apiFetch(`/api/git/log?path=${encodeURIComponent(repoPath)}&limit=20`);
+        if (!resp.ok) { container.innerHTML = '<div class="file-tree-empty">Failed to load log</div>'; return; }
+        const data = await resp.json();
+        if (!data.commits || data.commits.length === 0) {
+            container.innerHTML = '<div class="file-tree-empty">No commits</div>';
+            return;
+        }
+        container.innerHTML = data.commits.map(c => {
+            const ago = _timeAgo(c.timestamp * 1000);
+            return `<div class="git-log-item">
+                <span class="git-log-hash" title="${escapeHtml(c.hash)}">${escapeHtml(c.short_hash)}</span>
+                <span class="git-log-msg" title="${escapeHtml(c.message)}">${escapeHtml(c.message)}</span>
+                <span class="git-log-time" title="${escapeHtml(c.author)}">${ago}</span>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        container.innerHTML = '<div class="file-tree-empty">Error loading log</div>';
+    }
+}
+
+function _timeAgo(ts) {
+    const diff = Date.now() - ts;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 30) return `${days}d ago`;
+    return new Date(ts).toLocaleDateString();
+}
+
+// Auto-load files when project changes
+function onProjectChanged(projectId) {
+    const proj = (state.projects || []).find(p => p.id === projectId);
+    if (proj && document.getElementById('fileSidebar')?.classList.contains('open')) {
+        loadFileTree(proj.path, proj.id);
+        if (_fileBrowser.sidebarTab === 'git') loadGitStatus(proj.path);
+    }
+    // Sync sidebar project picker
+    const sel = document.getElementById('fileSidebarProjectSelect');
+    if (sel && projectId) sel.value = projectId;
+}
+
+function onFileSidebarProjectChange(projectId) {
+    if (!projectId) return;
+    const proj = (state.projects || []).find(p => p.id === projectId);
+    if (proj) {
+        loadFileTree(proj.path, proj.id);
+        if (_fileBrowser.sidebarTab === 'git') loadGitStatus(proj.path);
+    }
+}
+
+async function createNewFile() {
+    if (!_fileBrowser.currentPath) { showToast('Open a project first', 'warning'); return; }
+    const name = await promptInput('New File Name', 'e.g. main.py', { confirmText: 'Create' });
+    if (!name || !name.trim()) return;
+    const fullPath = _fileBrowser.currentPath + '/' + name.trim();
+    try {
+        const resp = await apiFetch('/api/files/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: fullPath, type: 'file' }),
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            showToast(err.error || 'Failed to create file', 'error');
+            return;
+        }
+        showToast(`Created ${name.trim()}`, 'success');
+        refreshFileSidebar();
+        openFileInViewer(fullPath);
+    } catch (e) { showToast('Failed to create file', 'error'); }
+}
+
+async function createNewFolder() {
+    if (!_fileBrowser.currentPath) { showToast('Open a project first', 'warning'); return; }
+    const name = await promptInput('New Folder Name', 'e.g. src', { confirmText: 'Create' });
+    if (!name || !name.trim()) return;
+    const fullPath = _fileBrowser.currentPath + '/' + name.trim();
+    try {
+        const resp = await apiFetch('/api/files/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: fullPath, type: 'dir' }),
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            showToast(err.error || 'Failed to create folder', 'error');
+            return;
+        }
+        showToast(`Created ${name.trim()}/`, 'success');
+        refreshFileSidebar();
+    } catch (e) { showToast('Failed to create folder', 'error'); }
+}
+
+async function deleteFileTreeItem(filePath) {
+    const name = filePath.split('/').pop();
+    const confirmed = await confirmAction('Delete File', `Delete "${name}"? This cannot be undone.`, 'Delete', { danger: true, iconKey: 'trash-2' });
+    if (!confirmed) return;
+    try {
+        const resp = await apiFetch(`/api/files/delete?path=${encodeURIComponent(filePath)}`, { method: 'DELETE' });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            showToast(err.error || 'Delete failed', 'error');
+            return;
+        }
+        showToast(`Deleted ${name}`, 'success');
+        // Close if open in code viewer
+        const viewerIdx = _codeViewer.openFiles.findIndex(f => f.path === filePath);
+        if (viewerIdx >= 0) {
+            _codeViewer.openFiles.splice(viewerIdx, 1);
+            if (_codeViewer.openFiles.length === 0) closeCodeViewer();
+            else { _codeViewer.activeIdx = Math.min(_codeViewer.activeIdx, _codeViewer.openFiles.length - 1); renderCodeViewer(); }
+        }
+        refreshFileSidebar();
+    } catch (e) { showToast('Delete failed', 'error'); }
+}
+
+function openTerminalHere() {
+    if (!_fileBrowser.currentPath) { showToast('Open a project first', 'warning'); return; }
+    const panel = document.getElementById('bottomTerminalPanel');
+    if (!panel.classList.contains('open')) {
+        panel.classList.add('open');
+        document.getElementById('mainContent').style.marginBottom = '336px';
+    }
+    addBottomTerminal(_fileBrowser.currentPath);
+}
+
+function refreshFileSidebar() {
+    if (_fileBrowser.currentPath) {
+        loadFileTree(_fileBrowser.currentPath, _fileBrowser.currentProjectId);
+        if (_fileBrowser.sidebarTab === 'git') loadGitStatus(_fileBrowser.currentPath);
+    }
+}
+
+function updateFileSidebarProjectList() {
+    const sel = document.getElementById('fileSidebarProjectSelect');
+    if (!sel) return;
+    const projects = state.projects || [];
+    const current = _fileBrowser.currentProjectId;
+    sel.innerHTML = projects.length === 0
+        ? '<option value="">No projects</option>'
+        : projects.map(p => `<option value="${p.id}"${p.id === current ? ' selected' : ''}>${escapeHtml(p.name || p.path.split('/').pop())}</option>`).join('');
+}
+
+// ── Interactive PTY Terminal (Deep View) ──
+
+const _interactivePTY = {
+    ws: null,
+    terminal: null,
+    fitAddon: null,
+    resizeObserver: null,
+    agentId: null,
+    sessionId: null,
+};
+
+function connectInteractiveTerminal(agentId) {
+    disconnectInteractiveTerminal();
+    const agent = state.agents.get(agentId);
+    if (!agent || agent.output_mode === 'stream-json') return;
+
+    const container = document.getElementById('interactiveTerminalContainer');
+    if (!container) return;
+
+    _interactivePTY.agentId = agentId;
+
+    // Create xterm.js instance with stdin enabled
+    if (typeof Terminal === 'undefined') return;
+
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    const term = new Terminal({
+        disableStdin: false,
+        cursorBlink: true,
+        cursorStyle: 'bar',
+        fontSize: 13,
+        fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+        lineHeight: 1.4,
+        scrollback: 10000,
+        convertEol: true,
+        allowProposedApi: true,
+        theme: isDark ? {
+            background: '#0D1520', foreground: '#E2E8F0', cursor: '#E2E8F0',
+            selectionBackground: 'rgba(99,102,241,0.35)',
+            black: '#1E293B', red: '#EF4444', green: '#22C55E', yellow: '#EAB308',
+            blue: '#3B82F6', magenta: '#A855F7', cyan: '#06B6D4', white: '#E2E8F0',
+            brightBlack: '#475569', brightRed: '#F87171', brightGreen: '#4ADE80', brightYellow: '#FDE047',
+            brightBlue: '#60A5FA', brightMagenta: '#C084FC', brightCyan: '#22D3EE', brightWhite: '#F8FAFC',
+        } : {
+            background: '#F8FAFC', foreground: '#1E293B', cursor: '#1E293B',
+            selectionBackground: 'rgba(99,102,241,0.25)',
+            black: '#CBD5E1', red: '#DC2626', green: '#16A34A', yellow: '#CA8A04',
+            blue: '#2563EB', magenta: '#9333EA', cyan: '#0891B2', white: '#1E293B',
+            brightBlack: '#94A3B8', brightRed: '#EF4444', brightGreen: '#22C55E', brightYellow: '#EAB308',
+            brightBlue: '#3B82F6', brightMagenta: '#A855F7', brightCyan: '#06B6D4', brightWhite: '#0F172A',
+        }
+    });
+
+    if (typeof FitAddon !== 'undefined') {
+        _interactivePTY.fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(_interactivePTY.fitAddon);
+    }
+    if (typeof WebLinksAddon !== 'undefined') {
+        try { term.loadAddon(new WebLinksAddon.WebLinksAddon()); } catch(e) {}
+    }
+
+    term.open(container);
+    _interactivePTY.terminal = term;
+
+    // Fit on resize
+    _interactivePTY.resizeObserver = new ResizeObserver(() => {
+        if (_interactivePTY.fitAddon) try { _interactivePTY.fitAddon.fit(); } catch(e) {}
+    });
+    _interactivePTY.resizeObserver.observe(container);
+    requestAnimationFrame(() => {
+        if (_interactivePTY.fitAddon) try { _interactivePTY.fitAddon.fit(); } catch(e) {}
+    });
+
+    // WebSocket connect
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const cols = term.cols || 200;
+    const rows = term.rows || 50;
+    const wsUrl = `${proto}//${location.host}/ws/terminal/${agentId}?cols=${cols}&rows=${rows}`;
+    const ws = new WebSocket(wsUrl);
+    ws.binaryType = 'arraybuffer';
+    _interactivePTY.ws = ws;
+
+    const statusEl = document.getElementById('interactiveStatus');
+    const connectBtn = document.getElementById('interactiveConnectBtn');
+
+    ws.onopen = () => {
+        if (statusEl) { statusEl.textContent = 'Connected'; statusEl.classList.add('connected'); }
+        if (connectBtn) connectBtn.textContent = 'Disconnect';
+    };
+    ws.onmessage = (ev) => {
+        if (ev.data instanceof ArrayBuffer) {
+            // Binary: terminal output from PTY
+            term.write(new Uint8Array(ev.data));
+        } else {
+            // Text: control messages
+            try {
+                const msg = JSON.parse(ev.data);
+                if (msg.type === 'pty_session') {
+                    _interactivePTY.sessionId = msg.session_id;
+                }
+            } catch(e) {}
+        }
+    };
+    ws.onclose = () => {
+        if (statusEl) { statusEl.textContent = 'Disconnected'; statusEl.classList.remove('connected'); }
+        if (connectBtn) connectBtn.textContent = 'Connect';
+        _interactivePTY.ws = null;
+    };
+    ws.onerror = () => {
+        if (statusEl) { statusEl.textContent = 'Error'; statusEl.classList.remove('connected'); }
+    };
+
+    // Send user input to PTY via binary WebSocket
+    term.onData(data => {
+        if (_interactivePTY.ws && _interactivePTY.ws.readyState === WebSocket.OPEN) {
+            _interactivePTY.ws.send(new TextEncoder().encode(data));
+        }
+    });
+
+    // Send resize events
+    term.onResize(({ cols, rows }) => {
+        if (_interactivePTY.ws && _interactivePTY.ws.readyState === WebSocket.OPEN) {
+            _interactivePTY.ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+        }
+    });
+
+    term.focus();
+}
+
+function disconnectInteractiveTerminal() {
+    if (_interactivePTY.ws) {
+        _interactivePTY.ws.close();
+        _interactivePTY.ws = null;
+    }
+    if (_interactivePTY.resizeObserver) {
+        _interactivePTY.resizeObserver.disconnect();
+        _interactivePTY.resizeObserver = null;
+    }
+    if (_interactivePTY.terminal) {
+        _interactivePTY.terminal.dispose();
+        _interactivePTY.terminal = null;
+    }
+    _interactivePTY.fitAddon = null;
+    _interactivePTY.agentId = null;
+    _interactivePTY.sessionId = null;
+    const statusEl = document.getElementById('interactiveStatus');
+    const connectBtn = document.getElementById('interactiveConnectBtn');
+    if (statusEl) { statusEl.textContent = 'Disconnected'; statusEl.classList.remove('connected'); }
+    if (connectBtn) connectBtn.textContent = 'Connect';
+}
+
+function toggleInteractiveTerminal() {
+    if (_interactivePTY.ws) {
+        disconnectInteractiveTerminal();
+    } else if (state.focusedAgentId) {
+        connectInteractiveTerminal(state.focusedAgentId);
+    }
+}
+
+// ── Bottom Terminal Panel (Standalone Shells) ──
+
+const _bottomTerminals = {
+    tabs: [],    // [{id, label, terminal, fitAddon, ws, container}]
+    activeId: null,
+    nextId: 1,
+};
+
+function toggleBottomTerminal() {
+    const panel = document.getElementById('bottomTerminalPanel');
+    if (!panel) return;
+    const isOpen = panel.classList.contains('open');
+    if (isOpen) {
+        panel.classList.remove('open');
+        // Adjust main content margin
+        document.getElementById('mainContent').style.marginBottom = '';
+    } else {
+        panel.classList.add('open');
+        document.getElementById('mainContent').style.marginBottom = '336px';
+        // Auto-create first terminal if empty
+        if (_bottomTerminals.tabs.length === 0) addBottomTerminal();
+    }
+}
+
+function addBottomTerminal(cwd) {
+    if (typeof Terminal === 'undefined') return;
+
+    const id = 'bterm-' + _bottomTerminals.nextId++;
+    const body = document.getElementById('bottomTerminalBody');
+    if (!body) return;
+
+    // Create container
+    const container = document.createElement('div');
+    container.className = 'bottom-terminal-instance';
+    container.id = id;
+    body.appendChild(container);
+
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    const term = new Terminal({
+        disableStdin: false,
+        cursorBlink: true,
+        cursorStyle: 'bar',
+        fontSize: 13,
+        fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+        lineHeight: 1.4,
+        scrollback: 10000,
+        convertEol: true,
+        allowProposedApi: true,
+        theme: isDark ? {
+            background: '#0D1520', foreground: '#E2E8F0', cursor: '#E2E8F0',
+            selectionBackground: 'rgba(99,102,241,0.35)',
+            black: '#1E293B', red: '#EF4444', green: '#22C55E', yellow: '#EAB308',
+            blue: '#3B82F6', magenta: '#A855F7', cyan: '#06B6D4', white: '#E2E8F0',
+            brightBlack: '#475569', brightRed: '#F87171', brightGreen: '#4ADE80', brightYellow: '#FDE047',
+            brightBlue: '#60A5FA', brightMagenta: '#C084FC', brightCyan: '#22D3EE', brightWhite: '#F8FAFC',
+        } : {
+            background: '#F8FAFC', foreground: '#1E293B', cursor: '#1E293B',
+            selectionBackground: 'rgba(99,102,241,0.25)',
+            black: '#CBD5E1', red: '#DC2626', green: '#16A34A', yellow: '#CA8A04',
+            blue: '#2563EB', magenta: '#9333EA', cyan: '#0891B2', white: '#1E293B',
+            brightBlack: '#94A3B8', brightRed: '#EF4444', brightGreen: '#22C55E', brightYellow: '#EAB308',
+            brightBlue: '#3B82F6', brightMagenta: '#A855F7', brightCyan: '#06B6D4', brightWhite: '#0F172A',
+        }
+    });
+
+    let fitAddon = null;
+    if (typeof FitAddon !== 'undefined') {
+        fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+    }
+    if (typeof WebLinksAddon !== 'undefined') {
+        try { term.loadAddon(new WebLinksAddon.WebLinksAddon()); } catch(e) {}
+    }
+
+    term.open(container);
+
+    // Resize observer
+    const ro = new ResizeObserver(() => {
+        if (fitAddon) try { fitAddon.fit(); } catch(e) {}
+    });
+    ro.observe(container);
+
+    const label = cwd ? cwd.split('/').pop() || 'shell' : 'shell';
+    const tabInfo = { id, label, terminal: term, fitAddon, ws: null, container, resizeObserver: ro };
+    _bottomTerminals.tabs.push(tabInfo);
+
+    // WebSocket connect
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    requestAnimationFrame(() => {
+        if (fitAddon) try { fitAddon.fit(); } catch(e) {}
+        const cols = term.cols || 200;
+        const rows = term.rows || 50;
+        const cwdParam = cwd ? `&cwd=${encodeURIComponent(cwd)}` : '';
+        const wsUrl = `${proto}//${location.host}/ws/terminal/new?cols=${cols}&rows=${rows}${cwdParam}`;
+        const ws = new WebSocket(wsUrl);
+        ws.binaryType = 'arraybuffer';
+        tabInfo.ws = ws;
+
+        ws.onmessage = (ev) => {
+            if (ev.data instanceof ArrayBuffer) {
+                term.write(new Uint8Array(ev.data));
+            }
+        };
+        ws.onclose = () => {
+            tabInfo.ws = null;
+            tabInfo.label += ' (closed)';
+            renderBottomTerminalTabs();
+        };
+        ws.onerror = () => {
+            tabInfo.ws = null;
+            tabInfo.label += ' (error)';
+            renderBottomTerminalTabs();
+        };
+    });
+
+    term.onData(data => {
+        if (tabInfo.ws && tabInfo.ws.readyState === WebSocket.OPEN) {
+            tabInfo.ws.send(new TextEncoder().encode(data));
+        }
+    });
+    term.onResize(({ cols, rows }) => {
+        if (tabInfo.ws && tabInfo.ws.readyState === WebSocket.OPEN) {
+            tabInfo.ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+        }
+    });
+
+    switchBottomTerminal(id);
+    renderBottomTerminalTabs();
+}
+
+function switchBottomTerminal(id) {
+    _bottomTerminals.activeId = id;
+    for (const tab of _bottomTerminals.tabs) {
+        const el = document.getElementById(tab.id);
+        if (el) {
+            if (tab.id === id) {
+                el.classList.add('active');
+                requestAnimationFrame(() => {
+                    if (tab.fitAddon) try { tab.fitAddon.fit(); } catch(e) {}
+                    tab.terminal.focus();
+                });
+            } else {
+                el.classList.remove('active');
+            }
+        }
+    }
+    renderBottomTerminalTabs();
+}
+
+function closeBottomTerminal(id) {
+    const idx = _bottomTerminals.tabs.findIndex(t => t.id === id);
+    if (idx === -1) return;
+    const tab = _bottomTerminals.tabs[idx];
+    if (tab.ws) tab.ws.close();
+    if (tab.resizeObserver) tab.resizeObserver.disconnect();
+    tab.terminal.dispose();
+    const el = document.getElementById(tab.id);
+    if (el) el.remove();
+    _bottomTerminals.tabs.splice(idx, 1);
+
+    if (_bottomTerminals.activeId === id) {
+        _bottomTerminals.activeId = _bottomTerminals.tabs.length > 0 ? _bottomTerminals.tabs[0].id : null;
+        if (_bottomTerminals.activeId) switchBottomTerminal(_bottomTerminals.activeId);
+    }
+    renderBottomTerminalTabs();
+
+    // Close panel if no tabs left
+    if (_bottomTerminals.tabs.length === 0) toggleBottomTerminal();
+}
+
+function renderBottomTerminalTabs() {
+    const container = document.getElementById('bottomTerminalTabs');
+    if (!container) return;
+    container.innerHTML = _bottomTerminals.tabs.map(tab => {
+        const safeLabel = (tab.label || 'shell').replace(/</g, '&lt;');
+        const active = tab.id === _bottomTerminals.activeId ? ' active' : '';
+        return `<button class="bottom-terminal-tab${active}" onclick="switchBottomTerminal('${tab.id}')">${safeLabel}<span class="tab-close" onclick="event.stopPropagation();closeBottomTerminal('${tab.id}')">×</span></button>`;
+    }).join('');
+}
+
+// Ctrl+` keyboard shortcut for bottom terminal
+document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === '`') {
+        e.preventDefault();
+        toggleBottomTerminal();
+    }
+});
+
+// Bottom panel resize drag
+(function() {
+    const resize = document.getElementById('bottomTerminalResize');
+    const panel = document.getElementById('bottomTerminalPanel');
+    const body = document.getElementById('bottomTerminalBody');
+    if (!resize || !panel || !body) return;
+    let startY = 0, startH = 0;
+    resize.addEventListener('mousedown', (e) => {
+        startY = e.clientY;
+        startH = body.offsetHeight;
+        const onMove = (e2) => {
+            const newH = Math.max(100, Math.min(600, startH + (startY - e2.clientY)));
+            body.style.height = newH + 'px';
+            document.getElementById('mainContent').style.marginBottom = (newH + 36) + 'px';
+            // Refit active terminal
+            const active = _bottomTerminals.tabs.find(t => t.id === _bottomTerminals.activeId);
+            if (active && active.fitAddon) try { active.fitAddon.fit(); } catch(e3) {}
+        };
+        const onUp = () => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    });
+})();
+
+// Clean up interactive PTY when leaving deep view
+const _origCloseDeepView = typeof closeDeepView === 'function' ? closeDeepView : null;
+if (_origCloseDeepView) {
+    closeDeepView = function() {
+        disconnectInteractiveTerminal();
+        _origCloseDeepView();
+    };
+}
+
+// (Webhook loading merged into _origOpenSettings patch above)
+
+
+// ── AI Chat (merged from separate script block) ──
+
+// ── AI Chat ──
+
+const _aiChat = {
+    messages: [],
+    isOpen: false,
+    sending: false,
+};
+
+function toggleAiChat() {
+    _aiChat.isOpen = !_aiChat.isOpen;
+    document.getElementById('aiChatPanel').classList.toggle('open', _aiChat.isOpen);
+    if (_aiChat.isOpen) {
+        const input = document.getElementById('aiChatInput');
+        if (input) setTimeout(() => input.focus(), 100);
+        // Check if LLM is available on first open
+        if (!_aiChat._checkedAvailability) {
+            _aiChat._checkedAvailability = true;
+            const sh = state._serviceHealth;
+            if (sh && !sh.llm_enabled) {
+                _aiChat.messages = [{ role: 'system', content: 'AI chat requires XAI_API_KEY. Set it in your environment and restart the server:\n\nexport XAI_API_KEY="your-key"\nashlr' }];
+                _renderChatMessages();
+            }
+        }
+    }
+}
+
+async function sendAiChat() {
+    const input = document.getElementById('aiChatInput');
+    const message = input?.value?.trim();
+    if (!message || _aiChat.sending) return;
+
+    _aiChat.sending = true;
+    const sendBtn = document.getElementById('aiChatSend');
+    if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '...'; }
+
+    // Add user message
+    _aiChat.messages.push({ role: 'user', content: message });
+    input.value = '';
+    _renderChatMessages();
+
+    // Build context — include fleet state summary
+    const agents = [...state.agents.values()];
+    const projects = state.projects || [];
+    const contextSummary = `Fleet: ${agents.length} agents (${agents.filter(a=>a.status==='working').length} working, ${agents.filter(a=>a.status==='waiting').length} waiting, ${agents.filter(a=>a.status==='error').length} error). Projects: ${projects.map(p=>p.name).join(', ') || 'none'}.`;
+
+    try {
+        const resp = await apiFetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message,
+                context: contextSummary,
+                history: _aiChat.messages.slice(-10),
+            }),
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            const errMsg = err.error || 'Chat unavailable';
+            _aiChat.messages.push({ role: 'system', content: errMsg });
+        } else {
+            const data = await resp.json();
+            _aiChat.messages.push({ role: 'assistant', content: data.reply || '(no response)' });
+            const modelEl = document.getElementById('aiChatModel');
+            if (modelEl && data.model) modelEl.textContent = data.model;
+        }
+    } catch (e) {
+        _aiChat.messages.push({ role: 'system', content: 'Failed to connect' });
+    }
+
+    _aiChat.sending = false;
+    if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Send'; }
+    _renderChatMessages();
+}
+
+function _formatChatContent(text) {
+    // Escape HTML first
+    let s = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // Code blocks (```...```)
+    s = s.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre style="background:rgba(0,0,0,0.15);padding:8px;border-radius:6px;font-size:11px;overflow-x:auto;margin:4px 0"><code>$2</code></pre>');
+    // Inline code (`...`)
+    s = s.replace(/`([^`]+)`/g, '<code style="background:rgba(0,0,0,0.1);padding:1px 4px;border-radius:3px;font-size:11px">$1</code>');
+    // Bold (**...**)
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // Newlines
+    s = s.replace(/\n/g, '<br>');
+    return s;
+}
+
+function _renderChatMessages() {
+    const container = document.getElementById('aiChatMessages');
+    if (!container) return;
+    container.innerHTML = _aiChat.messages.map(m => {
+        const formatted = _formatChatContent(m.content);
+        return `<div class="ai-chat-msg ${m.role}">${formatted}</div>`;
+    }).join('');
+    container.scrollTop = container.scrollHeight;
+}
+
+// Enter to send, Shift+Enter for newline
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && e.target.id === 'aiChatInput') {
+        e.preventDefault();
+        sendAiChat();
+    }
+});
+
+// Auto-resize textarea
+document.addEventListener('input', (e) => {
+    if (e.target.id === 'aiChatInput') {
+        e.target.style.height = 'auto';
+        e.target.style.height = Math.min(e.target.scrollHeight, 100) + 'px';
+    }
+});

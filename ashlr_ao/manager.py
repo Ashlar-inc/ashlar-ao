@@ -287,6 +287,171 @@ class AgentManager:
 
         return cmd_parts, task_to_send
 
+    # ── Stream-JSON helpers ──
+
+    @staticmethod
+    def _build_stream_json_command(
+        bc: BackendConfig,
+        task: str,
+        model: str | None = None,
+        tools: list[str] | None = None,
+        system_prompt: str | None = None,
+    ) -> list[str]:
+        """Build CLI command for --print --output-format stream-json mode.
+
+        Stream-json mode is non-interactive: task is a positional arg,
+        --dangerously-skip-permissions is not needed (no TUI).
+        """
+        cmd = [bc.command, "--print", "--output-format", "stream-json"]
+        if model and bc.supports_model_select:
+            cmd.extend(["--model", model])
+        if tools and bc.supports_tool_restriction:
+            cmd.extend(["--allowedTools", ",".join(tools)])
+        if system_prompt and bc.supports_system_prompt:
+            cmd.extend(["--append-system-prompt", system_prompt])
+        # Task is the positional argument (must be last)
+        if task:
+            cmd.append(task)
+        return cmd
+
+    async def _read_stream_json(self, agent_id: str) -> None:
+        """Read stream-json stdout from a subprocess agent and feed into output pipeline.
+
+        Each line is a JSON object. Event types from Claude Code --print --output-format stream-json:
+          {"type": "system", "subtype": "init", "session_id": "...", ...}
+          {"type": "assistant", "message": {"role": "assistant", "content": [...]}, ...}
+          {"type": "result", "cost_usd": 0.01, "duration_ms": 1234, "is_error": false,
+           "num_turns": 1, "session_id": "...", "total_cost_usd": 0.05}
+
+        Content blocks in assistant messages:
+          {"type": "text", "text": "..."}
+          {"type": "tool_use", "name": "...", "input": {...}}
+          {"type": "tool_result", "content": "...", "is_error": false}
+        """
+        import json as _json
+
+        agent = self.agents.get(agent_id)
+        if not agent or not agent._subprocess_proc:
+            return
+
+        proc = agent._subprocess_proc
+        try:
+            async for raw_line in proc.stdout:
+                line = raw_line.decode("utf-8", errors="replace").rstrip("\n\r")
+                if not line:
+                    continue
+
+                # Parse JSON event
+                try:
+                    event = _json.loads(line)
+                except _json.JSONDecodeError:
+                    log.debug(f"Stream-json: malformed line for agent {agent_id}: {line[:200]}")
+                    agent.output_lines.append(redact_secrets(line))
+                    continue
+
+                event_type = event.get("type", "")
+
+                if event_type == "system":
+                    # System init — extract session ID
+                    sid = event.get("session_id")
+                    if sid:
+                        agent.session_id = sid
+                    agent.output_lines.append(f"[system] Session initialized")
+
+                elif event_type == "assistant":
+                    msg = event.get("message", {})
+                    content_blocks = msg.get("content", [])
+                    for block in content_blocks:
+                        block_type = block.get("type", "")
+                        if block_type == "text":
+                            text = block.get("text", "")
+                            for text_line in text.split("\n"):
+                                agent.output_lines.append(redact_secrets(text_line))
+                            agent._total_chars += len(text)
+                        elif block_type == "tool_use":
+                            tool_name = block.get("name", "unknown")
+                            tool_input = block.get("input", {})
+                            # Track file operations
+                            if tool_name in ("Read", "Edit", "Write", "Glob", "Grep"):
+                                fp = tool_input.get("file_path") or tool_input.get("path") or ""
+                                if fp:
+                                    agent._files_touched_set.add(fp)
+                                    agent.files_touched = len(agent._files_touched_set)
+                            summary_str = str(tool_input)[:200]
+                            agent.output_lines.append(f"[tool] {tool_name}: {redact_secrets(summary_str)}")
+                        elif block_type == "tool_result":
+                            content = block.get("content", "")
+                            is_err = block.get("is_error", False)
+                            prefix = "[tool_error]" if is_err else "[tool_result]"
+                            # Show abbreviated result
+                            result_str = str(content)[:300]
+                            agent.output_lines.append(f"{prefix} {redact_secrets(result_str)}")
+                            if is_err:
+                                agent.error_count += 1
+
+                elif event_type == "result":
+                    # Final result — extract real cost and token data
+                    cost = event.get("cost_usd") or event.get("total_cost_usd") or 0.0
+                    if cost:
+                        agent.estimated_cost_usd = float(cost)
+                    is_error = event.get("is_error", False)
+                    duration_ms = event.get("duration_ms", 0)
+                    num_turns = event.get("num_turns", 0)
+                    sid = event.get("session_id")
+                    if sid:
+                        agent.session_id = sid
+                    # Extract usage from result if present
+                    usage = event.get("usage", {})
+                    if usage:
+                        agent.tokens_input = usage.get("input_tokens", agent.tokens_input)
+                        agent.tokens_output = usage.get("output_tokens", agent.tokens_output)
+                    agent.output_lines.append(
+                        f"[result] {'Error' if is_error else 'Completed'} — "
+                        f"cost: ${agent.estimated_cost_usd:.4f}, "
+                        f"turns: {num_turns}, "
+                        f"duration: {duration_ms / 1000:.1f}s"
+                    )
+
+                # Update metrics every event
+                agent.last_output_time = time.monotonic()
+                agent.total_output_lines = len(agent.output_lines)
+                if not agent._first_output_received and agent._spawn_time != 0.0:
+                    agent._first_output_received = True
+                    agent.time_to_first_output = round(time.monotonic() - agent._spawn_time, 2)
+
+        except asyncio.CancelledError:
+            log.debug(f"Stream reader cancelled for agent {agent_id}")
+            return
+        except Exception as e:
+            log.error(f"Stream reader error for agent {agent_id}: {e}")
+            agent.error_message = f"Stream reader error: {e}"
+
+        # Process exited — check return code
+        try:
+            await proc.wait()
+        except Exception:
+            pass
+
+        rc = proc.returncode
+        if rc == 0:
+            agent.set_status("complete")
+            agent.summary = "Task completed"
+        else:
+            agent.set_status("error")
+            agent.error_message = f"Process exited with code {rc}"
+            # Capture stderr
+            if proc.stderr:
+                try:
+                    stderr_data = await proc.stderr.read()
+                    stderr_text = stderr_data.decode("utf-8", errors="replace").strip()
+                    if stderr_text:
+                        agent.error_message += f": {stderr_text[:500]}"
+                        agent.output_lines.append(f"[stderr] {redact_secrets(stderr_text[:500])}")
+                except Exception:
+                    pass
+        agent.updated_at = datetime.now(timezone.utc).isoformat()
+        log.info(f"Stream reader finished for agent {agent_id} (rc={rc})")
+
     # ── Core operations ──
 
     async def spawn(
@@ -301,6 +466,7 @@ class AgentManager:
         tools: list[str] | None = None,
         system_prompt_extra: str | None = None,
         resume_session: str | None = None,
+        output_mode: str = "tmux",
     ) -> Agent:
         """Spawn a new agent. Returns the Agent object."""
         max_a = min(self.config.max_agents, self.license.max_agents) if self.license.is_pro else min(self.config.max_agents, COMMUNITY_LICENSE.max_agents)
@@ -344,6 +510,12 @@ class AgentManager:
         if not self.config.demo_mode:
             if backend not in self.config.backends:
                 raise ValueError(f"Unknown backend '{backend}'. Available: {', '.join(self.config.backends.keys())}")
+
+        # Validate output_mode
+        if output_mode not in ("tmux", "stream-json"):
+            raise ValueError(f"Invalid output_mode '{output_mode}'. Must be 'tmux' or 'stream-json'.")
+        if output_mode == "stream-json" and backend != "claude-code":
+            raise ValueError("stream-json output mode is only supported for the claude-code backend.")
 
         # Validate working_dir
         if working_dir:
@@ -399,6 +571,7 @@ class AgentManager:
             tools_allowed=tools,
             system_prompt=system_prompt_extra,
             plan_mode=plan_mode,
+            output_mode=output_mode,
             _spawn_time=time.monotonic(),
         )
         # Apply configurable output buffer size
@@ -422,6 +595,65 @@ class AgentManager:
                 agent.git_branch = branch
         except Exception:
             pass  # Not a git repo or git not available
+
+        # ── Stream-JSON subprocess path (no tmux) ──
+        if output_mode == "stream-json" and not self.config.demo_mode:
+            bc = self.backend_configs.get(backend)
+            if not bc or not bc.available:
+                try:
+                    cmd_bin, cmd_args = self._resolve_backend_command(backend)
+                    bc = BackendConfig(command=cmd_bin, args=cmd_args, available=True)
+                except ValueError as e:
+                    agent.status = "error"
+                    agent.error_message = str(e)
+                    log.error(f"Backend resolution failed for {backend}: {e}")
+                    self.agents.pop(agent_id, None)
+                    return agent
+
+            # Build system prompt
+            role_obj = BUILTIN_ROLES.get(role)
+            if not role_obj:
+                role_obj = BUILTIN_ROLES["general"]
+            sys_parts = []
+            if bc.inject_role_prompt and role != "general":
+                sys_parts.append(f"You are a {role_obj.name}. {role_obj.system_prompt}")
+            if system_prompt_extra:
+                sys_parts.append(system_prompt_extra)
+            full_system = "\n\n".join(sys_parts)
+            if full_system:
+                agent.system_prompt = full_system
+
+            cmd = self._build_stream_json_command(
+                bc, task, model=model, tools=tools, system_prompt=full_system,
+            )
+
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=working_dir,
+                )
+                agent._subprocess_proc = proc
+                agent.pid = proc.pid
+                agent.tmux_session = ""  # No tmux session for stream-json agents
+                # Launch reader task
+                agent._reader_task = asyncio.create_task(
+                    self._read_stream_json(agent_id),
+                    name=f"stream-reader-{agent_id}",
+                )
+                agent.status = "working"
+                agent.updated_at = datetime.now(timezone.utc).isoformat()
+                log.info(f"Spawned stream-json agent {agent_id} ({name}) with role {role}")
+                return agent
+            except Exception as e:
+                agent.status = "error"
+                agent.error_message = f"Failed to start subprocess: {e}"
+                log.error(f"Subprocess spawn failed for {agent_id}: {e}")
+                self.agents.pop(agent_id, None)
+                return agent
+
+        # ── tmux path (default) ──
 
         # Pre-flight: kill any orphaned tmux session with this name (rare UUID collision)
         try:
@@ -815,22 +1047,43 @@ class AgentManager:
 
         # Mark as killed immediately so background loops skip this agent
         agent.status = "killed"
-
-        session = agent.tmux_session
         log.info(f"Killing agent {agent_id} ({agent.name})")
 
-        # Send /exit to claude
-        try:
-            await self._tmux_send_keys(session, "/exit")
-            await asyncio.sleep(2)
-        except Exception as e:
-            log.warning(f"Failed to send /exit to tmux session {session} for agent {agent_id}: {e}")
+        # Cancel stream reader task if present
+        if agent._reader_task and not agent._reader_task.done():
+            agent._reader_task.cancel()
+            try:
+                await asyncio.wait_for(agent._reader_task, timeout=2.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
 
-        # Force kill tmux session
-        try:
-            await self._run_tmux(["kill-session", "-t", session])
-        except Exception as e:
-            log.warning(f"Failed to kill tmux session {session} for agent {agent_id}: {e}")
+        # Kill subprocess if stream-json mode
+        if agent._subprocess_proc:
+            try:
+                agent._subprocess_proc.terminate()
+                try:
+                    await asyncio.wait_for(agent._subprocess_proc.wait(), timeout=3.0)
+                except asyncio.TimeoutError:
+                    agent._subprocess_proc.kill()
+            except ProcessLookupError:
+                pass  # Already exited
+            except Exception as e:
+                log.warning(f"Failed to kill subprocess for agent {agent_id}: {e}")
+        else:
+            # tmux path
+            session = agent.tmux_session
+            # Send /exit to claude
+            try:
+                await self._tmux_send_keys(session, "/exit")
+                await asyncio.sleep(2)
+            except Exception as e:
+                log.warning(f"Failed to send /exit to tmux session {session} for agent {agent_id}: {e}")
+
+            # Force kill tmux session
+            try:
+                await self._run_tmux(["kill-session", "-t", session])
+            except Exception as e:
+                log.warning(f"Failed to kill tmux session {session} for agent {agent_id}: {e}")
 
         # Clean up demo script temp file
         if agent.script_path:
@@ -855,12 +1108,20 @@ class AgentManager:
         return True
 
     async def pause(self, agent_id: str) -> bool:
-        """Pause agent by sending Ctrl+C."""
+        """Pause agent by sending Ctrl+C (tmux) or SIGTSTP (subprocess)."""
         agent = self.agents.get(agent_id)
         if not agent:
             return False
 
-        await self._tmux_send_raw(agent.tmux_session, "C-c")
+        if agent.output_mode == "stream-json" and agent._subprocess_proc:
+            import signal
+            try:
+                os.kill(agent._subprocess_proc.pid, signal.SIGTSTP)
+            except (ProcessLookupError, OSError) as e:
+                log.warning(f"Failed to SIGTSTP subprocess for agent {agent_id}: {e}")
+                return False
+        else:
+            await self._tmux_send_raw(agent.tmux_session, "C-c")
         agent.set_status("paused")
         agent.needs_input = False
         agent.input_prompt = None
@@ -874,8 +1135,16 @@ class AgentManager:
         if not agent:
             return False
 
-        msg = message or agent.task or "continue"
-        await self._tmux_send_keys(agent.tmux_session, msg)
+        if agent.output_mode == "stream-json" and agent._subprocess_proc:
+            import signal
+            try:
+                os.kill(agent._subprocess_proc.pid, signal.SIGCONT)
+            except (ProcessLookupError, OSError) as e:
+                log.warning(f"Failed to SIGCONT subprocess for agent {agent_id}: {e}")
+                return False
+        else:
+            msg = message or agent.task or "continue"
+            await self._tmux_send_keys(agent.tmux_session, msg)
         agent.set_status("working")
         agent.needs_input = False
         agent.input_prompt = None
@@ -1061,10 +1330,14 @@ class AgentManager:
             agent._restart_in_progress = False
 
     async def send_message(self, agent_id: str, message: str) -> bool:
-        """Send a message to an agent's tmux session."""
+        """Send a message to an agent's tmux session.
+        Returns False for stream-json agents (non-interactive)."""
         agent = self.agents.get(agent_id)
         if not agent:
             return False
+
+        if agent.output_mode == "stream-json":
+            raise ValueError("Agent is running in print mode (non-interactive) — messages cannot be sent.")
 
         # Handle multi-line messages
         lines = message.split("\n")
@@ -1097,10 +1370,15 @@ class AgentManager:
 
     async def capture_output(self, agent_id: str) -> list[str] | None:
         """Capture terminal output and return new lines since last capture.
-        Returns None if tmux session is dead/unreachable (vs empty list for no new output)."""
+        Returns None if tmux session is dead/unreachable (vs empty list for no new output).
+        Stream-json agents are handled by _read_stream_json — skip tmux capture."""
         agent = self.agents.get(agent_id)
         if not agent:
             return None
+
+        # Stream-json agents feed output via _read_stream_json task — no tmux to capture
+        if agent.output_mode == "stream-json":
+            return []
 
         raw_lines = await self._tmux_capture(agent.tmux_session)
         if raw_lines is None:

@@ -32,6 +32,8 @@ class BackendConfig:
     # Context window sizing
     context_window: int = 200_000  # tokens
     char_to_token_ratio: float = 3.5
+    # Output capture mode: "tmux" (default) or "stream-json" (for --output-format stream-json)
+    output_mode: str = "tmux"
 
     def to_dict(self) -> dict:
         return {
@@ -51,6 +53,7 @@ class BackendConfig:
             "cost_output_per_1k": self.cost_output_per_1k,
             "context_window": self.context_window,
             "char_to_token_ratio": self.char_to_token_ratio,
+            "output_mode": self.output_mode,
         }
 
 

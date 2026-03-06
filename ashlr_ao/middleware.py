@@ -92,6 +92,20 @@ _RATE_LIMIT_TIERS: dict[str, tuple[float, float]] = {
 }
 
 
+def _check_rate(request: web.Request, cost: float = 1.0, rate: float = 5.0, burst: float = 10.0) -> web.Response | None:
+    """Check rate limit. Returns a 429 response if exceeded, None if OK."""
+    rl: RateLimiter = request.app["rate_limiter"]
+    ip = _get_client_ip(request)
+    allowed, retry_after = rl.check(ip, cost, rate, burst)
+    if not allowed:
+        return web.json_response(
+            {"error": "Too many requests", "retry_after": round(retry_after, 1)},
+            status=429,
+            headers={"Retry-After": str(int(retry_after) + 1)},
+        )
+    return None
+
+
 def _get_rate_tier(path: str, method: str) -> str:
     """Determine rate limit tier from request path and method."""
     if "/auth/" in path:

@@ -170,12 +170,79 @@ from ashlr_ao.background import (  # noqa: F401
 from ashlr_ao.middleware import (  # noqa: F401
     RateLimiter,
     _get_client_ip,
+    _check_rate,
     _RATE_LIMIT_TIERS,
     _get_rate_tier,
     rate_limit_middleware,
     request_logging_middleware,
     compression_middleware,
     security_headers_middleware,
+)
+
+# Re-export from pty module (backward compat)
+from ashlr_ao.pty import PTYManager  # noqa: F401
+
+# File browser module
+from ashlr_ao.files import (  # noqa: F401
+    file_tree, file_read, file_write, file_create, file_delete, file_rename,
+)
+
+# Git integration module
+from ashlr_ao.git import (  # noqa: F401
+    git_status, git_diff, git_log, git_branches,
+    git_stage, git_unstage, git_commit, git_discard,
+)
+
+# System, config & license endpoints
+from ashlr_ao.system_endpoints import (  # noqa: F401
+    system_metrics,
+    system_metrics_detail,
+    health_check,
+    health_detailed,
+    run_diagnostic,
+    get_server_stats,
+    get_config,
+    put_config,
+    license_status,
+    activate_license,
+    deactivate_license,
+    export_config,
+    import_config,
+    _config_write_lock,
+)
+
+# Re-export from workflow_endpoints module (backward compat)
+from ashlr_ao.workflow_endpoints import (  # noqa: F401
+    list_workflows,
+    create_workflow,
+    update_workflow,
+    delete_workflow,
+    run_workflow,
+    list_workflow_runs,
+    get_workflow_run,
+    cancel_workflow_run,
+    _validate_workflow_specs,
+    _substitute_task_vars,
+    list_fleet_templates,
+    create_fleet_template,
+    get_fleet_template,
+    update_fleet_template,
+    delete_fleet_template,
+    deploy_fleet_template,
+)
+
+# Analytics, fleet, and bulk operation handlers
+from ashlr_ao.analytics import (  # noqa: F401
+    fleet_analytics,
+    collaboration_graph,
+    get_costs,
+    bulk_agent_action,
+    batch_spawn,
+    agent_suggestions,
+    send_to_agent,
+    validate_spawn,
+    search_agents,
+    bulk_respond,
 )
 
 # Re-export from models module (backward compat)
@@ -204,8 +271,7 @@ from ashlr_ao.models import (  # noqa: F401
 # AgentManager moved to ashlr_ao.manager — re-exported above
 
 
-# Concurrency guard for config file writes
-_config_write_lock = asyncio.Lock()
+# _config_write_lock imported from ashlr_ao.system_endpoints above
 
 
 # ─────────────────────────────────────────────
@@ -248,18 +314,7 @@ async def list_agents(request: web.Request) -> web.Response:
     return web.json_response([a.to_dict() for a in agents_list])
 
 
-def _check_rate(request: web.Request, cost: float = 1.0, rate: float = 5.0, burst: float = 10.0) -> web.Response | None:
-    """Check rate limit. Returns a 429 response if exceeded, None if OK."""
-    rl: RateLimiter = request.app["rate_limiter"]
-    ip = _get_client_ip(request)
-    allowed, retry_after = rl.check(ip, cost, rate, burst)
-    if not allowed:
-        return web.json_response(
-            {"error": "Too many requests", "retry_after": round(retry_after, 1)},
-            status=429,
-            headers={"Retry-After": str(int(retry_after) + 1)},
-        )
-    return None
+# _check_rate moved to ashlr_ao.middleware — re-exported above
 
 
 async def spawn_agent(request: web.Request) -> web.Response:
@@ -331,6 +386,12 @@ async def spawn_agent(request: web.Request) -> web.Response:
     if not isinstance(plan_mode, bool):
         return web.json_response({"error": "plan_mode must be a boolean"}, status=400)
 
+    output_mode = data.get("output_mode", "tmux")
+    if output_mode not in ("tmux", "stream-json"):
+        return web.json_response({"error": "output_mode must be 'tmux' or 'stream-json'"}, status=400)
+    if output_mode == "stream-json" and backend != "claude-code":
+        return web.json_response({"error": "stream-json output mode is only supported for the claude-code backend"}, status=400)
+
     project_id = data.get("project_id")
     if project_id is not None and not isinstance(project_id, str):
         return web.json_response({"error": "project_id must be a string"}, status=400)
@@ -364,6 +425,7 @@ async def spawn_agent(request: web.Request) -> web.Response:
             tools=tools_sel,
             system_prompt_extra=system_prompt_extra,
             resume_session=resume_session,
+            output_mode=output_mode,
         )
 
         # Assign project after spawn
@@ -482,39 +544,7 @@ async def get_agent_output_history(request: web.Request) -> web.Response:
     })
 
 
-async def send_to_agent(request: web.Request) -> web.Response:
-    manager: AgentManager = request.app["agent_manager"]
-    hub: WebSocketHub = request.app["ws_hub"]
-    if r := _check_rate(request, cost=1, rate=5.0, burst=15):
-        return r
-    agent_id = request.match_info["id"]
-
-    agent = manager.agents.get(agent_id)
-    if not agent:
-        return web.json_response({"error": "Agent not found"}, status=404)
-    if err := _check_agent_ownership(request, agent):
-        return err
-
-    try:
-        data = await request.json()
-    except json.JSONDecodeError:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
-
-    message = data.get("message", "")
-    if not isinstance(message, str) or not message:
-        return web.json_response({"error": "No message provided (must be a string)"}, status=400)
-    if len(message) > 50_000:
-        return web.json_response({"error": "Message too long (max 50,000 chars)"}, status=400)
-
-    success = await manager.send_message(agent_id, message)
-    if success:
-        # Re-fetch agent after async operation to get latest state
-        agent = manager.agents.get(agent_id)
-        if agent:
-            await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
-        return web.json_response({"status": "sent"})
-    agent_name = agent.name if agent else agent_id
-    return web.json_response({"error": f"Failed to send message to '{agent_name}' — agent may have terminated"}, status=500)
+# send_to_agent moved to ashlr_ao.analytics — re-exported above
 
 
 async def update_agent_notes(request: web.Request) -> web.Response:
@@ -747,516 +777,29 @@ async def restart_agent(request: web.Request) -> web.Response:
         return web.json_response({"error": redact_secrets(str(e))}, status=500)
 
 
-async def system_metrics(request: web.Request) -> web.Response:
-    manager: AgentManager = request.app["agent_manager"]
-    metrics = await collect_system_metrics(manager)
-    data = metrics.to_dict()
-    # Service health indicators
-    config: Config = request.app["config"]
-    data["services"] = {
-        "db_available": request.app.get("db_available", True),
-        "llm_enabled": config.llm_enabled,
-        "bg_task_health": request.app.get("bg_task_health", {}),
-    }
-    data["server_cwd"] = os.getcwd()
-    data["uptime_sec"] = round(time.monotonic() - request.app.get("_start_time", time.monotonic()))
-    return web.json_response(data)
+# system_metrics moved to ashlr_ao.system_endpoints — re-exported above
 
 
-async def fleet_analytics(request: web.Request) -> web.Response:
-    """GET /api/analytics — fleet-wide performance analytics."""
-    manager: AgentManager = request.app["agent_manager"]
-    db: Database = request.app["db"]
-    agents = list(manager.agents.values())
-
-    total_cost = sum(a.estimated_cost_usd for a in agents)
-    total_tokens_in = sum(a.tokens_input for a in agents)
-    total_tokens_out = sum(a.tokens_output for a in agents)
-    total_restarts = sum(a.restart_count for a in agents)
-
-    status_counts = {}
-    role_counts = {}
-    for a in agents:
-        status_counts[a.status] = status_counts.get(a.status, 0) + 1
-        role_counts[a.role] = role_counts.get(a.role, 0) + 1
-
-    # File activity across all agents
-    all_files: dict[str, int] = {}
-    for a in agents:
-        for fop in list(a._file_operations)[-100:]:
-            path = fop.file_path
-            all_files[path] = all_files.get(path, 0) + 1
-    top_files = sorted(all_files.items(), key=lambda x: -x[1])[:20]
-
-    # Tool usage across all agents
-    tool_counts: dict[str, int] = {}
-    for a in agents:
-        for inv in list(a._tool_invocations)[-200:]:
-            tool_counts[inv.tool] = tool_counts.get(inv.tool, 0) + 1
-
-    # Average health score
-    health_scores = [a.health_score for a in agents if a.health_score > 0]
-    avg_health = sum(health_scores) / len(health_scores) if health_scores else 0
-
-    # Agent lifespans
-    lifespans = []
-    for a in agents:
-        if a.created_at:
-            try:
-                created = datetime.fromisoformat(a.created_at.replace('Z', '+00:00'))
-                age_min = (datetime.now(timezone.utc) - created).total_seconds() / 60
-                lifespans.append(age_min)
-            except Exception as e:
-                log.debug(f"Failed to parse agent lifespan for {a.id}: {e}")
-    avg_lifespan_min = sum(lifespans) / len(lifespans) if lifespans else 0
-
-    # Historical count
-    history_count = await db.get_agent_history_count()
-
-    # Historical analytics (success rates, cost breakdowns)
-    historical = await db.get_historical_analytics()
-
-    return web.json_response({
-        "total_agents": len(agents),
-        "total_cost_usd": round(total_cost, 4),
-        "total_tokens_input": total_tokens_in,
-        "total_tokens_output": total_tokens_out,
-        "total_restarts": total_restarts,
-        "status_distribution": status_counts,
-        "role_distribution": role_counts,
-        "top_files": [{"path": p, "count": c} for p, c in top_files],
-        "tool_usage": tool_counts,
-        "avg_health_score": round(avg_health, 1),
-        "avg_lifespan_minutes": round(avg_lifespan_min, 1),
-        "historical_agents": history_count,
-        "historical": historical,
-    })
+# system_metrics_detail moved to ashlr_ao.system_endpoints — re-exported above
 
 
-async def collaboration_graph(request: web.Request) -> web.Response:
-    """GET /api/collaboration — graph of agent relationships for visualization."""
-    manager: AgentManager = request.app["agent_manager"]
-    db: Database = request.app["db"]
-    agents = list(manager.agents.values())
-
-    nodes = []
-    for a in agents:
-        nodes.append({
-            "id": a.id,
-            "name": a.name,
-            "role": a.role,
-            "status": a.status,
-            "health_score": a.health_score,
-            "project_id": a.project_id,
-            "file_count": len(a._file_operations),
-            "tool_count": len(a._tool_invocations),
-        })
-
-    edges: list[dict] = []
-    edge_set: set[tuple[str, str, str]] = set()
-
-    # 1. Message-based edges
-    if db and db._db:
-        try:
-            async with db._db.execute(
-                "SELECT from_agent_id, to_agent_id, COUNT(*) as cnt FROM agent_messages GROUP BY from_agent_id, to_agent_id"
-            ) as cur:
-                async for row in cur:
-                    from_id, to_id, cnt = row[0], row[1], row[2]
-                    if from_id in {a.id for a in agents} and to_id in {a.id for a in agents}:
-                        key = (from_id, to_id, "message")
-                        if key not in edge_set:
-                            edge_set.add(key)
-                            edges.append({"from": from_id, "to": to_id, "type": "message", "weight": cnt})
-        except Exception as e:
-            log.error(f"Failed to query collaboration graph: {e}")
-
-    # 2. Shared file edges (agents writing/reading the same files)
-    file_agents: dict[str, set[str]] = {}
-    for a in agents:
-        for fop in list(a._file_operations)[-200:]:
-            path = fop.file_path
-            if path not in file_agents:
-                file_agents[path] = set()
-            file_agents[path].add(a.id)
-
-    # Use dict for O(1) edge weight updates instead of scanning edges list
-    edge_dict: dict[tuple, dict] = {}  # (from_id, to_id, type) → edge dict
-    for path, agent_ids in file_agents.items():
-        ids = list(agent_ids)
-        for i in range(len(ids)):
-            for j in range(i + 1, len(ids)):
-                key = (min(ids[i], ids[j]), max(ids[i], ids[j]), "shared_file")
-                if key not in edge_set:
-                    edge_set.add(key)
-                    edge = {"from": ids[i], "to": ids[j], "type": "shared_file", "weight": 1, "file": path.split("/")[-1]}
-                    edges.append(edge)
-                    edge_dict[key] = edge
-                else:
-                    edge_dict[key]["weight"] += 1
-
-    # 3. Same-project edges
-    project_agents: dict[str, list[str]] = {}
-    for a in agents:
-        if a.project_id:
-            if a.project_id not in project_agents:
-                project_agents[a.project_id] = []
-            project_agents[a.project_id].append(a.id)
-
-    for proj, agent_ids in project_agents.items():
-        for i in range(len(agent_ids)):
-            for j in range(i + 1, len(agent_ids)):
-                key = (min(agent_ids[i], agent_ids[j]), max(agent_ids[i], agent_ids[j]), "project")
-                if key not in edge_set:
-                    edge_set.add(key)
-                    edge = {"from": agent_ids[i], "to": agent_ids[j], "type": "project", "weight": 1}
-                    edges.append(edge)
-                    edge_dict[key] = edge
-
-    # 4. Conflict edges (from file_activity — agents writing to same files)
-    agent_id_set = {a.id for a in agents}
-    for path, agent_ops in manager.file_activity.items():
-        writers = [aid for aid, op in agent_ops.items() if op == "write" and aid in agent_id_set]
-        for i in range(len(writers)):
-            for j in range(i + 1, len(writers)):
-                key = (min(writers[i], writers[j]), max(writers[i], writers[j]), "conflict")
-                if key not in edge_set:
-                    edge_set.add(key)
-                    edges.append({"from": writers[i], "to": writers[j], "type": "conflict", "weight": 1, "file": path.split("/")[-1]})
-
-    return web.json_response({"nodes": nodes, "edges": edges})
+# fleet_analytics moved to ashlr_ao.analytics — re-exported above
+# collaboration_graph moved to ashlr_ao.analytics — re-exported above
 
 
-async def health_check(request: web.Request) -> web.Response:
-    """Lightweight health check — no auth required."""
-    config: Config = request.app["config"]
-    manager: AgentManager = request.app["agent_manager"]
-    agents = manager.agents
-    return web.json_response({
-        "status": "ok",
-        "agents": len(agents),
-        "agents_active": sum(1 for a in agents.values() if a.status in ("working", "planning", "reading")),
-        "agents_waiting": sum(1 for a in agents.values() if a.needs_input),
-        "db_available": request.app.get("db_available", True),
-        "llm_enabled": config.llm_enabled,
-        "backends": {k: v.available for k, v in manager.backend_configs.items()},
-    })
+# health_check moved to ashlr_ao.system_endpoints — re-exported above
 
 
-async def health_detailed(request: web.Request) -> web.Response:
-    """GET /api/health/detailed — comprehensive server health and stats."""
-    config: Config = request.app["config"]
-    manager: AgentManager = request.app["agent_manager"]
-    hub: WebSocketHub = request.app["ws_hub"]
-    agents = manager.agents
-
-    uptime_s = time.monotonic() - manager._start_time
-    uptime_str = f"{int(uptime_s // 3600)}h{int((uptime_s % 3600) // 60)}m{int(uptime_s % 60)}s"
-
-    total_cost = sum(a.estimated_cost_usd for a in agents.values())
-    total_memory = sum(a.memory_mb for a in agents.values())
-    total_tokens = sum((a.tokens_input or 0) + (a.tokens_output or 0) for a in agents.values())
-    total_tool_invocations = sum(len(a._tool_invocations) for a in agents.values())
-    total_file_operations = sum(len(a._file_operations) for a in agents.values())
-
-    status_counts: dict[str, int] = {}
-    for a in agents.values():
-        status_counts[a.status] = status_counts.get(a.status, 0) + 1
-
-    # Database info
-    db = request.app.get("db")
-    db_size_mb = 0.0
-    if db and hasattr(db, 'db_path'):
-        try:
-            db_size_mb = Path(db.db_path).stat().st_size / (1024 * 1024)
-        except Exception as e:
-            log.debug(f"Failed to get DB file size: {e}")
-
-    # Background task health
-    bg_task_list = request.app.get("bg_tasks", [])
-    bg_task_names = ["output_capture", "metrics", "health_check", "memory_watchdog", "archive_cleanup", "meta_agent"]
-    bg_task_status = {}
-    for i, task in enumerate(bg_task_list):
-        name = bg_task_names[i] if i < len(bg_task_names) else f"task_{i}"
-        bg_task_status[name] = "running" if not task.done() else "stopped"
-
-    # Process memory (server itself)
-    try:
-        import psutil
-        process = psutil.Process()
-        server_memory_mb = process.memory_info().rss / (1024 * 1024)
-    except Exception as e:
-        log.debug(f"Could not read server memory: {e}")
-        server_memory_mb = 0.0
-
-    return web.json_response({
-        "status": "ok",
-        "uptime": uptime_str,
-        "uptime_seconds": round(uptime_s),
-        "server_memory_mb": round(server_memory_mb, 1),
-        "agents": {
-            "active": len(agents),
-            "total_spawned": manager._total_spawned,
-            "total_killed": manager._total_killed,
-            "total_messages_sent": manager._total_messages_sent,
-            "status_breakdown": status_counts,
-            "total_agent_memory_mb": round(total_memory, 1),
-        },
-        "costs": {
-            "total_cost_usd": round(total_cost, 4),
-            "total_tokens": total_tokens,
-        },
-        "intelligence": {
-            "total_tool_invocations": total_tool_invocations,
-            "total_file_operations": total_file_operations,
-        },
-        "websocket": {
-            "connected_clients": len(hub.clients),
-        },
-        "database": {
-            "available": request.app.get("db_available", True),
-            "size_mb": round(db_size_mb, 2),
-        },
-        "background_tasks": bg_task_status,
-        "llm": {
-            "enabled": config.llm_enabled,
-            "provider": config.llm_provider if config.llm_enabled else None,
-        },
-        "backends": {k: {"available": v.available, "command": v.command} for k, v in manager.backend_configs.items()},
-        "config": {
-            "max_concurrent": config.max_agents,
-            "port": config.port,
-            "cost_budget_usd": config.cost_budget_usd,
-        },
-    })
+# health_detailed moved to ashlr_ao.system_endpoints — re-exported above
 
 
-async def run_diagnostic(request: web.Request) -> web.Response:
-    """POST /api/diagnostic — run server self-test and report capabilities."""
-    results: dict[str, dict] = {}
-
-    # 1. tmux check
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "tmux", "-V", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
-        results["tmux"] = {"ok": True, "version": stdout.decode().strip()}
-    except Exception as e:
-        results["tmux"] = {"ok": False, "error": redact_secrets(str(e))}
-
-    # 2. Python version
-    results["python"] = {"ok": True, "version": sys.version, "executable": sys.executable}
-
-    # 3. Disk space
-    try:
-        disk = psutil.disk_usage("/")
-        free_gb = disk.free / (1024**3)
-        results["disk"] = {"ok": free_gb > 1.0, "free_gb": round(free_gb, 1), "pct_used": disk.percent}
-    except Exception as e:
-        results["disk"] = {"ok": False, "error": redact_secrets(str(e))}
-
-    # 4. Database write/read test
-    try:
-        db: Database = request.app["db"]
-        if db and db._db:
-            await db._db.execute("CREATE TABLE IF NOT EXISTS _diagnostic_test (id INTEGER PRIMARY KEY, val TEXT)")
-            await db._db.execute("INSERT OR REPLACE INTO _diagnostic_test (id, val) VALUES (1, 'ok')")
-            async with db._db.execute("SELECT val FROM _diagnostic_test WHERE id = 1") as cursor:
-                row = await cursor.fetchone()
-            await db._db.execute("DROP TABLE IF EXISTS _diagnostic_test")
-            await db._db.commit()
-            results["database"] = {"ok": row and row[0] == "ok", "write_read": "pass"}
-        else:
-            results["database"] = {"ok": False, "error": "Database not available"}
-    except Exception as e:
-        results["database"] = {"ok": False, "error": redact_secrets(str(e))}
-
-    # 5. System resources
-    try:
-        mem = psutil.virtual_memory()
-        results["system"] = {
-            "ok": True,
-            "cpu_count": psutil.cpu_count(),
-            "cpu_pct": psutil.cpu_percent(interval=None),
-            "memory_total_gb": round(mem.total / (1024**3), 1),
-            "memory_available_gb": round(mem.available / (1024**3), 1),
-            "memory_pct": mem.percent,
-        }
-    except Exception as e:
-        results["system"] = {"ok": False, "error": redact_secrets(str(e))}
-
-    # 6. Backend availability
-    manager: AgentManager = request.app["agent_manager"]
-    backends = {}
-    for name, bc in manager.backend_configs.items():
-        backends[name] = {"available": bc.available, "command": bc.command}
-    results["backends"] = {"ok": any(bc.available for bc in manager.backend_configs.values()), "backends": backends}
-
-    all_ok = all(r.get("ok", False) for r in results.values())
-    return web.json_response({
-        "status": "ok" if all_ok else "degraded",
-        "results": results,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+# run_diagnostic moved to ashlr_ao.system_endpoints — re-exported above
 
 
-async def get_server_stats(request: web.Request) -> web.Response:
-    """GET /api/stats — server uptime, request counts, agent lifecycle stats."""
-    config: Config = request.app["config"]
-    manager: AgentManager = request.app["agent_manager"]
-    db: Database = request.app["db"]
-
-    uptime_sec = time.monotonic() - manager._start_time
-    uptime_human = f"{int(uptime_sec // 3600)}h {int((uptime_sec % 3600) // 60)}m {int(uptime_sec % 60)}s"
-
-    # Agent stats
-    active = len(manager.agents)
-    by_status: dict[str, int] = {}
-    for agent in list(manager.agents.values()):
-        by_status[agent.status] = by_status.get(agent.status, 0) + 1
-
-    # DB size
-    db_size_mb = 0.0
-    try:
-        if db.db_path.exists():
-            db_size_mb = round(db.db_path.stat().st_size / (1024 * 1024), 2)
-    except Exception as e:
-        log.debug(f"Failed to get DB file size for costs: {e}")
-
-    # Request count from logging middleware (tracked on manager)
-    request_count = manager._total_api_requests
-
-    return web.json_response({
-        "uptime_sec": round(uptime_sec, 1),
-        "uptime_human": uptime_human,
-        "agents": {
-            "active": active,
-            "by_status": by_status,
-            "total_spawned": manager._total_spawned,
-            "total_killed": manager._total_killed,
-            "total_messages_sent": manager._total_messages_sent,
-        },
-        "database": {
-            "size_mb": db_size_mb,
-            "path": str(db.db_path),
-        },
-        "config": {
-            "max_agents": config.max_agents,
-            "demo_mode": config.demo_mode,
-            "llm_enabled": config.llm_enabled,
-            "archive_max_rows_per_agent": config.archive_max_rows_per_agent,
-            "archive_retention_hours": config.archive_retention_hours,
-        },
-        "request_count": request_count,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+# get_server_stats moved to ashlr_ao.system_endpoints — re-exported above
 
 
-async def validate_spawn(request: web.Request) -> web.Response:
-    """POST /api/agents/validate — dry-run spawn validation.
-
-    Validates all spawn parameters without actually creating an agent.
-    Returns {valid: true, resolved: {...}} or {valid: false, errors: [...]}.
-    """
-    try:
-        body = await request.json()
-    except Exception:
-        return web.json_response({"valid": False, "errors": ["Invalid JSON body"]}, status=400)
-
-    errors: list[str] = []
-    warnings: list[str] = []
-    resolved: dict[str, object] = {}
-    manager: AgentManager = request.app["agent_manager"]
-    config: Config = request.app["config"]
-
-    # ── Role ──
-    role = body.get("role", "general")
-    if role not in BUILTIN_ROLES:
-        errors.append(f"Unknown role '{role}'. Available: {', '.join(BUILTIN_ROLES.keys())}")
-    else:
-        resolved["role"] = role
-        resolved["role_name"] = BUILTIN_ROLES[role].name
-
-    # ── Name ──
-    name = body.get("name")
-    if name:
-        sanitized = re.sub(r'[\x00-\x1f]', '', name).strip()[:100]
-        if not sanitized:
-            errors.append("Agent name is empty after sanitization")
-        else:
-            resolved["name"] = sanitized
-            existing_names = {a.name for a in list(manager.agents.values())}
-            if sanitized in existing_names:
-                warnings.append(f"Name '{sanitized}' already in use — will be suffixed with agent ID")
-    else:
-        resolved["name"] = "(auto-generated)"
-
-    # ── Backend ──
-    backend = body.get("backend", "claude-code")
-    if not config.demo_mode:
-        if backend not in config.backends:
-            errors.append(f"Unknown backend '{backend}'. Available: {', '.join(config.backends.keys())}")
-        else:
-            bc = manager.backend_configs.get(backend)
-            if bc and not bc.available:
-                warnings.append(f"Backend '{backend}' is configured but CLI not found on PATH")
-            resolved["backend"] = backend
-    else:
-        resolved["backend"] = backend
-
-    # ── Working directory ──
-    working_dir = body.get("working_dir")
-    if working_dir:
-        wd = os.path.abspath(os.path.expanduser(working_dir))
-        if not os.path.isdir(wd):
-            home_dir = str(Path.home())
-            if not wd.startswith(home_dir):
-                errors.append(f"Working directory does not exist and is outside home: {wd}")
-            else:
-                warnings.append(f"Working directory '{wd}' does not exist — will be created")
-        resolved["working_dir"] = wd
-    else:
-        resolved["working_dir"] = os.path.abspath(os.path.expanduser(config.default_working_dir))
-
-    # ── Task ──
-    task = body.get("task", "")
-    if task and len(task) > 10000:
-        errors.append("Task description exceeds 10000 character limit")
-    elif not task:
-        warnings.append("No task provided — agent will start with no instructions")
-    resolved["task_length"] = len(task)
-
-    # ── Capacity ──
-    agent_count = len(manager.agents)
-    resolved["current_agents"] = agent_count
-    resolved["max_agents"] = config.max_agents
-    if agent_count >= config.max_agents:
-        errors.append(f"Maximum agents ({config.max_agents}) already reached")
-
-    # ── System pressure ──
-    if config.spawn_pressure_block:
-        pressure = manager.check_system_pressure()
-        if pressure.get("cpu_pressure") or pressure.get("memory_pressure"):
-            reasons = []
-            if pressure.get("cpu_pressure"):
-                reasons.append(f"CPU at {pressure.get('cpu_pct', 0):.0f}%")
-            if pressure.get("memory_pressure"):
-                reasons.append(f"Memory at {pressure.get('memory_pct', 0):.0f}%")
-            errors.append(f"System under pressure ({', '.join(reasons)}), spawning blocked")
-        resolved["system_pressure"] = pressure
-
-    # ── Plan mode ──
-    plan_mode = body.get("plan_mode", False)
-    resolved["plan_mode"] = bool(plan_mode)
-
-    valid = len(errors) == 0
-    result: dict[str, object] = {"valid": valid, "resolved": resolved}
-    if errors:
-        result["errors"] = errors
-    if warnings:
-        result["warnings"] = warnings
-    return web.json_response(result, status=200 if valid else 400)
+# validate_spawn moved to ashlr_ao.analytics — re-exported above
 
 
 async def list_roles(request: web.Request) -> web.Response:
@@ -1361,229 +904,13 @@ async def export_agent_output(request: web.Request) -> web.Response:
     )
 
 
-async def search_agents(request: web.Request) -> web.Response:
-    """GET /api/search?q=pattern&project_id=&status= — search across agent outputs with filters."""
-    manager: AgentManager = request.app["agent_manager"]
-    query = request.query.get("q", "").strip()
-    if not query or len(query) < 2:
-        return web.json_response({"error": "Query 'q' must be at least 2 characters"}, status=400)
-    if len(query) > 200:
-        return web.json_response({"error": "Query too long"}, status=400)
-
-    try:
-        pattern = re.compile(re.escape(query), re.IGNORECASE)
-    except re.error:
-        return web.json_response({"error": "Invalid search pattern"}, status=400)
-
-    # Optional filters
-    filter_project = request.query.get("project_id", "").strip() or None
-    filter_status = request.query.get("status", "").strip() or None
-    max_matches = int(request.query.get("limit", "20"))
-    max_matches = min(max(1, max_matches), 50)
-
-    results = []
-    agents_searched = 0
-    for agent in list(manager.agents.values()):
-        # Apply filters
-        if filter_project and agent.project_id != filter_project:
-            continue
-        if filter_status and agent.status != filter_status:
-            continue
-        agents_searched += 1
-        matches = []
-        lines = list(agent.output_lines)
-        for i, line in enumerate(lines):
-            stripped = _strip_ansi(line) if callable(_strip_ansi) else line
-            if pattern.search(stripped):
-                matches.append({"line": i, "text": stripped[:200]})
-                if len(matches) >= max_matches:
-                    break
-        if matches:
-            results.append({
-                "agent_id": agent.id,
-                "agent_name": agent.name,
-                "role": agent.role,
-                "status": agent.status,
-                "project_id": agent.project_id,
-                "match_count": len(matches),
-                "matches": matches,
-            })
-
-    return web.json_response({"query": query, "results": results, "agents_searched": agents_searched})
+# search_agents moved to ashlr_ao.analytics — re-exported above
 
 
-async def get_config(request: web.Request) -> web.Response:
-    config: Config = request.app["config"]
-    return web.json_response(config.to_dict())
+# get_config moved to ashlr_ao.system_endpoints — re-exported above
 
 
-async def put_config(request: web.Request) -> web.Response:
-    """Update runtime config and save to ashlr.yaml."""
-    config: Config = request.app["config"]
-
-    # Admin-only when auth is enabled
-    if config.require_auth:
-        user = request.get("user")
-        if not user or user.role != "admin":
-            return web.json_response({"error": "Admin access required to update config"}, status=403)
-
-    try:
-        data = await request.json()
-    except json.JSONDecodeError:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
-
-    # Clamp max_agents to license ceiling
-    lic: License = request.app.get("license", COMMUNITY_LICENSE)
-    lic_max = lic.max_agents if lic.is_pro else COMMUNITY_LICENSE.max_agents
-    if "max_agents" in data and isinstance(data["max_agents"], int):
-        data["max_agents"] = min(data["max_agents"], lic_max)
-
-    # Validation rules
-    validators = {
-        "max_agents": lambda v: isinstance(v, int) and 1 <= v <= 100,
-        "default_role": lambda v: isinstance(v, str) and v in BUILTIN_ROLES,
-        "default_working_dir": lambda v: isinstance(v, str) and len(v) > 0 and os.path.isdir(os.path.realpath(os.path.expanduser(v))),
-        "output_capture_interval": lambda v: isinstance(v, (int, float)) and 0.5 <= v <= 30.0,
-        "memory_limit_mb": lambda v: isinstance(v, int) and 256 <= v <= 32768,
-        "default_backend": lambda v: isinstance(v, str) and v in config.backends,
-        "llm_enabled": lambda v: isinstance(v, bool),
-        "llm_model": lambda v: isinstance(v, str) and len(v) > 0,
-        "llm_summary_interval": lambda v: isinstance(v, (int, float)) and 3.0 <= v <= 120.0,
-        "max_restarts": lambda v: isinstance(v, int),
-        "voice_feedback": lambda v: isinstance(v, bool),
-        "idle_agent_ttl": lambda v: isinstance(v, int) and 300 <= v <= 86400,
-        "health_low_threshold": lambda v: isinstance(v, (int, float)) and 0.0 < v <= 1.0,
-        "health_critical_threshold": lambda v: isinstance(v, (int, float)) and 0.0 < v <= 1.0,
-        "stall_timeout_minutes": lambda v: isinstance(v, int) and 1 <= v <= 60,
-        "hung_timeout_minutes": lambda v: isinstance(v, int) and 1 <= v <= 120,
-        "cost_budget_usd": lambda v: isinstance(v, (int, float)) and v >= 0,
-        "cost_budget_auto_pause": lambda v: isinstance(v, bool),
-        "llm_meta_interval": lambda v: isinstance(v, (int, float)) and 5.0 <= v <= 300.0,
-        "log_level": lambda v: isinstance(v, str) and v.upper() in {"DEBUG", "INFO", "WARNING", "ERROR"},
-        "host": lambda v: isinstance(v, str) and len(v) > 0 and all(c.isalnum() or c in ".-:" for c in v),
-        "auto_restart_on_stall": lambda v: isinstance(v, bool),
-        "auto_approve_enabled": lambda v: isinstance(v, bool),
-        "auto_approve_patterns": lambda v: isinstance(v, list) and all(isinstance(p, str) for p in v),
-        "auto_pause_on_critical_health": lambda v: isinstance(v, bool),
-        "file_lock_enforcement": lambda v: isinstance(v, bool),
-    }
-
-    # Clamp max_restarts to [1, 10] range
-    if "max_restarts" in data and isinstance(data["max_restarts"], int):
-        data["max_restarts"] = max(1, min(10, data["max_restarts"]))
-
-    errors = []
-    for key, value in data.items():
-        if key in validators and not validators[key](value):
-            errors.append(f"Invalid value for {key}: {value}")
-
-    # Validate alert_patterns compile as regex
-    if "alert_patterns" in data and isinstance(data["alert_patterns"], list):
-        for i, ap in enumerate(data["alert_patterns"]):
-            if isinstance(ap, dict) and "pattern" in ap:
-                try:
-                    re.compile(ap["pattern"])
-                except re.error as e:
-                    errors.append(f"Invalid regex in alert_patterns[{i}]: {e}")
-
-    # Validate auto_approve_patterns compile as regex
-    if "auto_approve_patterns" in data and isinstance(data["auto_approve_patterns"], list):
-        for i, pat in enumerate(data["auto_approve_patterns"]):
-            if isinstance(pat, str):
-                try:
-                    re.compile(pat)
-                except re.error as e:
-                    errors.append(f"Invalid regex in auto_approve_patterns[{i}]: {e}")
-
-    if errors:
-        return web.json_response({"error": "; ".join(errors)}, status=400)
-
-    allowed_keys = set(validators.keys())
-
-    # Build YAML-safe update dict
-    yaml_update = {}
-    agents_keys = {"max_agents": "max_concurrent", "default_role": "default_role",
-                   "default_working_dir": "default_working_dir",
-                   "output_capture_interval": "output_capture_interval_sec",
-                   "memory_limit_mb": "memory_limit_mb", "default_backend": "default_backend"}
-    llm_keys = {"llm_enabled": "enabled", "llm_model": "model", "llm_summary_interval": "summary_interval_sec", "llm_meta_interval": "meta_interval_sec"}
-    voice_keys = {"voice_feedback": "feedback_sounds"}
-    alert_keys = {
-        "idle_agent_ttl": "idle_ttl_seconds",
-        "health_low_threshold": "health_low_threshold",
-        "health_critical_threshold": "health_critical_threshold",
-        "stall_timeout_minutes": "stall_timeout_minutes",
-        "hung_timeout_minutes": "hung_timeout_minutes",
-        "cost_budget_usd": "cost_budget_usd",
-        "cost_budget_auto_pause": "cost_budget_auto_pause",
-    }
-    autopilot_keys = {
-        "auto_restart_on_stall": "auto_restart_on_stall",
-        "auto_approve_enabled": "auto_approve_enabled",
-        "auto_approve_patterns": "auto_approve_patterns",
-        "auto_pause_on_critical_health": "auto_pause_on_critical_health",
-        "file_lock_enforcement": "file_lock_enforcement",
-    }
-    for key, value in data.items():
-        if key not in allowed_keys:
-            continue
-        if key in agents_keys:
-            yaml_update.setdefault("agents", {})[agents_keys[key]] = value
-        elif key in llm_keys:
-            yaml_update.setdefault("llm", {})[llm_keys[key]] = value
-        elif key in voice_keys:
-            yaml_update.setdefault("voice", {})[voice_keys[key]] = value
-        elif key in alert_keys:
-            yaml_update.setdefault("alerts", {})[alert_keys[key]] = value
-        elif key in autopilot_keys:
-            yaml_update.setdefault("autopilot", {})[autopilot_keys[key]] = value
-
-    # FIRST: write YAML to disk. Only update in-memory config on success.
-    config_path = ASHLR_DIR / "ashlr.yaml"
-    async with _config_write_lock:
-        try:
-            def _write_config():
-                raw = DEFAULT_CONFIG.copy()
-                if config_path.exists():
-                    with open(config_path) as f:
-                        raw = deep_merge(raw, yaml.safe_load(f) or {})
-                raw = deep_merge(raw, yaml_update)
-                tmp_path = config_path.with_suffix(".yaml.tmp")
-                with open(tmp_path, "w") as f:
-                    yaml.dump(raw, f, default_flow_style=False, sort_keys=False)
-                tmp_path.rename(config_path)
-            await asyncio.to_thread(_write_config)
-            log.info(f"Config saved to disk: {', '.join(data.keys())}")
-        except Exception as e:
-            log.warning(f"Failed to save config to disk: {e}")
-            try:
-                config_path.with_suffix(".yaml.tmp").unlink(missing_ok=True)
-            except Exception as e2:
-                log.debug(f"Failed to clean up temp config file: {e2}")
-            # Do NOT update in-memory config — disk write failed
-            return web.json_response({"error": f"Failed to save: {e}", "config": config.to_dict()}, status=500)
-
-    # THEN: update in-memory config (disk write succeeded)
-    for key in allowed_keys:
-        if key in data and hasattr(config, key):
-            setattr(config, key, data[key])
-
-    # Update intelligence client config reference
-    client = request.app.get("intelligence")
-    if client:
-        client.config = config
-
-    # Recompile alert patterns if config changed
-    if "alert_patterns" in data and isinstance(data["alert_patterns"], list):
-        compiled_alerts = []
-        for ap in data["alert_patterns"]:
-            try:
-                compiled_alerts.append((re.compile(ap["pattern"]), ap.get("severity", "warning"), ap.get("label", "Alert")))
-            except (re.error, KeyError):
-                pass
-        request.app["_compiled_alert_patterns"] = compiled_alerts if compiled_alerts else None
-
-    return web.json_response(config.to_dict())
+# put_config moved to ashlr_ao.system_endpoints — re-exported above
 
 
 # ── Project endpoints ──
@@ -1930,313 +1257,7 @@ async def github_create_pr(request: web.Request) -> web.Response:
     return web.json_response({"error": redact_secrets(output)}, status=400)
 
 
-# ── Workflow endpoints ──
-
-async def list_workflows(request: web.Request) -> web.Response:
-    db: Database = request.app["db"]
-    workflows = await db.get_workflows()
-    return web.json_response(workflows)
-
-
-def _validate_workflow_specs(agent_specs: list) -> str | None:
-    """Validate workflow agent specs for structure, deps, and circular deps. Returns error string or None."""
-    if not isinstance(agent_specs, list) or len(agent_specs) == 0:
-        return "agents must be a non-empty list"
-
-    valid_indices = set(range(len(agent_specs)))
-    for i, spec in enumerate(agent_specs):
-        if not isinstance(spec, dict):
-            return f"agents[{i}] must be an object"
-        if not spec.get("role"):
-            return f"agents[{i}] missing required field 'role'"
-        deps = spec.get("depends_on")
-        if deps:
-            if not isinstance(deps, list):
-                return f"agents[{i}].depends_on must be a list"
-            for dep in deps:
-                if not isinstance(dep, int) or dep not in valid_indices:
-                    return f"agents[{i}].depends_on contains invalid index {dep} (valid: 0-{len(agent_specs)-1})"
-                if dep == i:
-                    return f"agents[{i}].depends_on cannot reference itself"
-
-    # Circular dependency check via topological sort (DFS)
-    WHITE, GRAY, BLACK = 0, 1, 2
-    colors = [WHITE] * len(agent_specs)
-
-    def has_cycle(node: int) -> bool:
-        colors[node] = GRAY
-        for dep in (agent_specs[node].get("depends_on") or []):
-            if isinstance(dep, int) and 0 <= dep < len(agent_specs):
-                if colors[dep] == GRAY:
-                    return True
-                if colors[dep] == WHITE and has_cycle(dep):
-                    return True
-        colors[node] = BLACK
-        return False
-
-    for i in range(len(agent_specs)):
-        if colors[i] == WHITE and has_cycle(i):
-            return f"Circular dependency detected involving agents[{i}]"
-
-    return None
-
-
-async def create_workflow(request: web.Request) -> web.Response:
-    if r := _check_feature(request, "workflows"):
-        return r
-    db: Database = request.app["db"]
-    try:
-        data = await request.json()
-    except json.JSONDecodeError:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
-
-    wf_name = data.get("name")
-    if not wf_name or not isinstance(wf_name, str) or not data.get("agents"):
-        return web.json_response({"error": "name (string) and agents are required"}, status=400)
-
-    agent_specs = data["agents"]
-    error = _validate_workflow_specs(agent_specs)
-    if error:
-        return web.json_response({"error": error}, status=400)
-
-    workflow = {
-        "id": uuid.uuid4().hex[:8],
-        "name": wf_name,
-        "description": str(data.get("description", "")),
-        "agents_json": agent_specs,
-    }
-    try:
-        await db.save_workflow(workflow)
-    except Exception as e:
-        log.error("Failed to save workflow: %s", e)
-        return web.json_response({"error": "Failed to save workflow"}, status=500)
-    workflow["agents"] = data["agents"]
-    return web.json_response(workflow, status=201)
-
-
-async def run_workflow(request: web.Request) -> web.Response:
-    if r := _check_rate(request, cost=5, rate=0.5, burst=3):
-        return r
-    db: Database = request.app["db"]
-    manager: AgentManager = request.app["agent_manager"]
-    hub: WebSocketHub = request.app["ws_hub"]
-    workflow_id = request.match_info["id"]
-
-    workflow = await db.get_workflow(workflow_id)
-    if not workflow:
-        return web.json_response({"error": "Workflow not found"}, status=404)
-
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    working_dir = body.get("working_dir")
-
-    # Feature gate: workflows require Pro
-    if r := _check_feature(request, "workflows"):
-        return r
-
-    # Capacity pre-check
-    config: Config = request.app["config"]
-    max_agents = _effective_max_agents(request.app)
-    agents_needed = len(workflow.get("agents", []))
-    current_count = len(manager.agents)
-    if current_count + agents_needed > max_agents:
-        return web.json_response({
-            "error": f"Not enough capacity: need {agents_needed} agents, "
-                     f"but only {max_agents - current_count} slots available "
-                     f"({current_count}/{max_agents} in use)",
-        }, status=503)
-
-    agent_specs = workflow.get("agents", [])
-    has_deps = any(spec.get("depends_on") for spec in agent_specs)
-
-    if has_deps:
-        # Check for circular dependencies before starting
-        cycles = WorkflowRun.detect_circular_deps(agent_specs)
-        if cycles:
-            cycle_desc = "; ".join(f"[{' -> '.join(str(c) for c in cycle)}]" for cycle in cycles[:3])
-            return web.json_response({
-                "error": f"Circular dependency detected in workflow: {cycle_desc}",
-                "cycles": cycles[:3],
-            }, status=400)
-
-        # DAG pipeline mode — create WorkflowRun and start with root agents
-        run_id = uuid.uuid4().hex[:8]
-        now = datetime.now(timezone.utc).isoformat()
-        # Per-stage timeout from request or workflow config (default 30 min)
-        stage_timeout = body.get("stage_timeout_sec", workflow.get("stage_timeout_sec", 1800.0))
-        try:
-            stage_timeout = max(60.0, min(float(stage_timeout), 7200.0))  # Clamp 1min-2hr
-        except (TypeError, ValueError):
-            stage_timeout = 1800.0
-
-        wf_run = WorkflowRun(
-            id=run_id,
-            workflow_id=workflow_id,
-            workflow_name=workflow["name"],
-            agent_specs=agent_specs,
-            pending_indices=set(range(len(agent_specs))),
-            working_dir=working_dir or config.default_working_dir,
-            created_at=now,
-            stage_timeout_sec=stage_timeout,
-        )
-        manager.workflow_runs[run_id] = wf_run
-
-        # Spawn agents with no dependencies (root nodes)
-        await manager.resolve_workflow_deps(wf_run, hub)
-
-        await hub.broadcast_event(
-            "workflow_started",
-            f"Pipeline '{workflow['name']}' started (run {run_id}, {agents_needed} agents)",
-            metadata={"workflow_run_id": run_id, "has_deps": True},
-        )
-
-        return web.json_response({
-            "workflow_run_id": run_id,
-            "workflow": workflow["name"],
-            "pipeline": True,
-            "agent_map": {str(k): v for k, v in wf_run.agent_map.items()},
-            "pending": list(wf_run.pending_indices),
-        })
-    else:
-        # Legacy parallel mode — spawn all at once
-        agent_ids = []
-        failed = []
-        for agent_def in agent_specs:
-            try:
-                agent = await manager.spawn(
-                    role=agent_def.get("role", "general"),
-                    name=agent_def.get("name"),
-                    working_dir=agent_def.get("working_dir") or working_dir,
-                    task=agent_def.get("task", ""),
-                    backend=agent_def.get("backend", config.default_backend),
-                    model=agent_def.get("model"),
-                    tools=agent_def.get("tools"),
-                )
-                agent_ids.append(agent.id)
-            except ValueError as e:
-                log.warning(f"Workflow spawn failed: {e}")
-                failed.append({"role": agent_def.get("role", "general"), "error": redact_secrets(str(e))})
-
-        # Link related agents
-        for aid in agent_ids:
-            a = manager.agents.get(aid)
-            if a:
-                a.related_agents = [x for x in agent_ids if x != aid]
-                await hub.broadcast({"type": "agent_update", "agent": a.to_dict()})
-
-        await hub.broadcast_event(
-            "workflow_started",
-            f"Workflow '{workflow['name']}' started ({len(agent_ids)} agents)",
-        )
-
-        result: dict[str, Any] = {"agent_ids": agent_ids, "workflow": workflow["name"]}
-        if failed:
-            result["spawned"] = agent_ids
-            result["failed"] = failed
-
-        return web.json_response(result)
-
-
-async def list_workflow_runs(request: web.Request) -> web.Response:
-    """GET /api/workflow-runs — list active and recent workflow runs."""
-    manager: AgentManager = request.app["agent_manager"]
-    runs = [wr.to_dict() for wr in manager.workflow_runs.values()]
-    return web.json_response(runs)
-
-
-async def get_workflow_run(request: web.Request) -> web.Response:
-    """GET /api/workflow-runs/{id} — get details of a workflow run."""
-    manager: AgentManager = request.app["agent_manager"]
-    run_id = request.match_info["id"]
-    wf_run = manager.workflow_runs.get(run_id)
-    if not wf_run:
-        return web.json_response({"error": "Workflow run not found"}, status=404)
-    return web.json_response(wf_run.to_dict())
-
-
-async def cancel_workflow_run(request: web.Request) -> web.Response:
-    """POST /api/workflow-runs/{id}/cancel — cancel a running workflow pipeline."""
-    manager: AgentManager = request.app["agent_manager"]
-    hub: WebSocketHub = request.app["ws_hub"]
-    run_id = request.match_info["id"]
-    wf_run = manager.workflow_runs.get(run_id)
-    if not wf_run:
-        return web.json_response({"error": "Workflow run not found"}, status=404)
-    if wf_run.status != "running":
-        return web.json_response({"error": f"Workflow is already {wf_run.status}"}, status=400)
-
-    wf_run.status = "cancelled"
-    wf_run.completed_at = datetime.now(timezone.utc).isoformat()
-    wf_run.pending_indices.clear()
-
-    # Kill running agents
-    for aid in list(wf_run.running_ids):
-        await manager.kill(aid)
-        await hub.broadcast({"type": "agent_removed", "agent_id": aid})
-
-    wf_run.running_ids.clear()
-    await hub.broadcast_event(
-        "workflow_cancelled",
-        f"Pipeline '{wf_run.workflow_name}' cancelled",
-        metadata={"workflow_run_id": run_id},
-    )
-    return web.json_response({"status": "cancelled", "workflow_run_id": run_id})
-
-
-async def delete_workflow(request: web.Request) -> web.Response:
-    db: Database = request.app["db"]
-    workflow_id = request.match_info["id"]
-    if workflow_id.startswith("builtin-"):
-        return web.json_response({"error": "Cannot delete built-in workflows"}, status=400)
-    success = await db.delete_workflow(workflow_id)
-    if success:
-        return web.json_response({"status": "deleted"})
-    return web.json_response({"error": "Workflow not found"}, status=404)
-
-
-async def update_workflow(request: web.Request) -> web.Response:
-    """PUT /api/workflows/{id} — update an existing workflow."""
-    if r := _check_feature(request, "workflows"):
-        return r
-    db: Database = request.app["db"]
-    workflow_id = request.match_info["id"]
-
-    if workflow_id.startswith("builtin-"):
-        return web.json_response({"error": "Cannot edit built-in workflows"}, status=400)
-
-    existing = await db.get_workflow(workflow_id)
-    if not existing:
-        return web.json_response({"error": "Workflow not found"}, status=404)
-
-    try:
-        data = await request.json()
-    except json.JSONDecodeError:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
-
-    name = data.get("name", existing["name"])
-    description = data.get("description", existing.get("description", ""))
-    agents = data.get("agents", existing.get("agents", []))
-
-    if not name or not agents:
-        return web.json_response({"error": "name and agents are required"}, status=400)
-
-    # Full validation including circular dep check
-    error = _validate_workflow_specs(agents)
-    if error:
-        return web.json_response({"error": error}, status=400)
-
-    workflow = {
-        "id": workflow_id,
-        "name": name,
-        "description": description,
-        "agents_json": agents,
-        "created_at": existing.get("created_at", datetime.now(timezone.utc).isoformat()),
-    }
-    await db.save_workflow(workflow)
-
-    return web.json_response({"id": workflow_id, "name": name, "description": description, "agents": agents})
+# ── Workflow endpoints — moved to ashlr_ao/workflow_endpoints.py ──
 
 
 # ── Backend endpoints ──
@@ -2683,6 +1704,71 @@ def _resolve_agent_refs(text: str, agents: list) -> list[str]:
     return resolved
 
 
+# ── AI Chat endpoint ──
+
+
+async def ai_chat(request: web.Request) -> web.Response:
+    """POST /api/chat — conversational AI assistant for the IDE."""
+    if r := _check_rate(request, cost=5, rate=0.5, burst=5):
+        return r
+    client: IntelligenceClient | None = request.app.get("intelligence")
+    if not client or not client.available:
+        return web.json_response(
+            {"error": "AI chat requires XAI_API_KEY. Set it and restart."},
+            status=503,
+        )
+
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    message = data.get("message", "").strip()
+    if not message:
+        return web.json_response({"error": "Empty message"}, status=400)
+    if len(message) > 4000:
+        return web.json_response({"error": "Message too long"}, status=400)
+
+    context = data.get("context", "")
+    history = data.get("history", [])
+
+    # Build messages for the LLM
+    system_prompt = (
+        "You are an AI assistant integrated into Ashlr AO, an agent orchestration platform. "
+        "You help the user manage their fleet of AI coding agents, answer questions about their "
+        "projects and codebase, suggest workflows, and provide technical guidance. "
+        "Be concise and actionable. You can reference the fleet context provided.\n\n"
+        f"Current fleet status: {context}"
+    )
+
+    messages = [{"role": "system", "content": system_prompt}]
+    # Add recent history (max 10 turns)
+    for h in history[-10:]:
+        if h.get("role") in ("user", "assistant"):
+            messages.append({"role": h["role"], "content": h["content"][:2000]})
+
+    # Current message
+    messages.append({"role": "user", "content": message})
+
+    try:
+        reply = await client._call(messages, max_tokens=1000, temperature=0.7)
+        if reply:
+            return web.json_response({
+                "reply": reply,
+                "model": client.config.llm_model,
+            })
+        return web.json_response(
+            {"error": "AI service temporarily unavailable"},
+            status=503,
+        )
+    except Exception as e:
+        log.warning(f"AI chat error: {e}")
+        return web.json_response(
+            {"error": "AI service error"},
+            status=500,
+        )
+
+
 # ── LLM Summary endpoint ──
 
 async def generate_summary(request: web.Request) -> web.Response:
@@ -2713,67 +1799,7 @@ async def generate_summary(request: web.Request) -> web.Response:
 
 # ── Cost tracking endpoint ──
 
-async def get_costs(request: web.Request) -> web.Response:
-    """GET /api/costs — aggregate cost estimates across active and historical agents."""
-    manager: AgentManager = request.app["agent_manager"]
-    db: Database = request.app["db"]
-
-    # Active agents
-    active_cost = 0.0
-    active_tokens_in = 0
-    active_tokens_out = 0
-    for agent in list(manager.agents.values()):
-        active_cost += agent.estimated_cost_usd
-        active_tokens_in += agent.tokens_input
-        active_tokens_out += agent.tokens_output
-
-    # Historical (from DB)
-    history = await db.get_agent_history(limit=200)
-    hist_cost = sum(h.get("estimated_cost_usd", 0) or 0 for h in history)
-    hist_tokens_in = sum(h.get("tokens_input", 0) or 0 for h in history)
-    hist_tokens_out = sum(h.get("tokens_output", 0) or 0 for h in history)
-
-    # Per-project cost breakdown
-    project_costs: dict[str, float] = {}
-    for agent in list(manager.agents.values()):
-        pid = getattr(agent, 'project_id', '') or 'unassigned'
-        project_costs[pid] = project_costs.get(pid, 0) + agent.estimated_cost_usd
-
-    # Budget info
-    config: Config = request.app["config"]
-    budget = config.cost_budget_usd
-    total = active_cost + hist_cost
-    budget_info = None
-    if budget > 0:
-        pct = total / budget if budget > 0 else 0
-        # Estimate time to budget exhaustion from active burn rate
-        burn_rates = [a._cost_burn_rate() for a in list(manager.agents.values()) if a.status in ("working", "planning", "reading")]
-        total_burn_per_min = sum(br.get("rate_per_min", 0) for br in burn_rates if br)
-        mins_remaining = (budget - total) / total_burn_per_min if total_burn_per_min > 0 and total < budget else None
-        budget_info = {
-            "budget_usd": budget,
-            "used_pct": round(pct * 100, 1),
-            "remaining_usd": round(max(0, budget - total), 4),
-            "burn_rate_per_min": round(total_burn_per_min, 6),
-            "minutes_remaining": round(mins_remaining, 1) if mins_remaining is not None else None,
-        }
-
-    return web.json_response({
-        "active": {
-            "cost_usd": round(active_cost, 4),
-            "tokens_input": active_tokens_in,
-            "tokens_output": active_tokens_out,
-            "agent_count": len(manager.agents),
-        },
-        "historical": {
-            "cost_usd": round(hist_cost, 4),
-            "tokens_input": hist_tokens_in,
-            "tokens_output": hist_tokens_out,
-        },
-        "total_cost_usd": round(total, 4),
-        "by_project": {k: round(v, 4) for k, v in project_costs.items()},
-        "budget": budget_info,
-    })
+# get_costs moved to ashlr_ao.analytics — re-exported above
 
 
 # ── Agent Preset endpoints ──
@@ -2873,218 +1899,7 @@ async def delete_preset(request: web.Request) -> web.Response:
     return web.json_response({"error": "Preset not found"}, status=404)
 
 
-# ── Fleet Templates ──
-
-
-def _substitute_task_vars(task: str, project: dict | None = None, extra: dict | None = None) -> str:
-    """Replace template variables in task strings."""
-    now = datetime.now(timezone.utc)
-    replacements = {
-        "{date}": now.strftime("%Y-%m-%d"),
-        "{time}": now.strftime("%H:%M"),
-    }
-    if project:
-        replacements["{project_name}"] = project.get("name", "")
-        replacements["{branch}"] = project.get("default_branch", "") or project.get("git_branch", "")
-        # Strip control characters from git remote URL to prevent injection
-        git_remote = re.sub(r'[\r\n\x00-\x1f\x7f]', '', project.get("git_remote_url", ""))
-        replacements["{git_remote}"] = git_remote
-    if extra:
-        for k, v in extra.items():
-            replacements[f"{{{k}}}"] = str(v)
-    for placeholder, value in replacements.items():
-        task = task.replace(placeholder, value)
-    return task
-
-
-async def list_fleet_templates(request: web.Request) -> web.Response:
-    if r := _check_rate(request, cost=1):
-        return r
-    db: Database = request.app["db"]
-    project_id = request.query.get("project_id")
-    templates = await db.get_fleet_templates(project_id)
-    return web.json_response(templates)
-
-
-async def create_fleet_template(request: web.Request) -> web.Response:
-    if r := _check_rate(request, cost=2):
-        return r
-    db: Database = request.app["db"]
-    try:
-        data = await request.json()
-    except json.JSONDecodeError:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
-
-    if not data.get("name"):
-        return web.json_response({"error": "name is required"}, status=400)
-    agents = data.get("agents", [])
-    if not isinstance(agents, list) or len(agents) == 0:
-        return web.json_response({"error": "agents must be a non-empty list"}, status=400)
-    if len(agents) > 20:
-        return web.json_response({"error": "Maximum 20 agents per template"}, status=400)
-
-    # Validate and sanitize each agent spec
-    validated_agents = []
-    for i, spec in enumerate(agents[:20]):
-        if not isinstance(spec, dict):
-            return web.json_response({"error": f"Agent spec #{i} must be a dict"}, status=400)
-        if not spec.get("task"):
-            return web.json_response({"error": f"Agent spec #{i} must have a 'task' field"}, status=400)
-        validated_agents.append({
-            "role": str(spec.get("role", "general"))[:50],
-            "task": str(spec["task"])[:10000],
-            "backend": str(spec.get("backend", ""))[:50],
-            "model": str(spec.get("model", ""))[:50],
-            "name": str(spec.get("name", ""))[:100],
-            "working_dir": str(spec.get("working_dir", ""))[:500],
-            "tools": str(spec.get("tools", ""))[:2000],
-            "system_prompt": str(spec.get("system_prompt", ""))[:5000],
-        })
-
-    template = {
-        "id": uuid.uuid4().hex[:8],
-        "name": data["name"][:100],
-        "description": data.get("description", "")[:500],
-        "project_id": data.get("project_id", ""),
-        "agents": validated_agents,
-    }
-    await db.save_fleet_template(template)
-    return web.json_response(template, status=201)
-
-
-async def get_fleet_template(request: web.Request) -> web.Response:
-    if r := _check_rate(request, cost=1):
-        return r
-    db: Database = request.app["db"]
-    template_id = request.match_info["id"]
-    template = await db.get_fleet_template(template_id)
-    if not template:
-        return web.json_response({"error": "Template not found"}, status=404)
-    return web.json_response(template)
-
-
-async def update_fleet_template(request: web.Request) -> web.Response:
-    if r := _check_rate(request, cost=2):
-        return r
-    db: Database = request.app["db"]
-    template_id = request.match_info["id"]
-    existing = await db.get_fleet_template(template_id)
-    if not existing:
-        return web.json_response({"error": "Template not found"}, status=404)
-
-    try:
-        data = await request.json()
-    except json.JSONDecodeError:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
-
-    for key in ("name", "description", "project_id", "agents"):
-        if key in data:
-            existing[key] = data[key]
-    if existing.get("name"):
-        existing["name"] = existing["name"][:100]
-    if existing.get("description"):
-        existing["description"] = existing["description"][:500]
-    if isinstance(existing.get("agents"), list) and len(existing["agents"]) > 20:
-        existing["agents"] = existing["agents"][:20]
-
-    await db.save_fleet_template(existing)
-    return web.json_response(existing)
-
-
-async def delete_fleet_template(request: web.Request) -> web.Response:
-    if r := _check_rate(request, cost=2):
-        return r
-    db: Database = request.app["db"]
-    template_id = request.match_info["id"]
-    success = await db.delete_fleet_template(template_id)
-    if success:
-        return web.json_response({"status": "deleted"})
-    return web.json_response({"error": "Template not found"}, status=404)
-
-
-async def deploy_fleet_template(request: web.Request) -> web.Response:
-    """Deploy a fleet template — spawn all agents in sequence."""
-    if r := _check_rate(request, cost=5):
-        return r
-    if r := _check_feature(request, "fleet_presets"):
-        return r
-    db: Database = request.app["db"]
-    manager: AgentManager = request.app["agent_manager"]
-    hub: WebSocketHub = request.app["ws_hub"]
-    config: Config = request.app["config"]
-
-    template_id = request.match_info["id"]
-    template = await db.get_fleet_template(template_id)
-    if not template:
-        return web.json_response({"error": "Template not found"}, status=404)
-
-    try:
-        data = await request.json()
-    except (json.JSONDecodeError, Exception):
-        data = {}
-
-    project_id = data.get("project_id", template.get("project_id", ""))
-    project = None
-    project_dict = None
-    if project_id:
-        project = await db.get_project(project_id)
-        if project:
-            project_dict = project.to_dict() if hasattr(project, "to_dict") else (dict(project) if isinstance(project, dict) else None)
-
-    agents_spec = template.get("agents", [])
-    if not agents_spec:
-        return web.json_response({"error": "Template has no agents"}, status=400)
-
-    # Check capacity
-    max_agents = _effective_max_agents(request.app)
-    current = len(manager.agents)
-    if current + len(agents_spec) > max_agents:
-        return web.json_response({
-            "error": f"Would exceed max agents ({current} + {len(agents_spec)} > {max_agents})"
-        }, status=409)
-
-    spawned = []
-    errors = []
-    for spec in agents_spec:
-        try:
-            task_text = spec.get("task", "")
-            task_text = _substitute_task_vars(task_text, project_dict, data.get("vars"))
-
-            working_dir = spec.get("working_dir", "")
-            if not working_dir and project_dict:
-                working_dir = project_dict.get("path", "")
-            if not working_dir:
-                working_dir = config.default_working_dir
-
-            agent = await manager.spawn(
-                role=spec.get("role", config.default_role),
-                task=task_text,
-                name=spec.get("name", ""),
-                working_dir=working_dir,
-                backend=spec.get("backend", config.default_backend),
-                model=spec.get("model", ""),
-                tools=spec.get("tools") or None,
-                system_prompt_extra=spec.get("system_prompt", "") or None,
-            )
-            if agent:
-                agent.project_id = project_id
-                spawned.append(agent.to_dict())
-                await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
-        except Exception as e:
-            errors.append({"spec": spec.get("role", "?"), "error": redact_secrets(str(e))})
-
-    if spawned and errors:
-        status = 207
-    elif spawned:
-        status = 201
-    else:
-        status = 400
-    return web.json_response({
-        "template": template["name"],
-        "spawned": len(spawned),
-        "errors": errors,
-        "agents": spawned,
-    }, status=status)
+# ── Fleet Templates — moved to ashlr_ao/workflow_endpoints.py ──
 
 
 # ── Webhook endpoints ──
@@ -3590,127 +2405,10 @@ async def delete_scratchpad_entry(request: web.Request) -> web.Response:
 
 # ── Config Import/Export endpoints ──
 
-async def export_config(request: web.Request) -> web.Response:
-    """GET /api/config/export — download full ashlr.yaml as JSON."""
-    if r := _check_rate(request, cost=1):
-        return r
-    config_path = ASHLR_DIR / "ashlr.yaml"
-    if not config_path.exists():
-        return web.json_response({"error": "Config file not found"}, status=404)
-    try:
-        with open(config_path) as f:
-            raw = yaml.safe_load(f) or {}
-        return web.json_response(raw, headers={
-            "Content-Disposition": "attachment; filename=ashlr_config.json"
-        })
-    except Exception as e:
-        return web.json_response({"error": f"Failed to read config: {e}"}, status=500)
+# export_config moved to ashlr_ao.system_endpoints — re-exported above
 
 
-async def import_config(request: web.Request) -> web.Response:
-    """POST /api/config/import — import config from JSON, validate, apply."""
-    if r := _check_rate(request, cost=5, rate=0.5, burst=3):
-        return r
-    try:
-        data = await request.json()
-    except json.JSONDecodeError:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
-
-    if not isinstance(data, dict):
-        return web.json_response({"error": "Config must be a JSON object"}, status=400)
-
-    # Allowlist safe config sections — never allow backends, server, or auth_token
-    _SAFE_IMPORT_KEYS = {"display", "agents", "llm", "voice", "licensing"}
-    unsafe_keys = set(data.keys()) - _SAFE_IMPORT_KEYS
-    if unsafe_keys:
-        return web.json_response(
-            {"error": f"Import not allowed for sections: {', '.join(sorted(unsafe_keys))}. "
-             f"Allowed: {', '.join(sorted(_SAFE_IMPORT_KEYS))}"},
-            status=400,
-        )
-    # Strip dangerous nested fields even within allowed sections
-    if isinstance(data.get("agents"), dict):
-        data["agents"].pop("backends", None)
-
-    # Read current config for diff
-    config_path = ASHLR_DIR / "ashlr.yaml"
-    current = {}
-    if config_path.exists():
-        try:
-            with open(config_path) as f:
-                current = yaml.safe_load(f) or {}
-        except Exception as e:
-            log.debug(f"Failed to load current config for diff preview: {e}")
-
-    # Build diff for preview
-    def flat_diff(old: dict, new: dict, prefix: str = "") -> list[dict]:
-        changes = []
-        all_keys = set(list(old.keys()) + list(new.keys()))
-        for k in sorted(all_keys):
-            path = f"{prefix}.{k}" if prefix else k
-            ov = old.get(k)
-            nv = new.get(k)
-            if isinstance(ov, dict) and isinstance(nv, dict):
-                changes.extend(flat_diff(ov, nv, path))
-            elif ov != nv:
-                changes.append({"key": path, "old": ov, "new": nv})
-        return changes
-
-    diff = flat_diff(current, data)
-
-    # Validate before writing — try loading the imported data as config
-    tmp_validate = config_path.with_suffix(".yaml.validate")
-    try:
-        with open(tmp_validate, "w") as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
-        # Attempt to parse — load_config reads from the standard path,
-        # so we validate structure manually
-        test_raw = deep_merge(DEFAULT_CONFIG.copy(), data)
-        # Check critical sections exist and have valid types
-        if not isinstance(test_raw.get("server", {}), dict):
-            raise ValueError("'server' must be an object")
-        if not isinstance(test_raw.get("agents", {}), dict):
-            raise ValueError("'agents' must be an object")
-    except ValueError as e:
-        return web.json_response({"error": f"Invalid config structure: {e}"}, status=400)
-    except Exception as e:
-        return web.json_response({"error": f"Config validation failed: {e}"}, status=400)
-    finally:
-        tmp_validate.unlink(missing_ok=True)
-
-    # Strip security-sensitive fields from import payload
-    if isinstance(data.get("server"), dict):
-        data["server"].pop("auth_token", None)
-        data["server"].pop("host", None)
-
-    # Atomic write (validated)
-    async with _config_write_lock:
-        try:
-            tmp_path = config_path.with_suffix(".yaml.tmp")
-            def _write_import():
-                with open(tmp_path, "w") as f:
-                    yaml.dump(data, f, default_flow_style=False, sort_keys=False)
-                tmp_path.rename(config_path)
-            await asyncio.to_thread(_write_import)
-        except Exception as e:
-            tmp_path.unlink(missing_ok=True)
-            return web.json_response({"error": f"Failed to write config: {e}"}, status=500)
-
-    # Reload in-memory config
-    config: Config = request.app["config"]
-    try:
-        reloaded = load_config(bool(shutil.which("claude")))
-        for attr in ("max_agents", "default_role", "default_working_dir", "output_capture_interval",
-                      "memory_limit_mb", "default_backend", "llm_enabled", "llm_model",
-                      "llm_summary_interval", "voice_feedback", "idle_agent_ttl",
-                      "health_low_threshold", "health_critical_threshold",
-                      "stall_timeout_minutes", "hung_timeout_minutes"):
-            if hasattr(reloaded, attr):
-                setattr(config, attr, getattr(reloaded, attr))
-    except Exception as e:
-        log.warning(f"Config reload partial failure: {e}")
-
-    return web.json_response({"status": "imported", "changes": diff})
+# import_config moved to ashlr_ao.system_endpoints — re-exported above
 
 
 # ── Extension Discovery endpoints ──
@@ -4116,271 +2814,16 @@ async def get_project_events(request: web.Request) -> web.Response:
 
 # ── Bulk operations endpoint (Wave 3B) ──
 
-async def bulk_agent_action(request: web.Request) -> web.Response:
-    """POST /api/agents/bulk — perform bulk kill/pause/resume on multiple agents."""
-    if r := _check_rate(request, cost=2, rate=1.0, burst=5):
-        return r
-    manager: AgentManager = request.app["agent_manager"]
-    hub: WebSocketHub = request.app["ws_hub"]
-    db: Database = request.app["db"]
-
-    try:
-        data = await request.json()
-    except json.JSONDecodeError:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
-
-    action = data.get("action")
-    agent_ids = data.get("agent_ids", [])
-
-    message = data.get("message", "")
-
-    if action not in ("kill", "pause", "resume", "send", "restart"):
-        return web.json_response({"error": f"Invalid action '{action}'. Must be 'kill', 'pause', 'resume', 'send', or 'restart'"}, status=400)
-
-    if action == "send" and (not isinstance(message, str) or not message.strip()):
-        return web.json_response({"error": "Bulk send requires a non-empty 'message' field"}, status=400)
-
-    if not isinstance(agent_ids, list) or not agent_ids:
-        return web.json_response({"error": "agent_ids must be a non-empty list"}, status=400)
-
-    success_ids = []
-    failed_items = []
-
-    for aid in agent_ids:
-        if not isinstance(aid, str):
-            failed_items.append({"id": str(aid), "error": "Invalid agent ID type"})
-            continue
-
-        agent = manager.agents.get(aid)
-        if not agent:
-            failed_items.append({"id": aid, "error": "Agent not found"})
-            continue
-
-        # Ownership check — non-admin users can only act on their own agents
-        if err := _check_agent_ownership(request, agent):
-            failed_items.append({"id": aid, "error": "Permission denied"})
-            continue
-
-        try:
-            if action == "kill":
-                # Archive to history before killing
-                try:
-                    await db.save_agent(agent)
-                except Exception as e:
-                    log.warning(f"Failed to archive agent {aid} during bulk kill: {e}")
-                name = agent.name
-                ok = await manager.kill(aid)
-                if ok:
-                    success_ids.append(aid)
-                    await hub.broadcast({"type": "agent_removed", "agent_id": aid})
-                    await hub.broadcast_event("agent_killed", f"Agent {name} killed (bulk)", aid, name)
-                else:
-                    failed_items.append({"id": aid, "error": "Kill failed"})
-
-            elif action == "pause":
-                ok = await manager.pause(aid)
-                if ok:
-                    success_ids.append(aid)
-                    await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
-                else:
-                    failed_items.append({"id": aid, "error": "Pause failed"})
-
-            elif action == "resume":
-                ok = await manager.resume(aid)
-                if ok:
-                    success_ids.append(aid)
-                    await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
-                else:
-                    failed_items.append({"id": aid, "error": "Resume failed"})
-
-            elif action == "send":
-                sanitized = message[:500].replace('\r', '')
-                sanitized = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', sanitized)
-                ok = await manager.send_message(aid, sanitized)
-                if ok:
-                    success_ids.append(aid)
-                    await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
-                else:
-                    failed_items.append({"id": aid, "error": "Send failed"})
-
-            elif action == "restart":
-                ok = await manager.restart(aid)
-                if ok:
-                    success_ids.append(aid)
-                    await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
-                else:
-                    failed_items.append({"id": aid, "error": "Restart failed"})
-
-        except Exception as e:
-            failed_items.append({"id": aid, "error": redact_secrets(str(e))})
-
-    return web.json_response({"success": success_ids, "failed": failed_items})
+# bulk_agent_action moved to ashlr_ao.analytics — re-exported above
 
 
-async def batch_spawn(request: web.Request) -> web.Response:
-    """POST /api/agents/batch-spawn — spawn multiple agents from a single request.
-
-    Body: {"agents": [{"role": "backend", "name": "api", "task": "...", "working_dir": "...", ...}, ...]}
-    Optional: "project_id", "plan_mode" at top level to apply to all agents.
-    """
-    if r := _check_rate(request, cost=5, rate=0.5, burst=3):
-        return r
-    manager: AgentManager = request.app["agent_manager"]
-    hub: WebSocketHub = request.app["ws_hub"]
-    config: Config = request.app["config"]
-    try:
-        data = await request.json()
-    except json.JSONDecodeError:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
-
-    agent_specs = data.get("agents", [])
-    if not isinstance(agent_specs, list) or not agent_specs:
-        return web.json_response({"error": "agents must be a non-empty list"}, status=400)
-    if len(agent_specs) > 10:
-        return web.json_response({"error": "Maximum 10 agents per batch"}, status=400)
-
-    shared_project = data.get("project_id")
-    shared_plan_mode = data.get("plan_mode", False)
-    shared_dir = data.get("working_dir")
-
-    # Feature gate: fleet_presets requires Pro
-    if r := _check_feature(request, "fleet_presets"):
-        return r
-
-    # Check concurrent agent limit before spawning
-    current_count = len(manager.agents)
-    max_agents = _effective_max_agents(request.app)
-    available_slots = max_agents - current_count
-    if available_slots <= 0:
-        suffix = " Upgrade to Pro for more." if not request.app.get("license", COMMUNITY_LICENSE).is_pro else ""
-        return web.json_response({"error": f"Agent limit reached ({max_agents}).{suffix}"}, status=409)
-    if len(agent_specs) > available_slots:
-        return web.json_response(
-            {"error": f"Only {available_slots} agent slots available, but {len(agent_specs)} requested"},
-            status=409,
-        )
-
-    spawned = []
-    failed = []
-
-    for i, spec in enumerate(agent_specs):
-        if not isinstance(spec, dict):
-            failed.append({"index": i, "error": "Each agent spec must be an object"})
-            continue
-        task = spec.get("task", "")
-        if not task:
-            failed.append({"index": i, "error": "task is required"})
-            continue
-        role = spec.get("role", config.default_role)
-        if role not in BUILTIN_ROLES:
-            failed.append({"index": i, "error": f"Unknown role '{role}'"})
-            continue
-
-        try:
-            agent = await manager.spawn(
-                role=role,
-                name=spec.get("name"),
-                working_dir=spec.get("working_dir") or shared_dir,
-                task=task,
-                plan_mode=spec.get("plan_mode", shared_plan_mode),
-                backend=spec.get("backend", config.default_backend),
-                model=spec.get("model"),
-                tools=spec.get("tools"),
-            )
-            if shared_project or spec.get("project_id"):
-                agent.project_id = spec.get("project_id") or shared_project
-            spawned.append(agent.to_dict())
-            await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
-            await hub.broadcast_event("agent_spawned", f"Batch spawned: {agent.name}", agent.id, agent.name)
-        except Exception as e:
-            failed.append({"index": i, "error": redact_secrets(str(e))})
-
-    if spawned and failed:
-        status = 207  # Multi-Status: partial success
-    elif spawned:
-        status = 201
-    else:
-        status = 400
-    return web.json_response({
-        "spawned": spawned,
-        "failed": failed,
-        "total_spawned": len(spawned),
-        "total_failed": len(failed),
-    }, status=status)
+# batch_spawn moved to ashlr_ao.analytics — re-exported above
 
 
-async def agent_suggestions(request: web.Request) -> web.Response:
-    """GET /api/agents/suggestions?task=... — find similar past tasks with their outcomes."""
-    db: Database = request.app["db"]
-    task_query = request.query.get("task", "").strip()
-    if not task_query or len(task_query) < 5:
-        return web.json_response({"suggestions": [], "message": "Provide at least 5 characters in task query"})
-    try:
-        results = await db.find_similar_tasks(task_query, limit=5)
-        suggestions = []
-        for r in results:
-            suggestions.append({
-                "role": r.get("role"),
-                "backend": r.get("backend"),
-                "task": r.get("task"),
-                "status": r.get("status"),
-                "duration_sec": r.get("duration_sec"),
-                "cost_usd": round(r.get("estimated_cost_usd") or 0, 4),
-                "completed_at": r.get("completed_at"),
-                "success": r.get("status") not in ("error",),
-            })
-        return web.json_response({"suggestions": suggestions, "query": task_query})
-    except Exception as e:
-        log.error(f"Agent suggestions error: {e}")
-        return web.json_response({"suggestions": [], "error": redact_secrets(str(e))})
+# agent_suggestions moved to ashlr_ao.analytics — re-exported above
 
 
-async def bulk_respond(request: web.Request) -> web.Response:
-    """Send responses to multiple waiting agents at once."""
-    manager: AgentManager = request.app["agent_manager"]
-    hub: WebSocketHub = request.app["ws_hub"]
-    try:
-        data = await request.json()
-    except json.JSONDecodeError:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
-
-    responses = data.get("responses", [])
-    if not responses or not isinstance(responses, list):
-        return web.json_response({"error": "responses must be a non-empty list"}, status=400)
-
-    success_ids = []
-    failed_items = []
-
-    for item in responses:
-        if not isinstance(item, dict):
-            failed_items.append({"id": "", "error": "Each response must be an object"})
-            continue
-        aid = item.get("agent_id", "")
-        message = item.get("message", "")
-        if not isinstance(message, str) or not message:
-            failed_items.append({"id": aid, "error": "Missing or invalid message (must be a string)"})
-            continue
-        if not aid:
-            failed_items.append({"id": aid, "error": "Missing agent_id"})
-            continue
-
-        agent = manager.agents.get(aid)
-        if not agent:
-            failed_items.append({"id": aid, "error": "Agent not found"})
-            continue
-
-        # Sanitize message
-        message = message[:500].replace('\r', '')
-        message = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', message)
-
-        try:
-            await manager.send_message(aid, message)
-            success_ids.append(aid)
-            await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
-        except Exception as e:
-            failed_items.append({"id": aid, "error": redact_secrets(str(e))})
-
-    return web.json_response({"success": success_ids, "failed": failed_items})
+# bulk_respond moved to ashlr_ao.analytics — re-exported above
 
 # Background tasks moved to ashlr_ao.background — re-exported above
 
@@ -4390,125 +2833,13 @@ async def bulk_respond(request: web.Request) -> web.Response:
 # License API Endpoints
 # ─────────────────────────────────────────────
 
-async def license_status(request: web.Request) -> web.Response:
-    """GET /api/license/status — current license info (public)."""
-    lic: License = request.app.get("license", COMMUNITY_LICENSE)
-    gated = {}
-    for feat in sorted(PRO_FEATURES):
-        gated[feat] = lic.is_pro  # True if unlocked
-    return web.json_response({
-        "license": lic.to_dict(),
-        "effective_max_agents": _effective_max_agents(request.app),
-        "gated_features": gated,
-    })
+# license_status moved to ashlr_ao.system_endpoints — re-exported above
 
 
-async def activate_license(request: web.Request) -> web.Response:
-    """POST /api/license/activate — activate a license key (admin-only when auth enabled)."""
-    config: Config = request.app["config"]
-    if config.require_auth:
-        user = request.get("user")
-        if not user or user.role != "admin":
-            return web.json_response({"error": "Admin access required"}, status=403)
-
-    try:
-        data = await request.json()
-    except Exception:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
-
-    key = str(data.get("license_key", "")).strip()
-    if not key:
-        return web.json_response({"error": "license_key is required"}, status=400)
-
-    lic = validate_license(key)
-    if not lic.is_pro:
-        return web.json_response({"error": "Invalid or expired license key"}, status=400)
-
-    # Persist to DB (org) if auth is enabled
-    db: Database = request.app["db"]
-    if config.require_auth:
-        user = request.get("user")
-        if user and user.org_id:
-            await db.update_org_license(user.org_id, key, lic.tier)
-
-    # Persist to config YAML
-    try:
-        config_path = ASHLR_DIR / "ashlr.yaml"
-        if config_path.exists():
-            with open(config_path) as f:
-                raw_yaml = yaml.safe_load(f) or {}
-        else:
-            raw_yaml = {}
-        raw_yaml.setdefault("licensing", {})["key"] = key
-        tmp_fd, tmp_path = tempfile.mkstemp(dir=str(config_path.parent), suffix=".yaml.tmp")
-        try:
-            with os.fdopen(tmp_fd, "w") as f:
-                yaml.dump(raw_yaml, f, default_flow_style=False, sort_keys=False)
-            Path(tmp_path).rename(config_path)
-        except Exception:
-            Path(tmp_path).unlink(missing_ok=True)
-            raise
-    except Exception as e:
-        log.warning(f"Failed to persist license key to config: {e}")
-
-    # Update runtime state
-    request.app["license"] = lic
-    manager: AgentManager = request.app["agent_manager"]
-    manager.license = lic
-    config.license_key = key
-    log.info(f"License activated: tier={lic.tier}, max_agents={lic.max_agents}, expires={lic.expires_at}")
-
-    # Broadcast to all WS clients
-    hub: WebSocketHub = request.app["ws_hub"]
-    await hub.broadcast({"type": "license_update", "license": lic.to_dict(), "effective_max_agents": _effective_max_agents(request.app)})
-
-    return web.json_response({"license": lic.to_dict(), "effective_max_agents": _effective_max_agents(request.app)})
+# activate_license moved to ashlr_ao.system_endpoints — re-exported above
 
 
-async def deactivate_license(request: web.Request) -> web.Response:
-    """DELETE /api/license/deactivate — remove license and revert to Community."""
-    config: Config = request.app["config"]
-    if config.require_auth:
-        user = request.get("user")
-        if not user or user.role != "admin":
-            return web.json_response({"error": "Admin access required"}, status=403)
-
-    # Clear from DB
-    db: Database = request.app["db"]
-    if config.require_auth:
-        user = request.get("user")
-        if user and user.org_id:
-            await db.update_org_license(user.org_id, "", "community")
-
-    # Clear from config YAML
-    try:
-        config_path = ASHLR_DIR / "ashlr.yaml"
-        if config_path.exists():
-            with open(config_path) as f:
-                raw_yaml = yaml.safe_load(f) or {}
-            raw_yaml.setdefault("licensing", {})["key"] = ""
-            tmp_fd, tmp_path = tempfile.mkstemp(dir=str(config_path.parent), suffix=".yaml.tmp")
-            try:
-                with os.fdopen(tmp_fd, "w") as f:
-                    yaml.dump(raw_yaml, f, default_flow_style=False, sort_keys=False)
-                Path(tmp_path).rename(config_path)
-            except Exception:
-                Path(tmp_path).unlink(missing_ok=True)
-                raise
-    except Exception as e:
-        log.warning(f"Failed to clear license key from config: {e}")
-
-    # Revert runtime state
-    request.app["license"] = COMMUNITY_LICENSE
-    manager: AgentManager = request.app["agent_manager"]
-    manager.license = COMMUNITY_LICENSE
-    config.license_key = ""
-    log.info("License deactivated — reverted to Community")
-
-    hub: WebSocketHub = request.app["ws_hub"]
-    await hub.broadcast({"type": "license_update", "license": COMMUNITY_LICENSE.to_dict(), "effective_max_agents": _effective_max_agents(request.app)})
-
-    return web.json_response({"license": COMMUNITY_LICENSE.to_dict(), "effective_max_agents": _effective_max_agents(request.app)})
+# deactivate_license moved to ashlr_ao.system_endpoints — re-exported above
 
 
 def create_app(config: Config) -> web.Application:
@@ -4558,6 +2889,10 @@ def create_app(config: Config) -> web.Application:
     app["_meta_state_hash"] = ""  # For skipping unchanged fleet analysis
 
 
+    # PTY Manager for interactive terminals
+    pty_mgr = PTYManager()
+    app["pty_manager"] = pty_mgr
+
     # Extension Scanner — initial scan at startup
     scanner = ExtensionScanner()
     scanner.scan()  # Initial scan with no project dirs (DB not ready yet)
@@ -4566,7 +2901,16 @@ def create_app(config: Config) -> web.Application:
     # Routes
     app.router.add_get("/", serve_dashboard)
     app.router.add_get("/logo.png", serve_logo)
+
+    # Static assets (CSS, JS)
+    static_dir = Path(__file__).parent / "static"
+    if static_dir.is_dir():
+        app.router.add_static("/static", static_dir, show_index=False)
     app.router.add_get("/ws", hub.handle_ws)
+
+    # WebSocket — Interactive PTY terminals
+    app.router.add_get("/ws/terminal/new", pty_mgr.handle_shell_ws)
+    app.router.add_get("/ws/terminal/{agent_id}", pty_mgr.handle_terminal_ws)
 
     # REST API — Agents (bulk + patch BEFORE {id} catch-all routes)
     app.router.add_get("/api/agents", list_agents)
@@ -4611,6 +2955,7 @@ def create_app(config: Config) -> web.Application:
     app.router.add_get("/api/intelligence/insights", get_intelligence_insights)
     app.router.add_post("/api/intelligence/insights/{id}/ack", acknowledge_insight)
     app.router.add_post("/api/intelligence/command", intelligence_command)
+    app.router.add_post("/api/chat", ai_chat)
 
     # REST API — Analytics
     app.router.add_get("/api/analytics", fleet_analytics)
@@ -4622,6 +2967,7 @@ def create_app(config: Config) -> web.Application:
     app.router.add_post("/api/diagnostic", run_diagnostic)
     app.router.add_get("/api/stats", get_server_stats)
     app.router.add_get("/api/system", system_metrics)
+    app.router.add_get("/api/system/detail", system_metrics_detail)
     app.router.add_get("/api/roles", list_roles)
     app.router.add_get("/api/config", get_config)
     app.router.add_put("/api/config", put_config)
@@ -4730,6 +3076,24 @@ def create_app(config: Config) -> web.Application:
     app.router.add_get("/api/license/status", license_status)
     app.router.add_post("/api/license/activate", activate_license)
     app.router.add_delete("/api/license/deactivate", deactivate_license)
+
+    # REST API — File Browser
+    app.router.add_get("/api/files/tree", file_tree)
+    app.router.add_get("/api/files/read", file_read)
+    app.router.add_put("/api/files/write", file_write)
+    app.router.add_post("/api/files/create", file_create)
+    app.router.add_delete("/api/files/delete", file_delete)
+    app.router.add_post("/api/files/rename", file_rename)
+
+    # REST API — Git Integration
+    app.router.add_get("/api/git/status", git_status)
+    app.router.add_get("/api/git/diff", git_diff)
+    app.router.add_get("/api/git/log", git_log)
+    app.router.add_get("/api/git/branches", git_branches)
+    app.router.add_post("/api/git/stage", git_stage)
+    app.router.add_post("/api/git/unstage", git_unstage)
+    app.router.add_post("/api/git/commit", git_commit)
+    app.router.add_post("/api/git/discard", git_discard)
 
     # Signal handlers (register in on_startup when event loop is running)
     async def _register_signals(app: web.Application) -> None:

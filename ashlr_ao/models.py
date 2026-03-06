@@ -248,6 +248,11 @@ class Agent:
     # Auto-handoff (Wave 5)
     next_agent_config: dict | None = field(default=None, repr=False)
     bookmarks: list = field(default_factory=list)
+    # Stream-json subprocess mode (Phase 5: --print mode)
+    output_mode: str = field(default="tmux", repr=False)  # "tmux" or "stream-json"
+    _subprocess_proc: asyncio.subprocess.Process | None = field(default=None, repr=False)
+    _stream_buffer: str = field(default="", repr=False)  # Partial JSON line buffer
+    _reader_task: asyncio.Task | None = field(default=None, repr=False)
 
     def set_status(self, new_status: str) -> bool:
         """Update status with monotonic timestamp guard. Returns True if updated."""
@@ -368,7 +373,8 @@ class Agent:
             "git_branch": self.git_branch,
             "owner_id": self.owner_id,
             "owner_name": self.owner_name,
-            "cost_is_estimated": True,
+            "output_mode": self.output_mode,
+            "cost_is_estimated": self.output_mode != "stream-json",
             "context_window": KNOWN_BACKENDS[self.backend].context_window if self.backend in KNOWN_BACKENDS else 200_000,
             "tool_invocations_count": len(self._tool_invocations),
             "file_operations_count": len(self._file_operations),

@@ -618,6 +618,27 @@ async def output_capture_loop(app: web.Application) -> None:
                 except Exception as e:
                     log.debug(f"Status detection error for {agent_id}: {e}")
 
+            # Stream-json agents: broadcast periodic updates (output fed by reader task)
+            for agent_id, agent in active_agents:
+                if agent.output_mode != "stream-json" or agent.status in ("killed", "error"):
+                    continue
+                # Broadcast agent update so dashboard stays current
+                await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})
+                # Extract summary from accumulated output
+                if agent.output_lines:
+                    agent.summary = extract_summary(list(agent.output_lines), agent.task, agent.status)
+                # Check if process has completed (reader task done)
+                if agent._reader_task and agent._reader_task.done():
+                    if agent.status not in ("complete", "error", "idle"):
+                        agent.set_status("complete")
+                        agent.summary = agent.summary or "Task completed"
+                        agent.updated_at = datetime.now(timezone.utc).isoformat()
+                        await hub.broadcast_event(
+                            "agent_completed",
+                            f"Agent {agent.name} completed (stream-json)",
+                            agent_id, agent.name,
+                        )
+
             # Prune _seen_conflicts for agents that no longer exist
             active_ids = set(manager.agents.keys())
             _seen_conflicts = {k for k in _seen_conflicts if k[1] & active_ids}
@@ -1320,6 +1341,11 @@ async def cleanup_background_tasks(app: web.Application) -> None:
 
     # Close database
     await db.close()
+
+    # Close all PTY sessions
+    pty_mgr = app.get("pty_manager")
+    if pty_mgr:
+        pty_mgr.close_all()
 
     # Clean up all tmux sessions
     manager.cleanup_all()

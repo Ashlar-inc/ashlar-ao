@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from aiohttp.test_utils import AioHTTPTestCase, unittest_run_loop
+from aiohttp.test_utils import AioHTTPTestCase
 
 import ashlr_server
 from ashlr_ao.server import _validate_webhook_url
@@ -18,14 +18,12 @@ class TestWebhookCRUD(AioHTTPTestCase):
     async def get_application(self):
         return make_test_app()
 
-    @unittest_run_loop
     async def test_list_webhooks_empty(self):
         resp = await self.client.get("/api/webhooks")
         self.assertEqual(resp.status, 200)
         data = await resp.json()
         self.assertEqual(data, [])
 
-    @unittest_run_loop
     async def test_list_webhooks_returns_items(self):
         self.app["db"].get_webhooks = AsyncMock(return_value=[
             {"id": "wh1", "url": "https://example.com/hook", "name": "Test", "events": [], "active": True, "secret": "s3cret"},
@@ -37,7 +35,6 @@ class TestWebhookCRUD(AioHTTPTestCase):
         # Secret should be masked
         self.assertEqual(data[0]["secret"], "***")
 
-    @unittest_run_loop
     async def test_create_webhook_valid(self):
         resp = await self.client.post("/api/webhooks", json={
             "url": "https://hooks.example.com/notify",
@@ -49,18 +46,15 @@ class TestWebhookCRUD(AioHTTPTestCase):
         self.assertIn("id", data)
         self.app["db"].save_webhook.assert_called_once()
 
-    @unittest_run_loop
     async def test_create_webhook_missing_url(self):
         resp = await self.client.post("/api/webhooks", json={"name": "No URL"})
         self.assertEqual(resp.status, 400)
 
-    @unittest_run_loop
     async def test_create_webhook_invalid_json(self):
         resp = await self.client.post("/api/webhooks", data="not json",
                                        headers={"Content-Type": "application/json"})
         self.assertEqual(resp.status, 400)
 
-    @unittest_run_loop
     async def test_create_webhook_blocked_url_localhost(self):
         resp = await self.client.post("/api/webhooks", json={
             "url": "http://localhost:8080/hook",
@@ -69,14 +63,12 @@ class TestWebhookCRUD(AioHTTPTestCase):
         data = await resp.json()
         self.assertIn("error", data)
 
-    @unittest_run_loop
     async def test_create_webhook_blocked_url_private_ip(self):
         resp = await self.client.post("/api/webhooks", json={
             "url": "http://192.168.1.100/hook",
         })
         self.assertEqual(resp.status, 400)
 
-    @unittest_run_loop
     async def test_update_webhook(self):
         self.app["db"].get_webhook = AsyncMock(return_value={
             "id": "wh1", "url": "https://old.example.com/hook", "name": "Old",
@@ -89,18 +81,15 @@ class TestWebhookCRUD(AioHTTPTestCase):
         self.assertEqual(resp.status, 200)
         self.app["db"].save_webhook.assert_called_once()
 
-    @unittest_run_loop
     async def test_update_webhook_not_found(self):
         resp = await self.client.put("/api/webhooks/nonexistent", json={"name": "X"})
         self.assertEqual(resp.status, 404)
 
-    @unittest_run_loop
     async def test_delete_webhook_success(self):
         self.app["db"].delete_webhook = AsyncMock(return_value=True)
         resp = await self.client.delete("/api/webhooks/wh1")
         self.assertEqual(resp.status, 200)
 
-    @unittest_run_loop
     async def test_delete_webhook_not_found(self):
         resp = await self.client.delete("/api/webhooks/nonexistent")
         self.assertEqual(resp.status, 404)
@@ -112,12 +101,10 @@ class TestWebhookTest(AioHTTPTestCase):
     async def get_application(self):
         return make_test_app()
 
-    @unittest_run_loop
     async def test_test_webhook_not_found(self):
         resp = await self.client.post("/api/webhooks/nonexistent/test")
         self.assertEqual(resp.status, 404)
 
-    @unittest_run_loop
     async def test_test_webhook_success(self):
         self.app["db"].get_webhook = AsyncMock(return_value={
             "id": "wh1", "url": "https://hooks.example.com/test",
@@ -139,12 +126,10 @@ class TestWebhookDeliveries(AioHTTPTestCase):
     async def get_application(self):
         return make_test_app()
 
-    @unittest_run_loop
     async def test_deliveries_not_found(self):
         resp = await self.client.get("/api/webhooks/nonexistent/deliveries")
         self.assertEqual(resp.status, 404)
 
-    @unittest_run_loop
     async def test_deliveries_empty(self):
         self.app["db"].get_webhook = AsyncMock(return_value={
             "id": "wh1", "url": "https://hooks.example.com/test",
@@ -155,7 +140,6 @@ class TestWebhookDeliveries(AioHTTPTestCase):
         data = await resp.json()
         self.assertEqual(data, [])
 
-    @unittest_run_loop
     async def test_deliveries_with_items(self):
         self.app["db"].get_webhook = AsyncMock(return_value={
             "id": "wh1", "url": "https://hooks.example.com/test",
@@ -220,7 +204,6 @@ class TestEventExport(AioHTTPTestCase):
     async def get_application(self):
         return make_test_app()
 
-    @unittest_run_loop
     async def test_export_json_default(self):
         self.app["db"].get_events = AsyncMock(return_value=[
             {"id": 1, "event": "agent_spawned", "message": "Agent x spawned",
@@ -231,7 +214,6 @@ class TestEventExport(AioHTTPTestCase):
         data = await resp.json()
         self.assertEqual(len(data), 1)
 
-    @unittest_run_loop
     async def test_export_json_explicit(self):
         self.app["db"].get_events = AsyncMock(return_value=[])
         resp = await self.client.get("/api/events/export?format=json")
@@ -239,7 +221,6 @@ class TestEventExport(AioHTTPTestCase):
         data = await resp.json()
         self.assertEqual(data, [])
 
-    @unittest_run_loop
     async def test_export_csv(self):
         self.app["db"].get_events = AsyncMock(return_value=[
             {"id": 1, "event_type": "agent_spawned", "message": "Agent x spawned",
@@ -251,13 +232,11 @@ class TestEventExport(AioHTTPTestCase):
         self.assertIn("event_type", text)  # CSV header
         self.assertIn("agent_spawned", text)
 
-    @unittest_run_loop
     async def test_export_with_limit(self):
         self.app["db"].get_events = AsyncMock(return_value=[])
         resp = await self.client.get("/api/events/export?limit=10")
         self.assertEqual(resp.status, 200)
 
-    @unittest_run_loop
     async def test_export_with_event_type_filter(self):
         self.app["db"].get_events = AsyncMock(return_value=[])
         resp = await self.client.get("/api/events/export?event_type=agent_spawned")
@@ -270,14 +249,12 @@ class TestAgentOutputHistory(AioHTTPTestCase):
     async def get_application(self):
         return make_test_app()
 
-    @unittest_run_loop
     async def test_output_history_no_agent_returns_empty(self):
         resp = await self.client.get("/api/agents/nonexistent/output-history")
         self.assertEqual(resp.status, 200)
         data = await resp.json()
         self.assertEqual(data["lines"], [])
 
-    @unittest_run_loop
     async def test_output_history_with_agent(self):
         mgr = self.app["agent_manager"]
         agent = ashlr_server.Agent(id="a1", name="test", role="general", working_dir="/tmp", backend="claude-code", status="working", task="test task")
@@ -290,7 +267,6 @@ class TestAgentOutputHistory(AioHTTPTestCase):
         self.assertEqual(len(data["lines"]), 3)
         self.assertEqual(data["total_memory"], 3)
 
-    @unittest_run_loop
     async def test_output_history_pagination(self):
         mgr = self.app["agent_manager"]
         agent = ashlr_server.Agent(id="a1", name="test", role="general", working_dir="/tmp", backend="claude-code", status="working", task="test task")
@@ -317,12 +293,10 @@ class TestAgentOutputSearch(AioHTTPTestCase):
         mgr.agents["a1"] = agent
         return agent
 
-    @unittest_run_loop
     async def test_output_search_agent_not_found(self):
         resp = await self.client.get("/api/agents/nonexistent/output-search?q=test")
         self.assertEqual(resp.status, 404)
 
-    @unittest_run_loop
     async def test_output_search_invalid_regex(self):
         self._add_agent(["test line"])
         resp = await self.client.get("/api/agents/a1/output-search?q=[invalid&regex=true")
@@ -330,13 +304,11 @@ class TestAgentOutputSearch(AioHTTPTestCase):
         data = await resp.json()
         self.assertIn("error", data)
 
-    @unittest_run_loop
     async def test_output_search_no_query(self):
         self._add_agent(["test line"])
         resp = await self.client.get("/api/agents/a1/output-search")
         self.assertEqual(resp.status, 400)
 
-    @unittest_run_loop
     async def test_output_search_with_results(self):
         self._add_agent(["error: something failed", "success", "error: another failure"])
         resp = await self.client.get("/api/agents/a1/output-search?q=error")
@@ -393,7 +365,6 @@ class TestModelPricing(AioHTTPTestCase):
         rate = get_model_pricing("", "nonexistent-backend")
         self.assertEqual(rate, (0.003, 0.015))  # default
 
-    @unittest_run_loop
     async def test_costs_endpoint_enhanced(self):
         """Test that /api/costs returns per-project breakdown and budget info."""
         mgr = self.app["agent_manager"]
@@ -420,7 +391,6 @@ class TestWebhookBroadcast(AioHTTPTestCase):
     async def get_application(self):
         return make_test_app()
 
-    @unittest_run_loop
     async def test_broadcast_event_queues_webhooks(self):
         """Verify broadcast_event queues for webhook delivery."""
         hub = self.app["ws_hub"]
@@ -431,7 +401,6 @@ class TestWebhookBroadcast(AioHTTPTestCase):
         await hub.broadcast_event("agent_spawned", "Agent x spawned", "a1", "x")
         db.queue_webhook_delivery.assert_called_once()
 
-    @unittest_run_loop
     async def test_broadcast_event_filters_by_event_type(self):
         """Verify webhook event filtering works."""
         hub = self.app["ws_hub"]
@@ -442,7 +411,6 @@ class TestWebhookBroadcast(AioHTTPTestCase):
         await hub.broadcast_event("agent_spawned", "Agent x spawned", "a1", "x")
         db.queue_webhook_delivery.assert_not_called()
 
-    @unittest_run_loop
     async def test_broadcast_event_redacts_secrets(self):
         """Verify secrets are redacted from event messages."""
         hub = self.app["ws_hub"]
@@ -455,7 +423,6 @@ class TestWebhookBroadcast(AioHTTPTestCase):
         logged_msg = call_args[0][1]  # second positional arg is message
         self.assertNotIn("sk-abc123", logged_msg)
 
-    @unittest_run_loop
     async def test_broadcast_event_uses_cached_webhooks(self):
         """Verify webhook cache avoids repeated DB queries."""
         hub = self.app["ws_hub"]
@@ -470,7 +437,6 @@ class TestWebhookBroadcast(AioHTTPTestCase):
         await hub.broadcast_event("test2", "msg2", "a1", "x")
         self.assertEqual(db.get_webhooks.call_count, 1)  # still 1, cached
 
-    @unittest_run_loop
     async def test_webhook_cache_invalidated_on_create(self):
         """Verify cache is invalidated when a webhook is created."""
         hub = self.app["ws_hub"]
@@ -487,7 +453,6 @@ class TestWebhookBroadcast(AioHTTPTestCase):
         await hub.broadcast_event("test2", "msg2", "a1", "x")
         self.assertEqual(db.get_webhooks.call_count, 2)
 
-    @unittest_run_loop
     async def test_webhook_cache_invalidated_on_delete(self):
         """Verify cache is invalidated when a webhook is deleted."""
         hub = self.app["ws_hub"]
@@ -507,12 +472,10 @@ class TestWebhookDeliveryHistory(AioHTTPTestCase):
     async def get_application(self):
         return make_test_app()
 
-    @unittest_run_loop
     async def test_deliveries_not_found(self):
         resp = await self.client.get("/api/webhooks/nonexistent/deliveries")
         self.assertEqual(resp.status, 404)
 
-    @unittest_run_loop
     async def test_deliveries_empty(self):
         self.app["db"].get_webhook = AsyncMock(return_value={"id": "wh1"})
         self.app["db"].get_webhook_deliveries = AsyncMock(return_value=[])
@@ -521,7 +484,6 @@ class TestWebhookDeliveryHistory(AioHTTPTestCase):
         data = await resp.json()
         self.assertEqual(data, [])
 
-    @unittest_run_loop
     async def test_deliveries_returns_items(self):
         self.app["db"].get_webhook = AsyncMock(return_value={"id": "wh1"})
         deliveries = [
@@ -545,7 +507,6 @@ class TestRateLimitsExpensiveEndpoints(AioHTTPTestCase):
         app["rate_limiter"] = RateLimiter()
         return app
 
-    @unittest_run_loop
     async def test_export_events_rate_limited(self):
         """Export endpoint should reject after burst is exhausted."""
         # burst=3, rate=0.2/sec, cost=3 per call → only 1 call before exhaustion
@@ -556,7 +517,6 @@ class TestRateLimitsExpensiveEndpoints(AioHTTPTestCase):
             resp = await self.client.get("/api/events/export")
         self.assertEqual(resp.status, 429)
 
-    @unittest_run_loop
     async def test_summarize_rate_limited(self):
         """Summarize endpoint should have rate limiting."""
         import time
@@ -585,7 +545,6 @@ class TestSystemDiagnostics(AioHTTPTestCase):
     async def get_application(self):
         return make_test_app()
 
-    @unittest_run_loop
     async def test_system_metrics_includes_uptime(self):
         """System endpoint should include uptime_sec."""
         resp = await self.client.get("/api/system")
