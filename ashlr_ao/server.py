@@ -321,8 +321,7 @@ async def list_agents(request: web.Request) -> web.Response:
 
 async def spawn_agent(request: web.Request) -> web.Response:
     manager: AgentManager = request.app["agent_manager"]
-    if r := _check_rate(request, cost=3, rate=1.0, burst=5):
-        return r
+    # Rate limiting handled by middleware spawn tier
     try:
         data = await request.json()
     except json.JSONDecodeError:

@@ -1189,25 +1189,46 @@ class AgentManager:
                 saved_task = new_task
                 agent.task = new_task
 
-            # Kill the old tmux session
-            old_tmux_session = agent.tmux_session
-            try:
-                await self._tmux_send_keys(old_tmux_session, "/exit")
-                await asyncio.sleep(1)
-            except Exception as e:
-                log.warning(f"Restart: failed to send /exit to old session {old_tmux_session} for agent {agent_id}: {e}")
-            try:
-                await self._run_tmux(["kill-session", "-t", old_tmux_session])
-            except Exception as e:
-                log.warning(f"Restart: failed to kill old tmux session {old_tmux_session} for agent {agent_id}: {e}")
-
-            # Verify old session is gone
-            try:
-                check = await self._run_tmux(["has-session", "-t", old_tmux_session])
-                if check.returncode == 0:
+            # Kill the old process
+            if agent.output_mode == "stream-json":
+                # Stream-json agents use subprocess, not tmux
+                if agent._reader_task and not agent._reader_task.done():
+                    agent._reader_task.cancel()
+                    try:
+                        await agent._reader_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                if agent._subprocess_proc:
+                    try:
+                        agent._subprocess_proc.terminate()
+                        await asyncio.wait_for(agent._subprocess_proc.wait(), timeout=5)
+                    except (ProcessLookupError, asyncio.TimeoutError):
+                        try:
+                            agent._subprocess_proc.kill()
+                        except ProcessLookupError:
+                            pass
+                    agent._subprocess_proc = None
+                agent._reader_task = None
+            else:
+                old_tmux_session = agent.tmux_session
+                try:
+                    await self._tmux_send_keys(old_tmux_session, "/exit")
+                    await asyncio.sleep(1)
+                except Exception as e:
+                    log.warning(f"Restart: failed to send /exit to old session {old_tmux_session} for agent {agent_id}: {e}")
+                try:
                     await self._run_tmux(["kill-session", "-t", old_tmux_session])
-            except Exception as e:
-                log.warning(f"Restart: failed to verify/force-kill old session {old_tmux_session} for agent {agent_id}: {e}")
+                except Exception as e:
+                    log.warning(f"Restart: failed to kill old tmux session {old_tmux_session} for agent {agent_id}: {e}")
+
+            # Verify old tmux session is gone (skip for stream-json)
+            if agent.output_mode != "stream-json" and agent.tmux_session:
+                try:
+                    check = await self._run_tmux(["has-session", "-t", agent.tmux_session])
+                    if check.returncode == 0:
+                        await self._run_tmux(["kill-session", "-t", agent.tmux_session])
+                except Exception as e:
+                    log.warning(f"Restart: failed to verify/force-kill old session {agent.tmux_session} for agent {agent_id}: {e}")
 
             # Clean up demo script temp file
             if agent.script_path:
@@ -1216,32 +1237,9 @@ class AgentManager:
                 except Exception as e:
                     log.warning(f"Restart: failed to remove demo script {agent.script_path} for agent {agent_id}: {e}")
 
-            # Create NEW tmux session (same session name)
-            session_name = f"{self.tmux_prefix}-{agent_id}"
             now = datetime.now(timezone.utc).isoformat()
 
-            try:
-                result = await self._run_tmux([
-                    "new-session", "-d", "-s", session_name,
-                    "-x", "200", "-y", "50",
-                    "-c", saved_working_dir,
-                ])
-                if result.returncode != 0:
-                    # Failed to create new session — set agent to error, don't delete
-                    agent.status = "error"
-                    agent.error_message = f"Restart failed: could not create tmux session: {result.stderr}"
-                    agent._error_entered_at = time.monotonic()
-                    agent.updated_at = now
-                    return False
-            except Exception as e:
-                agent.status = "error"
-                agent.error_message = f"Restart failed: {e}"
-                agent._error_entered_at = time.monotonic()
-                agent.updated_at = now
-                return False
-
-            # SUCCESS: new tmux session created. Update agent fields in-place.
-            agent.tmux_session = session_name
+            # Reset common agent fields
             agent.status = "spawning"
             agent.summary = "Restarting..."
             agent.restart_count += 1
@@ -1269,14 +1267,8 @@ class AgentManager:
             agent._files_touched_set.clear()
             agent.script_path = None
 
-            # Get pane PID
-            agent.pid = await self._tmux_get_pane_pid(session_name)
-
-            if self.config.demo_mode:
-                demo_script = await asyncio.to_thread(self._build_demo_script, saved_role, saved_task, agent)
-                await self._tmux_send_keys(session_name, demo_script)
-            else:
-                # Use BackendConfig-based command building (same as spawn)
+            if agent.output_mode == "stream-json":
+                # Re-spawn as subprocess (stream-json mode)
                 bc = self.backend_configs.get(saved_backend)
                 if not bc or not bc.available:
                     try:
@@ -1287,39 +1279,95 @@ class AgentManager:
                         agent.error_message = str(e)
                         return False
 
-                role_obj = BUILTIN_ROLES.get(saved_role, BUILTIN_ROLES["general"])
-                cmd_parts, task_to_send = self._build_backend_command(
-                    bc, saved_role, saved_task,
-                    plan_mode=saved_plan_mode, model=saved_model, tools=saved_tools,
-                    system_prompt=saved_system_prompt,
-                )
+                cmd_parts = self._build_stream_json_command(bc, saved_task, model=saved_model, system_prompt=saved_system_prompt)
+                try:
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd_parts,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        cwd=saved_working_dir,
+                    )
+                    agent._subprocess_proc = proc
+                    agent.pid = proc.pid
+                    agent._reader_task = asyncio.create_task(self._read_stream_json(agent_id, proc))
+                except Exception as e:
+                    agent.status = "error"
+                    agent.error_message = f"Restart failed: {e}"
+                    agent._error_entered_at = time.monotonic()
+                    return False
+            else:
+                # Create NEW tmux session (same session name)
+                session_name = f"{self.tmux_prefix}-{agent_id}"
 
-                cmd = " ".join(shlex.quote(p) for p in cmd_parts)
-                await self._tmux_send_keys(session_name, cmd)
+                try:
+                    result = await self._run_tmux([
+                        "new-session", "-d", "-s", session_name,
+                        "-x", "200", "-y", "50",
+                        "-c", saved_working_dir,
+                    ])
+                    if result.returncode != 0:
+                        agent.status = "error"
+                        agent.error_message = f"Restart failed: could not create tmux session: {result.stderr}"
+                        agent._error_entered_at = time.monotonic()
+                        agent.updated_at = now
+                        return False
+                except Exception as e:
+                    agent.status = "error"
+                    agent.error_message = f"Restart failed: {e}"
+                    agent._error_entered_at = time.monotonic()
+                    agent.updated_at = now
+                    return False
 
-                if bc.supports_prompt_arg:
-                    # Poll until TUI is ready, then send Enter
-                    ready = await self._wait_for_tui_ready(session_name)
-                    if not ready:
-                        log.warning(f"Agent {agent_id}: TUI not ready after timeout on restart, sending Enter anyway")
-                    await asyncio.sleep(2.0)
-                    await self._tmux_send_raw(session_name, "Enter")
+                agent.tmux_session = session_name
 
-                # If task was NOT included as CLI arg, send it after startup
-                if not bc.supports_prompt_arg:
-                    await asyncio.sleep(3)
-                    if bc.supports_system_prompt:
-                        if task_to_send:
-                            await self._tmux_send_keys(session_name, task_to_send)
-                    else:
-                        if role_obj and role_obj.system_prompt and task_to_send:
-                            full_message = f"{role_obj.system_prompt}\n\nYour task: {task_to_send}"
-                            for line in full_message.split("\n"):
-                                if line.strip():
-                                    await self._tmux_send_keys(session_name, line)
-                                    await asyncio.sleep(0.1)
-                        elif task_to_send:
-                            await self._tmux_send_keys(session_name, task_to_send)
+                # Get pane PID
+                agent.pid = await self._tmux_get_pane_pid(session_name)
+
+                if self.config.demo_mode:
+                    demo_script = await asyncio.to_thread(self._build_demo_script, saved_role, saved_task, agent)
+                    await self._tmux_send_keys(session_name, demo_script)
+                else:
+                    bc = self.backend_configs.get(saved_backend)
+                    if not bc or not bc.available:
+                        try:
+                            cmd_bin, cmd_args = self._resolve_backend_command(saved_backend)
+                            bc = BackendConfig(command=cmd_bin, args=cmd_args, available=True)
+                        except ValueError as e:
+                            agent.status = "error"
+                            agent.error_message = str(e)
+                            return False
+
+                    role_obj = BUILTIN_ROLES.get(saved_role, BUILTIN_ROLES["general"])
+                    cmd_parts, task_to_send = self._build_backend_command(
+                        bc, saved_role, saved_task,
+                        plan_mode=saved_plan_mode, model=saved_model, tools=saved_tools,
+                        system_prompt=saved_system_prompt,
+                    )
+
+                    cmd = " ".join(shlex.quote(p) for p in cmd_parts)
+                    await self._tmux_send_keys(session_name, cmd)
+
+                    if bc.supports_prompt_arg:
+                        ready = await self._wait_for_tui_ready(session_name)
+                        if not ready:
+                            log.warning(f"Agent {agent_id}: TUI not ready after timeout on restart, sending Enter anyway")
+                        await asyncio.sleep(2.0)
+                        await self._tmux_send_raw(session_name, "Enter")
+
+                    if not bc.supports_prompt_arg:
+                        await asyncio.sleep(3)
+                        if bc.supports_system_prompt:
+                            if task_to_send:
+                                await self._tmux_send_keys(session_name, task_to_send)
+                        else:
+                            if role_obj and role_obj.system_prompt and task_to_send:
+                                full_message = f"{role_obj.system_prompt}\n\nYour task: {task_to_send}"
+                                for line in full_message.split("\n"):
+                                    if line.strip():
+                                        await self._tmux_send_keys(session_name, line)
+                                        await asyncio.sleep(0.1)
+                            elif task_to_send:
+                                await self._tmux_send_keys(session_name, task_to_send)
 
             agent.plan_mode = saved_plan_mode
             agent.status = "planning" if saved_plan_mode else "working"

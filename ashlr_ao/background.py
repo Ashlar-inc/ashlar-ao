@@ -116,7 +116,7 @@ async def output_capture_loop(app: web.Application) -> None:
     hub: WebSocketHub = app["ws_hub"]
     interval = app["config"].output_capture_interval
     _archive_retry_queue: list[tuple[str, list[str], int]] = []  # (agent_id, lines, offset)
-    _seen_conflicts: set[tuple[str, frozenset]] = set()  # Dedup file conflict notifications
+    _seen_conflicts: set[tuple[str, frozenset]] = set()  # Dedup file conflict notifications (capped at 1000)
     _recent_errors: list[tuple[float, str]] = []  # (timestamp, agent_id) for multi-error detection
     _fleet_error_warned = False
 
@@ -271,6 +271,8 @@ async def output_capture_loop(app: web.Application) -> None:
                         conflicts = manager._check_file_conflicts(agent_id, new_lines)
                         for conflict in conflicts:
                             conflict_key = (conflict['file_path'], frozenset([conflict['agent_id'], conflict['other_agent_id']]))
+                            if len(_seen_conflicts) > 1000:
+                                _seen_conflicts.clear()
                             if conflict_key not in _seen_conflicts:
                                 _seen_conflicts.add(conflict_key)
                                 await hub.broadcast_event(
@@ -621,6 +623,9 @@ async def output_capture_loop(app: web.Application) -> None:
             # Stream-json agents: broadcast periodic updates (output fed by reader task)
             for agent_id, agent in active_agents:
                 if agent.output_mode != "stream-json" or agent.status in ("killed", "error"):
+                    continue
+                # Re-check agent still exists (may have been killed between iterations)
+                if agent_id not in manager.agents:
                     continue
                 # Broadcast agent update so dashboard stays current
                 await hub.broadcast({"type": "agent_update", "agent": agent.to_dict()})

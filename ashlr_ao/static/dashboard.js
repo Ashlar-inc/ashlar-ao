@@ -5,8 +5,8 @@
 // ── One-time localStorage migration: ashlar_* → ashlr_* ──
 (function() {
     if (localStorage.getItem('_ashlr_migrated')) return;
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
+    const keys = Array.from({length: localStorage.length}, (_, i) => localStorage.key(i));
+    for (const key of keys) {
         if (key && key.startsWith('ashlar_')) {
             localStorage.setItem(key.replace('ashlar_', 'ashlr_'), localStorage.getItem(key));
         }
@@ -87,6 +87,9 @@ const ICONS = {
     'globe':         '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
     'webhook':       '<path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2"/><path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06"/><path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8"/>',
     'message-circle':'<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+    'message-square':'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    'share-2':'<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/>',
+    'gantt-chart':'<path d="M8 6h10"/><path d="M6 12h9"/><path d="M11 18h7"/><path d="M3 3v16a2 2 0 0 0 2 2h16"/>',
     'download':      '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
     'dollar-sign':   '<line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
     'x-circle':      '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
@@ -7035,8 +7038,6 @@ function updateProjectHeader() {
     const agents = [...state.agents.values()].filter(a => a.project_id === pid);
     const active = agents.filter(a => ['working', 'planning', 'reading'].includes(a.status)).length;
     const cost = agents.reduce((s, a) => s + (a.estimated_cost_usd || 0), 0);
-    const files = new Set();
-    agents.forEach(a => { if (a.files_touched) for (let i = 0; i < a.files_touched; i++) files.add(i); });
     document.getElementById('projHeaderStats').textContent = `${agents.length} agents (${active} active) \u00b7 $${cost.toFixed(3)}`;
 }
 
@@ -7615,6 +7616,7 @@ function openWorkflowRunner() {
         const roleIcons = agents.map(a => roleIcon(a.role, 14));
         const card = document.createElement('div');
         card.className = 'wf-picker-card';
+        card.dataset.wfid = wf.id;
         card.innerHTML = `
             <div class="wf-picker-card-icon">${roleIcons[0] || icon('zap', 16)}</div>
             <div class="wf-picker-card-info">
@@ -12837,7 +12839,7 @@ function renderAgentTags(tags) {
             agent.tags = newTags;
             renderAgentTags(newTags);
             apiFetch(`/api/agents/${state.focusedAgentId}/tags`, {
-                method: 'PUT', body: JSON.stringify({ tags: newTags })
+                method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ tags: newTags })
             }).catch(() => showToast('Failed to save tags', 'error'));
         });
     });
@@ -12857,7 +12859,7 @@ function addAgentTag() {
     input.value = '';
     renderAgentTags(tags);
     apiFetch(`/api/agents/${state.focusedAgentId}/tags`, {
-        method: 'PUT', body: JSON.stringify({ tags })
+        method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ tags })
     }).catch(() => showToast('Failed to save tags', 'error'));
 }
 
@@ -12867,7 +12869,7 @@ async function saveAgentNotes() {
     const agent = state.agents.get(state.focusedAgentId);
     if (agent) agent.notes = notes;
     await apiFetch(`/api/agents/${state.focusedAgentId}/notes`, {
-        method: 'PUT', body: JSON.stringify({ notes })
+        method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ notes })
     });
     showToast('Notes saved', 'success');
 }
@@ -14173,30 +14175,32 @@ const QUICK_SPAWN_TEMPLATES = [
 ];
 
 // Patch command palette to include templates
-const _origOpenCommandPalette = typeof openCommandPalette === 'function' ? openCommandPalette : null;
-if (_origOpenCommandPalette) {
-    const _origBuildPaletteItems = typeof buildPaletteItems === 'function' ? buildPaletteItems : null;
-    if (_origBuildPaletteItems) {
-        const _realBuildPaletteItems = buildPaletteItems;
-        buildPaletteItems = function() {
-            const items = _realBuildPaletteItems();
-            // Add template section
-            const templateItems = QUICK_SPAWN_TEMPLATES.map(t => ({
-                label: `Quick: ${t.label}`,
-                detail: `Spawn ${t.role} agent with pre-configured task`,
-                action: () => {
-                    closePalette();
-                    const name = t.namePrefix + Math.random().toString(36).substring(2, 5);
-                    const msg = JSON.stringify({ type: 'spawn', role: t.role, name, task: t.task, working_dir: state.config?.agents?.default_working_dir || '~/Projects' });
-                    socket.send(msg);
-                    showToast(`Spawning ${t.label}: ${name}`, 'success');
-                },
-                section: 'Templates'
-            }));
-            return [...items, ...templateItems];
+// Patch renderPaletteItems to include quick-spawn templates
+const _origRenderPaletteForTemplates = renderPaletteItems;
+renderPaletteItems = function(query) {
+    _origRenderPaletteForTemplates(query);
+    // If query matches any template, inject them into the palette list
+    const container = document.getElementById('paletteList');
+    if (!container) return;
+    const q = (query || '').toLowerCase();
+    const matching = QUICK_SPAWN_TEMPLATES.filter(t =>
+        !q || t.label.toLowerCase().includes(q) || 'quick'.includes(q) || 'template'.includes(q) || 'spawn'.includes(q)
+    );
+    if (matching.length === 0) return;
+    matching.forEach(t => {
+        const div = document.createElement('div');
+        div.className = 'palette-item';
+        div.innerHTML = `<span class="palette-icon">${icon('rocket', 16)}</span><span class="palette-label">Quick: ${escapeHtml(t.label)}</span><span class="palette-detail">Spawn ${t.role} agent</span>`;
+        div.onclick = () => {
+            closePalette();
+            const name = t.namePrefix + Math.random().toString(36).substring(2, 5);
+            const msg = JSON.stringify({ type: 'spawn', role: t.role, name, task: t.task, working_dir: state.config?.agents?.default_working_dir || '~/Projects' });
+            socket.send(msg);
+            showToast(`Spawning ${t.label}: ${name}`, 'success');
         };
-    }
-}
+        container.appendChild(div);
+    });
+};
 
 // ═══════════════════════════════════════════════════════════════════
 // ── Cost Forecasting ──

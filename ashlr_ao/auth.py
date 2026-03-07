@@ -251,6 +251,9 @@ async def auth_logout(request: web.Request) -> web.Response:
 
 async def auth_me(request: web.Request) -> web.Response:
     """GET /api/auth/me — return current user info from session."""
+    if not request.app["config"].require_auth:
+        return web.json_response({"auth_required": False})
+
     db: Database = request.app["db"]
 
     session_id = _extract_session_cookie(request)

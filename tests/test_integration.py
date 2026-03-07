@@ -3275,3 +3275,94 @@ class TestConfTestMockCompleteness:
         assert callable(db.get_bookmarks)
         assert callable(db.add_bookmark)
         assert callable(db.delete_bookmark)
+
+
+# ═══════════════════════════════════════════════
+# T-5: TUI ready timeout path tests
+# ═══════════════════════════════════════════════
+
+
+class TestTuiReadyTimeout:
+    """Tests for spawn behavior when _wait_for_tui_ready times out."""
+
+    @pytest.mark.asyncio
+    async def test_spawn_completes_on_tui_timeout(self, aiohttp_client):
+        """Spawn completes even when _wait_for_tui_ready returns False (demo mode bypasses TUI)."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        manager = app["agent_manager"]
+
+        success_result = MagicMock()
+        success_result.returncode = 0
+        success_result.stdout = ""
+        success_result.stderr = ""
+        manager._run_tmux = AsyncMock(return_value=success_result)
+        manager._tmux_send_keys = AsyncMock(return_value=True)
+        manager._tmux_send_raw = AsyncMock(return_value=True)
+        manager._wait_for_tui_ready = AsyncMock(return_value=False)  # Timeout!
+
+        resp = await client.post("/api/agents", json={
+            "role": "backend",
+            "name": "tui-timeout-test",
+            "task": "test task",
+            "working_dir": TEST_WORKING_DIR,
+        })
+        assert resp.status == 201
+        data = await resp.json()
+        agent_id = data["id"]
+        assert agent_id in manager.agents
+        # Agent should still be spawned despite TUI timeout
+        agent = manager.agents[agent_id]
+        assert agent.status in ("spawning", "working", "planning")
+
+    @pytest.mark.asyncio
+    async def test_tui_ready_timeout_sends_enter_anyway(self):
+        """When _wait_for_tui_ready returns False, spawn still sends Enter."""
+        from ashlr_ao.manager import AgentManager
+        from ashlr_ao.config import Config
+
+        config = Config()
+        config.demo_mode = False  # Non-demo mode to exercise TUI path
+        manager = AgentManager(config)
+
+        success_result = MagicMock()
+        success_result.returncode = 0
+        success_result.stdout = ""
+        success_result.stderr = ""
+        manager._run_tmux = AsyncMock(return_value=success_result)
+        manager._tmux_send_keys = AsyncMock(return_value=True)
+        manager._tmux_send_raw = AsyncMock(return_value=True)
+        manager._wait_for_tui_ready = AsyncMock(return_value=False)  # Timeout!
+
+        agent = await manager.spawn(
+            role="backend", name="tui-test",
+            task="test task", working_dir=TEST_WORKING_DIR,
+        )
+        assert agent is not None
+        # Enter should still be sent as fallback
+        manager._tmux_send_raw.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_restart_completes_on_tui_timeout(self, aiohttp_client):
+        """Restart completes even when _wait_for_tui_ready returns False."""
+        app = _make_test_app()
+        client = await aiohttp_client(app)
+        manager = app["agent_manager"]
+
+        success_result = MagicMock()
+        success_result.returncode = 0
+        success_result.stdout = ""
+        success_result.stderr = ""
+        manager._run_tmux = AsyncMock(return_value=success_result)
+        manager._tmux_send_keys = AsyncMock(return_value=True)
+        manager._tmux_send_raw = AsyncMock(return_value=True)
+        manager._wait_for_tui_ready = AsyncMock(return_value=True)
+
+        agent = await manager.spawn(role="backend", name="restart-tui", task="old task", working_dir=TEST_WORKING_DIR)
+
+        # Now set TUI ready to timeout for restart
+        manager._wait_for_tui_ready = AsyncMock(return_value=False)
+
+        resp = await client.post(f"/api/agents/{agent.id}/restart")
+        assert resp.status == 200
+        assert agent.id in manager.agents

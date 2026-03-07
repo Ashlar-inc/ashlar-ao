@@ -83,8 +83,8 @@ def _validate_repo_path(path: str | None) -> tuple[bool, str]:
 def _validate_relative_paths(files: list[str]) -> str | None:
     """Validate file paths are relative and safe. Returns error or None."""
     for f in files:
-        if not f or os.path.isabs(f) or ".." in f.split(os.sep):
-            return f"Invalid file path: {f!r} — must be relative with no '..'"
+        if not f or os.path.isabs(f) or f.startswith("~") or ".." in f.split(os.sep):
+            return f"Invalid file path: {f!r} — must be relative with no '..' or '~'"
     return None
 
 

@@ -34,10 +34,10 @@ class PTYSession:
 
     __slots__ = (
         "id", "master_fd", "pid", "cols", "rows",
-        "_closed", "_reader_handle",
+        "_closed", "_reader_handle", "is_standalone",
     )
 
-    def __init__(self, session_id: str, master_fd: int, pid: int, cols: int = 200, rows: int = 50):
+    def __init__(self, session_id: str, master_fd: int, pid: int, cols: int = 200, rows: int = 50, is_standalone: bool = False):
         self.id = session_id
         self.master_fd = master_fd
         self.pid = pid
@@ -45,6 +45,7 @@ class PTYSession:
         self.rows = rows
         self._closed = False
         self._reader_handle: asyncio.Handle | None = None
+        self.is_standalone = is_standalone
 
     def resize(self, cols: int, rows: int) -> None:
         """Resize the PTY window."""
@@ -114,7 +115,7 @@ class PTYManager:
     def _generate_id(self) -> str:
         return os.urandom(4).hex()
 
-    def open_shell(self, cwd: str = "", cols: int = 200, rows: int = 50) -> PTYSession:
+    async def open_shell(self, cwd: str = "", cols: int = 200, rows: int = 50) -> PTYSession:
         """Open a new standalone shell PTY session."""
         if len(self._standalone_ids()) >= MAX_STANDALONE_TERMINALS:
             raise ValueError(f"Maximum standalone terminals ({MAX_STANDALONE_TERMINALS}) reached")
@@ -139,31 +140,24 @@ class PTYManager:
         winsize = struct.pack("HHHH", rows, cols, 0, 0)
         fcntl.ioctl(master_fd, termios.TIOCSWINSZ, winsize)
 
-        pid = os.fork()
-        if pid == 0:
-            # Child process
-            os.setsid()
-            os.dup2(slave_fd, 0)
-            os.dup2(slave_fd, 1)
-            os.dup2(slave_fd, 2)
-            os.close(master_fd)
-            os.close(slave_fd)
-            os.chdir(cwd)
-            os.execvp(shell, [shell, "-l"])
-            # Never reached
-        else:
-            # Parent process
-            os.close(slave_fd)
-            # Set master fd to non-blocking
-            flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
-            fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+        proc = await asyncio.create_subprocess_exec(
+            shell, "-l",
+            stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
+            cwd=cwd,
+            start_new_session=True,
+        )
+        os.close(slave_fd)
 
-            session = PTYSession(session_id, master_fd, pid, cols, rows)
-            self.sessions[session_id] = session
-            log.info(f"Opened shell PTY {session_id} (pid={pid}, cwd={cwd})")
-            return session
+        # Set master fd to non-blocking
+        flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
+        fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
 
-    def open_tmux_attach(self, tmux_session: str, cols: int = 200, rows: int = 50) -> PTYSession:
+        session = PTYSession(session_id, master_fd, proc.pid, cols, rows, is_standalone=True)
+        self.sessions[session_id] = session
+        log.info(f"Opened shell PTY {session_id} (pid={proc.pid}, cwd={cwd})")
+        return session
+
+    async def open_tmux_attach(self, tmux_session: str, cols: int = 200, rows: int = 50) -> PTYSession:
         """Open a PTY that runs `tmux attach-session -t <name>`."""
         session_id = self._generate_id()
 
@@ -172,24 +166,20 @@ class PTYManager:
         winsize = struct.pack("HHHH", rows, cols, 0, 0)
         fcntl.ioctl(master_fd, termios.TIOCSWINSZ, winsize)
 
-        pid = os.fork()
-        if pid == 0:
-            os.setsid()
-            os.dup2(slave_fd, 0)
-            os.dup2(slave_fd, 1)
-            os.dup2(slave_fd, 2)
-            os.close(master_fd)
-            os.close(slave_fd)
-            os.execvp("tmux", ["tmux", "attach-session", "-t", tmux_session])
-        else:
-            os.close(slave_fd)
-            flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
-            fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+        proc = await asyncio.create_subprocess_exec(
+            "tmux", "attach-session", "-t", tmux_session,
+            stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
+            start_new_session=True,
+        )
+        os.close(slave_fd)
 
-            session = PTYSession(session_id, master_fd, pid, cols, rows)
-            self.sessions[session_id] = session
-            log.info(f"Opened tmux-attach PTY {session_id} for session {tmux_session}")
-            return session
+        flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
+        fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
+        session = PTYSession(session_id, master_fd, proc.pid, cols, rows, is_standalone=False)
+        self.sessions[session_id] = session
+        log.info(f"Opened tmux-attach PTY {session_id} for session {tmux_session}")
+        return session
 
     def close_session(self, session_id: str) -> bool:
         """Close a PTY session."""
@@ -208,7 +198,7 @@ class PTYManager:
 
     def _standalone_ids(self) -> list[str]:
         """Return IDs of standalone (non-agent-attached) sessions."""
-        return list(self.sessions.keys())
+        return [sid for sid, s in self.sessions.items() if s.is_standalone]
 
     async def handle_terminal_ws(self, request: web.Request) -> web.WebSocketResponse:
         """WebSocket handler for agent terminal attach.
@@ -237,7 +227,7 @@ class PTYManager:
         rows = min(int(request.query.get("rows", 50)), 200)
 
         try:
-            pty_session = self.open_tmux_attach(agent.tmux_session, cols, rows)
+            pty_session = await self.open_tmux_attach(agent.tmux_session, cols, rows)
         except Exception as e:
             log.error(f"Failed to open tmux attach PTY for agent {agent_id}: {e}")
             await ws.close(code=1011, message=str(e).encode()[:125])
@@ -259,7 +249,7 @@ class PTYManager:
         await ws.prepare(request)
 
         try:
-            pty_session = self.open_shell(cwd, cols, rows)
+            pty_session = await self.open_shell(cwd, cols, rows)
         except ValueError as e:
             await ws.close(code=1008, message=str(e).encode()[:125])
             return ws

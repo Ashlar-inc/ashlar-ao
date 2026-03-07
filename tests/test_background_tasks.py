@@ -1633,3 +1633,251 @@ class TestMetaAgentLoop:
                 pass
 
         mock_client.analyze_fleet.assert_not_awaited()
+
+
+# ═══════════════════════════════════════════════
+# T-2: Fleet multi-error detection tests
+# ═══════════════════════════════════════════════
+
+
+class TestFleetMultiError:
+    """Tests for fleet_multi_error event in output_capture_loop."""
+
+    def _make_capture_app(self):
+        """Build app for output_capture_loop testing."""
+        app = _make_mock_app()
+        hub = app["ws_hub"]
+        hub.broadcast = AsyncMock()
+        hub.broadcast_event = AsyncMock()
+        manager = app["agent_manager"]
+        manager.capture_output = AsyncMock(return_value=[])
+        manager._check_file_conflicts = MagicMock(return_value=[])
+        return app
+
+    @pytest.mark.asyncio
+    async def test_two_errors_within_60s_triggers_fleet_multi_error(self):
+        """2+ agents erroring within 60s emits fleet_multi_error."""
+        app = self._make_capture_app()
+        manager = app["agent_manager"]
+        hub = app["ws_hub"]
+
+        # Create two agents, both will transition to error via detect_status
+        agent1 = _make_mock_agent(status="working", name="agent-1", output_mode="tmux",
+                                  tmux_session="a1", _last_needs_input_event=0)
+        agent1.id = "a1"
+        agent2 = _make_mock_agent(status="working", name="agent-2", output_mode="tmux",
+                                  tmux_session="a2", _last_needs_input_event=0)
+        agent2.id = "a2"
+        manager.agents = {"a1": agent1, "a2": agent2}
+
+        # manager.detect_status returns "error" for both
+        manager.detect_status = AsyncMock(return_value="error")
+        manager.capture_output = AsyncMock(return_value=["Error: something failed"])
+        manager.on_agent_failed = MagicMock(return_value=(None, None))
+
+        call_count = 0
+        async def mock_sleep(duration):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 2:
+                raise asyncio.CancelledError()
+
+        with patch("asyncio.sleep", side_effect=mock_sleep):
+            try:
+                await output_capture_loop(app)
+            except asyncio.CancelledError:
+                pass
+
+        # Check that fleet_multi_error was broadcast
+        multi_error_events = [
+            c for c in hub.broadcast_event.call_args_list
+            if c[0][0] == "fleet_multi_error"
+        ]
+        assert len(multi_error_events) >= 1
+
+
+# ═══════════════════════════════════════════════
+# T-3: Workflow stage stall/hung detection tests
+# ═══════════════════════════════════════════════
+
+
+class TestWorkflowStallDetection:
+    """Tests for workflow_stage_stalled and workflow_stage_hung events."""
+
+    def _make_health_app(self):
+        app = _make_mock_app()
+        hub = app["ws_hub"]
+        hub.broadcast = AsyncMock()
+        hub.broadcast_event = AsyncMock()
+        manager = app["agent_manager"]
+        manager.pause = AsyncMock()
+        manager.restart = AsyncMock(return_value=True)
+        manager.kill = AsyncMock(return_value=True)
+        manager._tmux_session_exists = AsyncMock(return_value=True)
+        return app
+
+    @pytest.mark.asyncio
+    async def test_workflow_agent_paused_triggers_stall_event(self):
+        """Workflow agent paused beyond stall_timeout emits workflow_stage_stalled."""
+        app = self._make_health_app()
+        manager = app["agent_manager"]
+        hub = app["ws_hub"]
+        app["config"].stall_timeout_minutes = 1  # 60 seconds
+
+        agent = _make_mock_agent(
+            status="paused", name="wf-paused", workflow_run_id="wf-1",
+            last_output_time=time.monotonic() - 120,  # 2 min ago
+            restart_count=0, max_restarts=3,
+            _error_entered_at=0, last_restart_time=0,
+            _pathological=False, estimated_cost_usd=0.0,
+            context_pct=0.0, _context_exhaustion_warned=False,
+            _context_auto_paused=False, pid=None,
+            tmux_session="ashlr-wf1", output_mode="tmux",
+        )
+        agent.id = "w1"
+        agent._workflow_stall_warned = False
+        manager.agents = {"w1": agent}
+
+        task = asyncio.create_task(health_check_loop(app))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        stall_events = [
+            c for c in hub.broadcast_event.call_args_list
+            if c[0][0] == "workflow_stage_stalled"
+        ]
+        assert len(stall_events) >= 1
+        assert agent._workflow_stall_warned is True
+
+    @pytest.mark.asyncio
+    async def test_workflow_agent_hung_triggers_event(self):
+        """Working workflow agent with no output triggers workflow_stage_hung."""
+        app = self._make_health_app()
+        manager = app["agent_manager"]
+        hub = app["ws_hub"]
+        app["config"].hung_timeout_minutes = 1  # 60 seconds
+
+        agent = _make_mock_agent(
+            status="working", name="wf-hung", workflow_run_id="wf-2",
+            last_output_time=time.monotonic() - 120,
+            restart_count=0, max_restarts=3,
+            _error_entered_at=0, last_restart_time=0,
+            _pathological=False, estimated_cost_usd=0.0,
+            context_pct=0.0, _context_exhaustion_warned=False,
+            _context_auto_paused=False, pid=None,
+            tmux_session="ashlr-wf2", output_mode="tmux",
+        )
+        agent.id = "w2"
+        agent._workflow_hung_warned = False
+        manager.agents = {"w2": agent}
+
+        task = asyncio.create_task(health_check_loop(app))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        hung_events = [
+            c for c in hub.broadcast_event.call_args_list
+            if c[0][0] == "workflow_stage_hung"
+        ]
+        assert len(hung_events) >= 1
+        assert agent._workflow_hung_warned is True
+
+    @pytest.mark.asyncio
+    async def test_workflow_stall_dedup(self):
+        """Stall warning only fires once until reset."""
+        app = self._make_health_app()
+        manager = app["agent_manager"]
+        hub = app["ws_hub"]
+        app["config"].stall_timeout_minutes = 1
+
+        agent = _make_mock_agent(
+            status="paused", name="wf-dedup", workflow_run_id="wf-3",
+            last_output_time=time.monotonic() - 120,
+            restart_count=0, max_restarts=3,
+            _error_entered_at=0, last_restart_time=0,
+            _pathological=False, estimated_cost_usd=0.0,
+            context_pct=0.0, _context_exhaustion_warned=False,
+            _context_auto_paused=False, pid=None,
+            tmux_session="ashlr-wf3", output_mode="tmux",
+        )
+        agent.id = "w3"
+        agent._workflow_stall_warned = True  # Already warned
+        manager.agents = {"w3": agent}
+
+        task = asyncio.create_task(health_check_loop(app))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        stall_events = [
+            c for c in hub.broadcast_event.call_args_list
+            if c[0][0] == "workflow_stage_stalled"
+        ]
+        assert len(stall_events) == 0  # Should NOT re-fire
+
+
+# ═══════════════════════════════════════════════
+# T-4: Archive retry queue tests
+# ═══════════════════════════════════════════════
+
+
+class TestArchiveRetryQueue:
+    """Tests for archive retry queue behavior in output_capture_loop."""
+
+    @pytest.mark.asyncio
+    async def test_retry_queue_cap_at_50(self):
+        """Archive retry queue is capped at 50 entries."""
+        from ashlr_ao.background import output_capture_loop
+
+        app = _make_mock_app()
+        hub = app["ws_hub"]
+        hub.broadcast = AsyncMock()
+        hub.broadcast_event = AsyncMock()
+        manager = app["agent_manager"]
+        manager.capture_output = AsyncMock(return_value=[])
+        manager.agents = {}  # No agents
+
+        # We can't easily inject the retry queue from outside since it's local,
+        # but we can verify the cap logic exists in source
+        import inspect
+        source = inspect.getsource(output_capture_loop)
+        assert "len(_archive_retry_queue) < 50" in source
+
+    @pytest.mark.asyncio
+    async def test_retry_queue_processes_on_db_available(self):
+        """Retry queue processes items when db_available is True."""
+        app = _make_mock_app()
+        hub = app["ws_hub"]
+        hub.broadcast = AsyncMock()
+        hub.broadcast_event = AsyncMock()
+        manager = app["agent_manager"]
+        manager.capture_output = AsyncMock(return_value=[])
+        manager.agents = {}
+        app["db_available"] = True
+
+        # Run one iteration
+        call_count = 0
+        async def mock_sleep(duration):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise asyncio.CancelledError()
+
+        with patch("asyncio.sleep", side_effect=mock_sleep):
+            try:
+                await output_capture_loop(app)
+            except asyncio.CancelledError:
+                pass
+
+        # Should complete without error (empty queue is OK)

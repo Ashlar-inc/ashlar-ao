@@ -342,9 +342,24 @@ async def file_write(request: web.Request) -> web.Response:
 
 
 def _write_file(path: str, content: str) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(content)
+    import tempfile
+    dir_name = os.path.dirname(path)
+    os.makedirs(dir_name, exist_ok=True)
+    # Check existing file permissions before overwriting
+    if os.path.exists(path) and not os.access(path, os.W_OK):
+        raise PermissionError(f"Permission denied: {path}")
+    # Atomic write: write to temp file, then rename
+    fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 async def file_create(request: web.Request) -> web.Response:
