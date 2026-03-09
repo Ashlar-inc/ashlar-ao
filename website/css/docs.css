@@ -164,6 +164,32 @@
 
 .callout p { margin-bottom: 0; }
 
+/* ===== Quick Links Grid ===== */
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-md);
+}
+
+.grid-2 .glass {
+  padding: var(--space-lg);
+  display: block;
+}
+
+.grid-2 .glass h3 {
+  margin-bottom: var(--space-sm);
+  margin-top: 0;
+}
+
+.grid-2 .glass p {
+  font-size: 0.9rem;
+  margin-bottom: 0;
+}
+
+@media (max-width: 600px) {
+  .grid-2 { grid-template-columns: 1fr; }
+}
+
 /* ===== Edit Link ===== */
 .docs-edit-link {
   display: inline-flex;
