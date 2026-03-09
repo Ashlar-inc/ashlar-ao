@@ -4,11 +4,11 @@
 
 Ashlr is a **local-first agent orchestration platform**. One developer, many AI coding agents (Claude Code, Codex, etc.), multiple repos, single command center.
 
-**Current state**: Fully functional. 24 Python modules (~15K lines) + dashboard (HTML + 17K JS + 5.8K CSS) + 1911 tests across 31 test files. All 5 development phases + multi-repo workflow (5 waves) + multi-user auth + deployment infra + production hardening + open-core licensing + v1.5 modularization + v1.6 public release + IDE features (PTY terminals, file browser, git integration) + Tauri desktop app complete. Installable via `pip install ashlr-ao`. Ready for multi-user deployment.
+**Current state**: Fully functional. 22 Python modules (~15.5K lines) + dashboard (HTML shell + 17K JS + 5.8K CSS in static/) + 1926 tests across 31 test files. All 5 development phases + multi-repo workflow (5 waves) + multi-user auth + deployment infra + production hardening + open-core licensing + v1.5 modularization + v1.6 public release + IDE features (PTY terminals, file browser, git integration) + Tauri desktop app + marketing website complete. Installable via `pip install ashlr-ao`. Ready for multi-user deployment.
 
 ## Architecture
 
-Modular Python package (`ashlr_ao`) with 16 focused modules. Dashboard is a single HTML file with inline CSS/JS.
+Modular Python package (`ashlr_ao`) with 22 focused modules. Dashboard is an HTML shell + separate JS/CSS in `static/`.
 
 ### Core modules
 - `ashlr_ao/server.py` (~3.9K lines) — aiohttp server. REST API route handlers, `create_app()`, `main()`. Re-exports all names from submodules for backward compat.
@@ -21,7 +21,19 @@ Modular Python package (`ashlr_ao`) with 16 focused modules. Dashboard is a sing
 - `ashlr_ao/auth.py` (~350 lines) — Auth middleware, session management, auth API handlers.
 - `ashlr_ao/status.py` (~370 lines) — Agent status detection, summary extraction, follow-up suggestions.
 - `ashlr_ao/config.py` (~340 lines) — Config dataclass, DEFAULT_CONFIG, YAML load/save, validation.
-- `ashlr_ao/dashboard.html` (~21K lines) — Single HTML file served at `/`. All CSS + JS inline. No build step.
+- `ashlr_ao/dashboard.html` (~1.5K lines) — HTML shell served at `/`. References static JS/CSS.
+- `ashlr_ao/static/dashboard.js` (~17K lines) — Dashboard application logic.
+- `ashlr_ao/static/dashboard.css` (~5.8K lines) — Dashboard styles (dark + light themes).
+
+### Route modules
+- `ashlr_ao/analytics.py` (~760 lines) — Fleet analytics, collaboration graph, costs, bulk ops, batch spawn.
+- `ashlr_ao/system_endpoints.py` (~790 lines) — System metrics, health, config, licensing endpoints.
+- `ashlr_ao/workflow_endpoints.py` (~570 lines) — Workflow CRUD, fleet templates, deployment.
+
+### IDE modules
+- `ashlr_ao/pty.py` (~360 lines) — PTYManager, PTYSession, interactive terminal WebSocket handlers.
+- `ashlr_ao/files.py` (~430 lines) — File browser REST API: tree, read, write, create, delete, rename.
+- `ashlr_ao/git.py` (~420 lines) — Git integration REST API: status, diff, log, branches, stage, commit, discard.
 
 ### Leaf modules
 - `ashlr_ao/middleware.py` (~230 lines) — RateLimiter, security headers, CORS, compression, request logging.
@@ -360,7 +372,7 @@ display:
 - NEVER crash — try/except with meaningful error handling
 - All dict iterations use `list()` snapshots (prevent RuntimeError during async)
 - Security: working_dir restricted to home/tmp, message size limits, rate limiting, CSP headers, request size limits, ownership enforcement on all mutation endpoints
-- 1911 pytest tests across 31 test files
+- 1926 pytest tests across 31 test files
 
 ## Multi-User Auth
 

@@ -271,7 +271,7 @@ Full WebSocket protocol at `/ws` for real-time updates.
 git clone https://github.com/ashlrai/ashlr-ao.git
 cd ashlr-ao
 pip install -e ".[dev]"
-pytest                    # 1911 tests across 31 files
+pytest                    # 1926 tests across 31 files
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines and [CLAUDE.md](CLAUDE.md) for full architecture reference.

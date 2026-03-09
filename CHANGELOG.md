@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.6.2 — 2026-03-09
+
+### Stream-JSON Output Mode
+- **Subprocess agents**: Claude Code agents can now spawn via `asyncio.create_subprocess_exec` instead of tmux using `--output-format stream-json`
+- Agent model extended with `output_mode`, subprocess proc, stream buffer, and reader task fields
+- Kill/pause/resume use SIGTERM/SIGTSTP/SIGCONT for subprocess agents
+- Dashboard: Print Mode toggle in spawn dialog, STREAM badge on cards, non-interactive notice in deep view
+
+### Dashboard Redesign — "Mission Control" Glassmorphism
+- New design system: warm obsidian palette, electric violet-indigo accent (#706CF0), General Sans font
+- Glassmorphism cards with `backdrop-filter: blur(12px)`, translucent backgrounds, inner highlights
+- Spring-based transitions, staggered card entrance animations, hover lift effects
+- Full light theme support with glass overrides
+
+### Desktop IDE Evolution
+- **PTY terminals**: Interactive terminal sessions over WebSocket (replaced os.fork with async subprocess)
+- **File browser**: REST API for tree, read, write, create, delete, rename
+- **Git integration**: Status, diff, log, branches, stage, unstage, commit, discard
+- **Tauri desktop app**: 5.9MB .app, 3.1MB .dmg, system tray, sidecar Python server management
+
+### UX Polish & Audit
+- Tour/onboarding redesign with step counter, progress bar, gradient accent border
+- AI assistant indicator with status label, insight count badge, animated pulse
+- Voice toggle: click-to-start/stop mode alongside push-to-talk
+- GitHub integration: 4 new API endpoints for repo status, PRs, issues
+- Attention queue: arrow key navigation between items
+- Agent card keyboard navigation (arrow keys, Enter/Space, M for menu)
+- 23 bug fixes across JS dashboard, server reliability, and edge cases
+- PTY rewrite to fully async subprocess (no os.fork in event loop)
+
+### Website
+- Hero animation: atmospheric constellation network with dot grid, particles, curved connections, data streams
+- Real tool logos (Claude, Codex, Aider, Goose) as SVGs in hero canvas and backend cards
+- GitHub Actions workflow for Vercel deployment
+
+### Stats
+- 1926 tests across 31 test files
+- 22 Python modules (~15.5K lines) + dashboard (1.5K HTML + 17K JS + 5.8K CSS)
+
 ## 1.6.1 — 2026-03-03
 
 - **Housekeeping**: Removed stale pre-development docs (ARCHITECTURE.md, PHASE1_SPEC.md, REFERENCE_PATTERNS.md)

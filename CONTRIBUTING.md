@@ -12,7 +12,7 @@ pip install -e ".[dev]"
 ## Running Tests
 
 ```bash
-# Full suite (1559 tests, ~90s)
+# Full suite (1926 tests, ~90s)
 pytest
 
 # With coverage (65% threshold enforced in CI)
@@ -35,7 +35,7 @@ Tests use `pytest-asyncio` and `pytest-aiohttp`. No real tmux sessions or networ
 
 ## Project Structure
 
-See [CLAUDE.md](CLAUDE.md) for the full architecture reference, including all 16 modules, API endpoints, WebSocket protocol, and data models.
+See [CLAUDE.md](CLAUDE.md) for the full architecture reference, including all 22 modules, API endpoints, WebSocket protocol, and data models.
 
 ## Commit Messages
 
