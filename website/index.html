@@ -28,7 +28,7 @@
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 
   <!-- Styles -->
   <link rel="stylesheet" href="/css/base.css">
@@ -112,6 +112,13 @@
 </head>
 <body>
 
+  <!-- Ambient background orbs -->
+  <div class="ambient-orbs" aria-hidden="true">
+    <div class="ambient-orb"></div>
+    <div class="ambient-orb"></div>
+    <div class="ambient-orb"></div>
+  </div>
+
   <!-- Navigation -->
   <nav class="nav" role="navigation" aria-label="Main navigation">
     <div class="container">
@@ -141,8 +148,11 @@
   <main>
     <!-- Hero -->
     <section class="hero">
-      <img src="/public/logo-mark.svg" alt="" class="hero-logo" width="80" height="80">
-      <h1>Your AI agents,<br>one command center</h1>
+      <div class="hero-badge">
+        <span class="pulse-dot"></span>
+        v1.6.1 — Production Ready
+      </div>
+      <h1>Your AI agents,<br><span class="accent-word">one command center</span></h1>
       <p class="hero-sub">Orchestrate Claude Code, Codex, Aider, and Goose from a single glassmorphic dashboard. Local-first. Zero config. Keyboard-driven.</p>
       <div class="hero-actions">
         <button class="install-cmd" aria-label="Copy install command">
@@ -155,18 +165,34 @@
           View on GitHub
         </a>
       </div>
+
+      <!-- Terminal simulation -->
+      <div class="hero-terminal">
+        <div class="terminal-window">
+          <div class="terminal-header">
+            <div class="terminal-dot"></div>
+            <div class="terminal-dot"></div>
+            <div class="terminal-dot"></div>
+            <div class="terminal-title">ashlr — mission control</div>
+          </div>
+          <div class="terminal-body" id="heroTerminal">
+            <!-- Lines injected by JS -->
+          </div>
+        </div>
+      </div>
+
       <img src="/public/screenshot.png" alt="Ashlr AO Dashboard showing multiple AI agents being orchestrated" class="hero-screenshot" width="960" height="540" loading="lazy">
     </section>
 
     <!-- Stats Bar -->
     <section class="section" style="padding-top: 0;">
       <div class="container">
-        <div class="stats-bar glass">
-          <div class="stat-item"><span class="stat-value">1,926</span> tests</div>
+        <div class="stats-bar glass reveal">
+          <div class="stat-item"><span class="stat-value counted" data-target="1926">0</span> tests</div>
           <div class="stat-divider" aria-hidden="true"></div>
-          <div class="stat-item"><span class="stat-value">22</span> modules</div>
+          <div class="stat-item"><span class="stat-value counted" data-target="22">0</span> modules</div>
           <div class="stat-divider" aria-hidden="true"></div>
-          <div class="stat-item"><span class="stat-value">4</span> backends</div>
+          <div class="stat-item"><span class="stat-value counted" data-target="4">0</span> backends</div>
           <div class="stat-divider" aria-hidden="true"></div>
           <div class="stat-item"><span class="stat-value">v1.6.1</span></div>
           <div class="stat-divider" aria-hidden="true"></div>
@@ -178,47 +204,48 @@
     <!-- Features -->
     <section class="section" id="features">
       <div class="container">
-        <div class="section-header">
+        <div class="section-header reveal">
+          <span class="section-label">Features</span>
           <h2>Everything you need to<br>manage your AI fleet</h2>
           <p>From spawning agents to auto-pilot, Ashlr AO handles the orchestration so you can focus on building.</p>
         </div>
         <div class="features-grid">
-          <div class="feature-card glass">
+          <div class="feature-card glass reveal reveal-delay-1">
             <div class="feature-icon">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
             </div>
             <h3>Multi-Agent Orchestration</h3>
             <p>Spawn, monitor, and kill 5-100 AI agents. Each runs in an isolated tmux session with real-time terminal capture every second.</p>
           </div>
-          <div class="feature-card glass">
+          <div class="feature-card glass reveal reveal-delay-2">
             <div class="feature-icon">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
             </div>
             <h3>Multi-Repo Projects</h3>
             <p>Organize agents by git repo. Per-project defaults for backend, model, and role. Branch tracking. Focus mode with Cmd+Shift+F.</p>
           </div>
-          <div class="feature-card glass">
+          <div class="feature-card glass reveal reveal-delay-3">
             <div class="feature-icon">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
             </div>
             <h3>Real-Time Dashboard</h3>
             <p>Glassmorphic agent cards with live status, deep view with ANSI terminal output, activity feed, and file browser. Zero build step.</p>
           </div>
-          <div class="feature-card glass">
+          <div class="feature-card glass reveal reveal-delay-1">
             <div class="feature-icon">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
             </div>
             <h3>Auto-Pilot</h3>
             <p>Auto-restart stalled agents. Auto-approve safe patterns with never-approve safety list. Health-based auto-pause. Browser notifications.</p>
           </div>
-          <div class="feature-card glass">
+          <div class="feature-card glass reveal reveal-delay-2">
             <div class="feature-icon">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             </div>
             <h3>Intelligence Layer</h3>
             <p>LLM-powered agent summaries. Natural language commands. Fleet analysis every 30 seconds. Cross-agent handoff with context passing.</p>
           </div>
-          <div class="feature-card glass">
+          <div class="feature-card glass reveal reveal-delay-3">
             <div class="feature-icon">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M2 7h20"/></svg>
             </div>
@@ -230,25 +257,32 @@
     </section>
 
     <!-- How It Works -->
-    <section class="section" style="background: var(--bg-secondary);">
+    <section class="section section-alt">
       <div class="container">
-        <div class="section-header">
+        <div class="section-header reveal">
+          <span class="section-label">Getting Started</span>
           <h2>Up and running in 30 seconds</h2>
           <p>No build tools. No Docker required. Just pip install and go.</p>
         </div>
-        <div class="steps">
-          <div class="step">
-            <h3>Install</h3>
-            <p><code>pip install ashlr-ao && ashlr</code></p>
-            <p>One command. Auto-creates config. Dashboard opens at localhost:5111.</p>
-          </div>
-          <div class="step">
-            <h3>Spawn</h3>
-            <p>Choose a role, backend, and task. Cmd+N or click. Agent launches in isolated tmux session.</p>
-          </div>
-          <div class="step">
-            <h3>Orchestrate</h3>
-            <p>Monitor your fleet in real-time. Approve changes, manage conflicts, or enable auto-pilot.</p>
+        <div class="steps-container reveal">
+          <div class="steps-line" aria-hidden="true"></div>
+          <div class="steps">
+            <div class="step">
+              <div class="step-number">1</div>
+              <h3>Install</h3>
+              <p><code>pip install ashlr-ao && ashlr</code></p>
+              <p>One command. Auto-creates config. Dashboard opens at localhost:5111.</p>
+            </div>
+            <div class="step">
+              <div class="step-number">2</div>
+              <h3>Spawn</h3>
+              <p>Choose a role, backend, and task. Cmd+N or click. Agent launches in isolated tmux session.</p>
+            </div>
+            <div class="step">
+              <div class="step-number">3</div>
+              <h3>Orchestrate</h3>
+              <p>Monitor your fleet in real-time. Approve changes, manage conflicts, or enable auto-pilot.</p>
+            </div>
           </div>
         </div>
       </div>
@@ -257,27 +291,28 @@
     <!-- Backends -->
     <section class="section">
       <div class="container">
-        <div class="section-header">
+        <div class="section-header reveal">
+          <span class="section-label">Backends</span>
           <h2>Works with your favorite AI agents</h2>
           <p>Plug in any CLI-based coding agent. Four backends supported out of the box.</p>
         </div>
         <div class="backends-grid">
-          <div class="backend-card glass">
+          <div class="backend-card glass reveal reveal-delay-1">
             <div class="backend-icon">C</div>
             <div class="backend-name">Claude Code</div>
             <div class="backend-desc">Plan mode, model selection, tool restriction, stream-json output</div>
           </div>
-          <div class="backend-card glass">
+          <div class="backend-card glass reveal reveal-delay-2">
             <div class="backend-icon">X</div>
             <div class="backend-name">Codex</div>
             <div class="backend-desc">OpenAI's coding agent with full lifecycle support</div>
           </div>
-          <div class="backend-card glass">
+          <div class="backend-card glass reveal reveal-delay-3">
             <div class="backend-icon">A</div>
             <div class="backend-name">Aider</div>
             <div class="backend-desc">AI pair programming in your terminal</div>
           </div>
-          <div class="backend-card glass">
+          <div class="backend-card glass reveal reveal-delay-4">
             <div class="backend-icon">G</div>
             <div class="backend-name">Goose</div>
             <div class="backend-desc">Autonomous coding agent by Block</div>
@@ -287,13 +322,14 @@
     </section>
 
     <!-- Keyboard Shortcuts -->
-    <section class="section" style="background: var(--bg-secondary);">
+    <section class="section section-alt">
       <div class="container">
-        <div class="section-header">
+        <div class="section-header reveal">
+          <span class="section-label">Workflow</span>
           <h2>Built for keyboard-driven developers</h2>
           <p>Every action is a shortcut away. No mouse required.</p>
         </div>
-        <div class="shortcuts-showcase">
+        <div class="shortcuts-showcase reveal">
           <div class="shortcut-item glass">
             <div class="shortcut-keys"><span class="key">&#8984;</span><span class="key">K</span></div>
             <span class="shortcut-label">Command palette</span>
@@ -333,11 +369,12 @@
     <!-- Pricing -->
     <section class="section" id="pricing">
       <div class="container">
-        <div class="section-header">
+        <div class="section-header reveal">
+          <span class="section-label">Pricing</span>
           <h2>Simple, transparent pricing</h2>
           <p>Start free. Upgrade when your fleet grows.</p>
         </div>
-        <div class="pricing-grid">
+        <div class="pricing-grid reveal">
           <div class="pricing-card glass">
             <div class="pricing-tier">Community</div>
             <div class="pricing-price">Free</div>
@@ -371,13 +408,14 @@
     </section>
 
     <!-- Tech Stack -->
-    <section class="section" style="background: var(--bg-secondary);">
+    <section class="section section-alt">
       <div class="container">
-        <div class="section-header">
+        <div class="section-header reveal">
+          <span class="section-label">Stack</span>
           <h2>Production-hardened stack</h2>
           <p>1,926 tests. 22 modules. Battle-tested async Python.</p>
         </div>
-        <div class="tech-grid">
+        <div class="tech-grid reveal">
           <span class="tech-item glass">Python 3.11+</span>
           <span class="tech-item glass">aiohttp</span>
           <span class="tech-item glass">SQLite</span>
@@ -393,10 +431,11 @@
     <!-- FAQ -->
     <section class="section" id="faq">
       <div class="container">
-        <div class="section-header">
+        <div class="section-header reveal">
+          <span class="section-label">FAQ</span>
           <h2>Frequently asked questions</h2>
         </div>
-        <div class="faq-grid">
+        <div class="faq-grid reveal">
           <details class="faq-item">
             <summary>What is Ashlr AO?</summary>
             <p>Ashlr AO is a local-first agent orchestration platform for AI coding agents. It provides a single command center to spawn, monitor, and manage multiple AI agents (Claude Code, Codex, Aider, Goose) across multiple repositories. Think of it as a mission control for your AI fleet.</p>
@@ -428,17 +467,19 @@
     <!-- CTA -->
     <section class="cta-section">
       <div class="container">
-        <h2>Ready to orchestrate?</h2>
-        <p>Get started in under 30 seconds. No credit card required.</p>
-        <div class="hero-actions" style="margin-top: var(--space-xl);">
-          <button class="install-cmd" aria-label="Copy install command">
-            <span class="cmd-text">pip install ashlr-ao</span>
-            <span class="copy-icon">Copy</span>
-          </button>
-          <a href="https://github.com/Ashlar-inc/ashlar-ao" class="btn btn-secondary" target="_blank" rel="noopener">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-            View on GitHub
-          </a>
+        <div class="reveal">
+          <h2>Ready to orchestrate?</h2>
+          <p>Get started in under 30 seconds. No credit card required.</p>
+          <div class="hero-actions" style="margin-top: var(--space-xl);">
+            <button class="install-cmd" aria-label="Copy install command">
+              <span class="cmd-text">pip install ashlr-ao</span>
+              <span class="copy-icon">Copy</span>
+            </button>
+            <a href="https://github.com/Ashlar-inc/ashlar-ao" class="btn btn-secondary" target="_blank" rel="noopener">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+              View on GitHub
+            </a>
+          </div>
         </div>
       </div>
     </section>

@@ -1,4 +1,4 @@
-/* Ashlr AO — Main JS */
+/* Ashlr AO — Main JS: Mission Control */
 
 // Theme toggle
 function initTheme() {
@@ -28,7 +28,6 @@ function initMobileNav() {
     toggle.setAttribute('aria-expanded', links.classList.contains('open'));
   });
 
-  // Close on link click
   links.querySelectorAll('a').forEach(a => {
     a.addEventListener('click', () => links.classList.remove('open'));
   });
@@ -78,7 +77,7 @@ function initCodeCopy() {
   });
 }
 
-// Intersection Observer for scroll animations
+// Scroll reveal animations via IntersectionObserver
 function initScrollAnimations() {
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
@@ -89,7 +88,81 @@ function initScrollAnimations() {
     });
   }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
 
-  document.querySelectorAll('.animate-on-scroll').forEach(el => observer.observe(el));
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+}
+
+// Count-up animation for stats
+function initCountUp() {
+  const counters = document.querySelectorAll('.stat-value.counted');
+  if (!counters.length) return;
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      const el = entry.target;
+      const target = parseInt(el.dataset.target, 10);
+      if (isNaN(target)) return;
+      observer.unobserve(el);
+
+      const duration = 1400;
+      const start = performance.now();
+      const format = target >= 1000;
+
+      function tick(now) {
+        const elapsed = now - start;
+        const progress = Math.min(elapsed / duration, 1);
+        // Ease-out cubic
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const current = Math.round(eased * target);
+        el.textContent = format ? current.toLocaleString() : current;
+        if (progress < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    });
+  }, { threshold: 0.5 });
+
+  counters.forEach(el => observer.observe(el));
+}
+
+// Terminal typing animation
+function initTerminalAnimation() {
+  const container = document.getElementById('heroTerminal');
+  if (!container) return;
+
+  const lines = [
+    { prompt: '~', cmd: 'pip install ashlr-ao', delay: 0 },
+    { output: 'Successfully installed ashlr-ao-1.6.1', cls: 'success', delay: 600 },
+    { prompt: '~', cmd: 'ashlr', delay: 1200 },
+    { output: '    ___   ____    ____ ', cls: 'info', delay: 1700 },
+    { output: '   /   | / __ \\  Ashlr AO v1.6.1', cls: 'info', delay: 1850 },
+    { output: '  / /| |/ / / /  Mission Control', cls: 'info', delay: 2000 },
+    { output: ' / ___ / /_/ /   http://127.0.0.1:5111', cls: 'dim', delay: 2150 },
+    { output: '', cls: 'dim', delay: 2400 },
+    { output: '✓ 4 backends ready', cls: 'success', delay: 2600 },
+    { output: '✓ Dashboard live — Cmd+K to begin', cls: 'success', delay: 2900 },
+    { output: '', cls: 'dim', delay: 3200 },
+    { prompt: '~', cmd: 'ashlr spawn --role backend --task "Build auth API"', delay: 3400 },
+    { output: '⚡ Agent "auth-api" spawned (claude-code, tmux)', cls: 'info', delay: 4200 },
+    { output: '   Status: working — reading project structure...', cls: 'dim', delay: 4600 },
+  ];
+
+  lines.forEach((line, i) => {
+    setTimeout(() => {
+      const div = document.createElement('div');
+      div.className = 'terminal-line';
+      div.style.animationDelay = '0s';
+
+      if (line.prompt) {
+        div.innerHTML = `<span class="prompt">${line.prompt} $</span> <span class="cmd">${line.cmd}</span>`;
+      } else {
+        div.innerHTML = `<span class="${line.cls || 'output'}">${line.output || '&nbsp;'}</span>`;
+      }
+
+      container.appendChild(div);
+      // Auto-scroll terminal
+      container.scrollTop = container.scrollHeight;
+    }, line.delay);
+  });
 }
 
 // Active nav link
@@ -111,6 +184,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initCopyButtons();
   initCodeCopy();
   initScrollAnimations();
+  initCountUp();
+  initTerminalAnimation();
   initActiveNav();
 });
 
