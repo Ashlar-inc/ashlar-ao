@@ -124,44 +124,36 @@ function initCountUp() {
   counters.forEach(el => observer.observe(el));
 }
 
-// Terminal typing animation
-function initTerminalAnimation() {
-  const container = document.getElementById('heroTerminal');
-  if (!container) return;
-
-  const lines = [
-    { prompt: '~', cmd: 'pip install ashlr-ao', delay: 0 },
-    { output: 'Successfully installed ashlr-ao-1.6.1', cls: 'success', delay: 600 },
-    { prompt: '~', cmd: 'ashlr', delay: 1200 },
-    { output: '    ___   ____    ____ ', cls: 'info', delay: 1700 },
-    { output: '   /   | / __ \\  Ashlr AO v1.6.1', cls: 'info', delay: 1850 },
-    { output: '  / /| |/ / / /  Mission Control', cls: 'info', delay: 2000 },
-    { output: ' / ___ / /_/ /   http://127.0.0.1:5111', cls: 'dim', delay: 2150 },
-    { output: '', cls: 'dim', delay: 2400 },
-    { output: '✓ 4 backends ready', cls: 'success', delay: 2600 },
-    { output: '✓ Dashboard live — Cmd+K to begin', cls: 'success', delay: 2900 },
-    { output: '', cls: 'dim', delay: 3200 },
-    { prompt: '~', cmd: 'ashlr spawn --role backend --task "Build auth API"', delay: 3400 },
-    { output: '⚡ Agent "auth-api" spawned (claude-code, tmux)', cls: 'info', delay: 4200 },
-    { output: '   Status: working — reading project structure...', cls: 'dim', delay: 4600 },
+// Dashboard demo animation
+function initDashboardDemo() {
+  const demos = [
+    { el: 'demoOut0', lines: ['Writing src/auth/Login.tsx...', '+47 lines in 3 files', 'Running prettier...', 'Committing changes...'], loop: true },
+    { el: 'demoOut1', lines: ['Implementing token validation...', 'Reading auth/middleware.py', 'Added JWT refresh logic', 'Writing tests...'], loop: true },
+    { el: 'demoOut2', lines: ['Approve test plan? [Y/n]'], cls: 'attention' },
+    { el: 'demoOut3', lines: ['✓ 0 vulnerabilities found'], cls: 'success' },
   ];
 
-  lines.forEach((line, i) => {
-    setTimeout(() => {
-      const div = document.createElement('div');
-      div.className = 'terminal-line';
-      div.style.animationDelay = '0s';
+  demos.forEach(({ el: id, lines, loop, cls }, cardIdx) => {
+    const container = document.getElementById(id);
+    if (!container) return;
 
-      if (line.prompt) {
-        div.innerHTML = `<span class="prompt">${line.prompt} $</span> <span class="cmd">${line.cmd}</span>`;
-      } else {
-        div.innerHTML = `<span class="${line.cls || 'output'}">${line.output || '&nbsp;'}</span>`;
+    let i = 0;
+    function addLine() {
+      if (i >= lines.length) {
+        if (loop) {
+          setTimeout(() => { container.innerHTML = ''; i = 0; addLine(); }, 3000);
+        }
+        return;
       }
-
+      const div = document.createElement('div');
+      div.className = 'demo-line' + (cls ? ' ' + cls : (i > 0 ? ' dim' : ''));
+      div.textContent = lines[i];
       container.appendChild(div);
-      // Auto-scroll terminal
-      container.scrollTop = container.scrollHeight;
-    }, line.delay);
+      while (container.children.length > 2) container.removeChild(container.firstChild);
+      i++;
+      setTimeout(addLine, 1000 + Math.random() * 1000);
+    }
+    setTimeout(addLine, 1800 + cardIdx * 500);
   });
 }
 
@@ -185,7 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initCodeCopy();
   initScrollAnimations();
   initCountUp();
-  initTerminalAnimation();
+  initDashboardDemo();
   initActiveNav();
 });
 
