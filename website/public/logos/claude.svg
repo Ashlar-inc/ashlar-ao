@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Anthropic / Claude Code mark - transparent bg -->
+  <g transform="translate(32,30)">
+    <path d="M-6.5 10L0-10L6.5 10" stroke="#D4A574" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <line x1="-4" y1="5" x2="4" y2="5" stroke="#D4A574" stroke-width="3.5" stroke-linecap="round"/>
+  </g>
+</svg>

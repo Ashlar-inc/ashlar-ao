@@ -690,8 +690,8 @@
 }
 
 .backend-icon {
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 56px;
   margin: 0 auto var(--space-md);
   border-radius: var(--radius-md);
   display: flex;
@@ -702,6 +702,14 @@
   font-family: var(--font-mono);
   letter-spacing: -0.02em;
   transition: transform 0.3s, box-shadow 0.3s;
+  overflow: hidden;
+}
+
+.backend-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-md);
 }
 
 .backend-card:hover .backend-icon {
@@ -710,24 +718,24 @@
 
 /* Individual backend brand colors */
 .backend-card:nth-child(1) .backend-icon {
-  background: rgba(212, 165, 116, 0.1);
-  color: var(--claude-color);
+  background: rgba(212, 165, 116, 0.08);
   border: 1px solid rgba(212, 165, 116, 0.2);
+  box-shadow: 0 0 20px rgba(212, 165, 116, 0.06);
 }
 .backend-card:nth-child(2) .backend-icon {
-  background: rgba(16, 163, 127, 0.1);
-  color: var(--codex-color);
+  background: rgba(16, 163, 127, 0.08);
   border: 1px solid rgba(16, 163, 127, 0.2);
+  box-shadow: 0 0 20px rgba(16, 163, 127, 0.06);
 }
 .backend-card:nth-child(3) .backend-icon {
-  background: rgba(88, 214, 141, 0.1);
-  color: var(--aider-color);
+  background: rgba(88, 214, 141, 0.08);
   border: 1px solid rgba(88, 214, 141, 0.2);
+  box-shadow: 0 0 20px rgba(88, 214, 141, 0.06);
 }
 .backend-card:nth-child(4) .backend-icon {
-  background: rgba(244, 114, 182, 0.1);
-  color: var(--goose-color);
+  background: rgba(244, 114, 182, 0.08);
   border: 1px solid rgba(244, 114, 182, 0.2);
+  box-shadow: 0 0 20px rgba(244, 114, 182, 0.06);
 }
 
 .backend-card .backend-name {

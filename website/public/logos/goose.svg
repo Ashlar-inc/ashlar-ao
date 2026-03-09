@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Goose by Block mark - transparent bg -->
+  <g transform="translate(30,28) scale(1.2)">
+    <path d="M-3,-14 C-3,-18 5,-18 5,-14 C5,-9 7,-4 7,1 C7,6 5,10 3,13 L-1,13 C-3,10 -5,6 -5,1 C-5,-4 -3,-9 -3,-14Z" fill="#F472B6"/>
+    <circle cx="2" cy="-12" r="2" fill="#1a0f15"/>
+    <path d="M5,-10 L10,-12 L5,-8" fill="#F4A03B"/>
+  </g>
+</svg>

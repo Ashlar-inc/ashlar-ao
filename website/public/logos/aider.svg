@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Aider mark - transparent bg -->
+  <g transform="translate(32,32)">
+    <text x="-4" y="4" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace, 'Courier New', monospace" font-size="30" font-weight="700" fill="#58D68D">a</text>
+    <text x="12" y="2" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace, 'Courier New', monospace" font-size="22" font-weight="400" fill="#58D68D" opacity="0.7">&gt;</text>
+  </g>
+</svg>

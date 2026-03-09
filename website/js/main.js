@@ -156,323 +156,362 @@ function initDashboardDemo() {
   });
 }
 
-// Hero agent orchestration network
+// Hero constellation network — floating tool logos with atmospheric particle field
 function initHeroCanvas() {
   const canvas = document.getElementById('heroCanvas');
   if (!canvas) return;
-
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
+
   let w, h, animId;
-
-  // Agent nodes — roles with colors matching the product
-  const ROLES = [
-    { label: 'FE', color: '#8B5CF6', angle: 0 },
-    { label: 'BE', color: '#3B82F6', angle: Math.PI / 3 },
-    { label: 'QA', color: '#22C55E', angle: (2 * Math.PI) / 3 },
-    { label: 'SEC', color: '#EF4444', angle: Math.PI },
-    { label: 'OPS', color: '#F97316', angle: (4 * Math.PI) / 3 },
-    { label: 'DOC', color: '#A855F7', angle: (5 * Math.PI) / 3 },
-    { label: 'ARC', color: '#06B6D4', angle: Math.PI / 6 },
-    { label: 'REV', color: '#EAB308', angle: (7 * Math.PI) / 6 },
-  ];
-
-  let nodes = [];
-  let dataPackets = [];
-  let spawnTimer = 0;
-  let mouseX = -1, mouseY = -1;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const isMobile = window.innerWidth < 768;
-  const NODE_COUNT = isMobile ? 5 : ROLES.length;
+  let mouseX = -1, mouseY = -1;
+  let time = 0;
 
-  function resize() {
-    const rect = canvas.parentElement.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    w = rect.width;
-    h = rect.height;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    canvas.style.width = w + 'px';
-    canvas.style.height = h + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // Tool definitions with brand colors — top nodes in upper corners, bottom nodes far left/right
+  const TOOLS = [
+    { name: 'Claude', color: '#D4A574', glowColor: 'rgba(212,165,116,', angle: -Math.PI * 0.65 },
+    { name: 'Codex',  color: '#10A37F', glowColor: 'rgba(16,163,127,',  angle: -Math.PI * 0.35 },
+    { name: 'Goose',  color: '#F472B6', glowColor: 'rgba(244,114,182,', angle: Math.PI * 0.92 },
+    { name: 'Aider',  color: '#58D68D', glowColor: 'rgba(88,214,141,',  angle: Math.PI * 0.08 },
+  ];
+
+  // Load logo images
+  const logos = {};
+  let logosLoaded = 0;
+  const logoSrcs = {
+    Claude: '/public/logos/claude.svg',
+    Codex:  '/public/logos/openai.svg',
+    Aider:  '/public/logos/aider.svg',
+    Goose:  '/public/logos/goose.svg',
+  };
+  for (const [name, src] of Object.entries(logoSrcs)) {
+    const img = new Image();
+    img.onload = () => { logosLoaded++; };
+    img.src = src;
+    logos[name] = img;
   }
 
-  const HUB = { x: 0, y: 0 }; // updated each frame
+  // Particles for ambient field
+  const PARTICLE_COUNT = isMobile ? 40 : 80;
+  let particles = [];
 
-  function initNodes() {
-    nodes = [];
-    const baseRadius = Math.min(w, h) * (isMobile ? 0.28 : 0.25);
-    for (let i = 0; i < NODE_COUNT; i++) {
-      const role = ROLES[i];
-      const orbitRadius = baseRadius + (i % 2) * (baseRadius * 0.35);
-      nodes.push({
-        label: role.label,
-        color: role.color,
-        angle: role.angle + (Math.random() - 0.5) * 0.3,
-        orbitRadius,
-        orbitSpeed: 0.0003 + Math.random() * 0.0002,
-        r: isMobile ? 16 : 20,
+  function initParticles() {
+    particles = [];
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      particles.push({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        vx: (Math.random() - 0.5) * 0.15,
+        vy: (Math.random() - 0.5) * 0.1,
+        r: 0.8 + Math.random() * 1.2,
+        alpha: 0.08 + Math.random() * 0.18,
         phase: Math.random() * Math.PI * 2,
-        status: 'working', // working | complete | spawning
-        statusTimer: Math.random() * 400,
-        spawnProgress: 1, // 0→1 during spawn animation
       });
     }
   }
 
-  function spawnNode() {
-    if (nodes.length >= NODE_COUNT) return;
-    const role = ROLES[nodes.length % ROLES.length];
-    const baseRadius = Math.min(w, h) * (isMobile ? 0.28 : 0.25);
-    nodes.push({
-      label: role.label,
-      color: role.color,
-      angle: role.angle + (Math.random() - 0.5) * 0.3,
-      orbitRadius: baseRadius + (nodes.length % 2) * (baseRadius * 0.35),
-      orbitSpeed: 0.0003 + Math.random() * 0.0002,
-      r: isMobile ? 16 : 20,
-      phase: Math.random() * Math.PI * 2,
-      status: 'spawning',
-      statusTimer: 0,
-      spawnProgress: 0,
+  // Floating tool nodes
+  let nodes = [];
+  function initNodes() {
+    nodes = [];
+    const cx = w / 2, cy = h * 0.38;
+    const orbitRx = isMobile ? w * 0.34 : Math.min(w * 0.35, 450);
+    const orbitRy = isMobile ? h * 0.16 : Math.min(h * 0.17, 170);
+    const count = isMobile ? 3 : TOOLS.length;
+    for (let i = 0; i < count; i++) {
+      const t = TOOLS[i];
+      nodes.push({
+        name: t.name, color: t.color, glowColor: t.glowColor,
+        baseAngle: t.angle,
+        angle: t.angle,
+        orbitRx, orbitRy,
+        cx, cy,
+        speed: 0.00008 + i * 0.00002,
+        size: isMobile ? 22 : 28,
+        phase: i * 1.5,
+        bobAmount: 3 + i * 1.5,
+      });
+    }
+  }
+
+  // Data streams — glowing dots that travel between nodes and center
+  let streams = [];
+  function emitStream(fromX, fromY, toX, toY, color, glowColor) {
+    streams.push({
+      fromX, fromY, toX, toY, color, glowColor,
+      progress: 0,
+      speed: 0.004 + Math.random() * 0.004,
+      size: 2 + Math.random() * 1.5,
     });
   }
 
-  function addPacket(fromX, fromY, toX, toY, color) {
-    dataPackets.push({
-      fromX, fromY, toX, toY, color,
-      progress: 0, speed: 0.015 + Math.random() * 0.01,
-    });
+  function resize() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    w = rect.width; h = rect.height;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    initParticles();
+    initNodes();
   }
 
-  let time = 0;
   function draw() {
     time += 16;
     ctx.clearRect(0, 0, w, h);
 
-    HUB.x = w / 2;
-    HUB.y = h * (isMobile ? 0.42 : 0.45);
+    const cx = w / 2, cy = h * 0.38;
 
-    // === Central hub ===
-    // Concentric rings
-    for (let i = 3; i >= 1; i--) {
-      const ringR = 30 + i * 12;
-      const ringAlpha = 0.04 + (3 - i) * 0.02;
-      const pulseScale = 1 + Math.sin(time * 0.001 + i) * 0.03;
-      ctx.beginPath();
-      ctx.arc(HUB.x, HUB.y, ringR * pulseScale, 0, Math.PI * 2);
-      ctx.strokeStyle = '#706CF0';
-      ctx.globalAlpha = ringAlpha;
-      ctx.lineWidth = 1;
-      ctx.stroke();
+    // Mouse parallax offset
+    let mx = 0, my = 0;
+    if (mouseX > 0 && !isMobile) {
+      mx = (mouseX - w / 2) * 0.015;
+      my = (mouseY - h / 2) * 0.01;
     }
 
-    // Hub glow
-    const hubGrad = ctx.createRadialGradient(HUB.x, HUB.y, 0, HUB.x, HUB.y, 60);
-    hubGrad.addColorStop(0, 'rgba(112, 108, 240, 0.25)');
-    hubGrad.addColorStop(1, 'rgba(112, 108, 240, 0)');
-    ctx.globalAlpha = 0.6 + Math.sin(time * 0.002) * 0.15;
-    ctx.fillStyle = hubGrad;
-    ctx.beginPath();
-    ctx.arc(HUB.x, HUB.y, 60, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Hub core
-    ctx.globalAlpha = 1;
-    ctx.beginPath();
-    ctx.arc(HUB.x, HUB.y, 18, 0, Math.PI * 2);
-    ctx.fillStyle = '#706CF0';
-    ctx.globalAlpha = 0.9;
-    ctx.fill();
-
-    // Hub label
-    ctx.globalAlpha = 1;
-    ctx.font = `bold ${isMobile ? 10 : 11}px 'JetBrains Mono', monospace`;
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('AO', HUB.x, HUB.y);
-
-    // === Update & draw nodes ===
-    for (const node of nodes) {
-      // Update spawn progress
-      if (node.status === 'spawning') {
-        node.spawnProgress = Math.min(1, node.spawnProgress + 0.02);
-        if (node.spawnProgress >= 1) node.status = 'working';
+    // === 1. Dot grid background ===
+    const gridSpacing = isMobile ? 48 : 40;
+    const gridFadeRadius = Math.min(w, h) * 0.55;
+    for (let gx = gridSpacing / 2; gx < w; gx += gridSpacing) {
+      for (let gy = gridSpacing / 2; gy < h; gy += gridSpacing) {
+        const dx = gx - cx, dy = gy - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const fade = Math.max(0, 1 - dist / gridFadeRadius);
+        if (fade <= 0) continue;
+        const pulse = 0.7 + Math.sin(time * 0.0008 + gx * 0.02 + gy * 0.02) * 0.3;
+        ctx.globalAlpha = fade * pulse * 0.04;
+        ctx.fillStyle = '#706CF0';
+        ctx.beginPath();
+        ctx.arc(gx + mx * 0.3, gy + my * 0.3, 1, 0, Math.PI * 2);
+        ctx.fill();
       }
+    }
 
-      // Status transitions
-      node.statusTimer += 16;
-      if (!reducedMotion && node.statusTimer > 5000 + Math.random() * 3000 && node.status === 'working') {
-        node.status = 'complete';
-        node.statusTimer = 0;
-      } else if (node.status === 'complete' && node.statusTimer > 2000) {
-        node.status = 'working';
-        node.statusTimer = 0;
-      }
-
-      // Orbit
+    // === 2. Ambient particles ===
+    for (const p of particles) {
       if (!reducedMotion) {
-        node.angle += node.orbitSpeed * (node.status === 'working' ? 1 : 0.3);
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.x < 0) p.x = w;
+        if (p.x > w) p.x = 0;
+        if (p.y < 0) p.y = h;
+        if (p.y > h) p.y = 0;
       }
-
-      const effectiveRadius = node.orbitRadius * node.spawnProgress;
-      let nx = HUB.x + Math.cos(node.angle) * effectiveRadius;
-      let ny = HUB.y + Math.sin(node.angle) * effectiveRadius;
-
-      // Mouse parallax
-      if (mouseX > 0 && !isMobile) {
-        const mdx = mouseX - nx, mdy = mouseY - ny;
-        const mDist = Math.sqrt(mdx * mdx + mdy * mdy);
-        if (mDist < 200) {
-          const push = (1 - mDist / 200) * 15;
-          nx -= (mdx / mDist) * push;
-          ny -= (mdy / mDist) * push;
-        }
-      }
-
-      // === Connection line (hub ↔ node) ===
+      const pulse = reducedMotion ? 1 : (0.6 + Math.sin(time * 0.002 + p.phase) * 0.4);
+      ctx.globalAlpha = p.alpha * pulse;
+      ctx.fillStyle = '#706CF0';
       ctx.beginPath();
-      ctx.setLineDash([4, 6]);
-      ctx.moveTo(HUB.x, HUB.y);
-      ctx.lineTo(nx, ny);
+      ctx.arc(p.x + mx * 0.5, p.y + my * 0.5, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // === 3. Connection lines from nodes to center ===
+    for (const node of nodes) {
+      if (!reducedMotion) {
+        node.angle += node.speed;
+      }
+      const bob = reducedMotion ? 0 : Math.sin(time * 0.0015 + node.phase) * node.bobAmount;
+      const nx = node.cx + Math.cos(node.angle) * node.orbitRx + mx * 1.2;
+      const ny = node.cy + Math.sin(node.angle) * node.orbitRy + bob + my * 0.8;
+      node._x = nx;
+      node._y = ny;
+
+      // Curved connection line
+      const midX = (nx + cx) / 2 + (ny - cy) * 0.15;
+      const midY = (ny + cy) / 2 - (nx - cx) * 0.08;
+      ctx.beginPath();
+      ctx.moveTo(cx + mx, cy + my);
+      ctx.quadraticCurveTo(midX + mx * 0.8, midY + my * 0.6, nx, ny);
       ctx.strokeStyle = node.color;
-      ctx.globalAlpha = 0.12 * node.spawnProgress;
+      ctx.globalAlpha = 0.06;
       ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Dashed overlay
+      ctx.setLineDash([3, 8]);
+      ctx.globalAlpha = 0.1;
       ctx.stroke();
       ctx.setLineDash([]);
-
-      // === Node ===
-      const pulse = reducedMotion ? 1 : (Math.sin(time * 0.003 + node.phase) * 0.15 + 0.85);
-
-      // Node glow
-      const nodeGlow = ctx.createRadialGradient(nx, ny, 0, nx, ny, node.r * 3);
-      nodeGlow.addColorStop(0, node.color + '30');
-      nodeGlow.addColorStop(1, node.color + '00');
-      ctx.globalAlpha = pulse * 0.5 * node.spawnProgress;
-      ctx.fillStyle = nodeGlow;
-      ctx.beginPath();
-      ctx.arc(nx, ny, node.r * 3, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Node body
-      ctx.globalAlpha = (0.85 + pulse * 0.15) * node.spawnProgress;
-      ctx.beginPath();
-      ctx.arc(nx, ny, node.r, 0, Math.PI * 2);
-      ctx.fillStyle = node.status === 'complete' ? '#22C55E' : node.color;
-      ctx.fill();
-
-      // Status ring
-      if (node.status === 'working' && !reducedMotion) {
-        ctx.beginPath();
-        ctx.arc(nx, ny, node.r + 4, 0, Math.PI * 2);
-        ctx.strokeStyle = node.color;
-        ctx.globalAlpha = 0.2 * pulse;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-      }
-
-      // Node label
-      ctx.globalAlpha = node.spawnProgress;
-      ctx.font = `bold ${isMobile ? 8 : 9}px 'JetBrains Mono', monospace`;
-      ctx.fillStyle = '#fff';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(node.label, nx, ny);
-
-      // Randomly emit data packets
-      if (!reducedMotion && Math.random() < 0.003 && node.status === 'working') {
-        const toHub = Math.random() > 0.5;
-        addPacket(
-          toHub ? nx : HUB.x, toHub ? ny : HUB.y,
-          toHub ? HUB.x : nx, toHub ? HUB.y : ny,
-          node.color
-        );
-      }
     }
 
-    // === Data packets ===
-    for (let i = dataPackets.length - 1; i >= 0; i--) {
-      const p = dataPackets[i];
-      p.progress += p.speed;
-      if (p.progress >= 1) { dataPackets.splice(i, 1); continue; }
-
-      const px = p.fromX + (p.toX - p.fromX) * p.progress;
-      const py = p.fromY + (p.toY - p.fromY) * p.progress;
-      const alpha = p.progress < 0.1 ? p.progress / 0.1
-        : p.progress > 0.9 ? (1 - p.progress) / 0.1 : 1;
-
-      // Packet glow
+    // === 4. Cross-connections between adjacent nodes ===
+    for (let i = 0; i < nodes.length; i++) {
+      const j = (i + 1) % nodes.length;
+      const a = nodes[i], b = nodes[j];
+      if (!a._x || !b._x) continue;
       ctx.beginPath();
-      ctx.arc(px, py, 5, 0, Math.PI * 2);
-      ctx.fillStyle = p.color;
-      ctx.globalAlpha = alpha * 0.3;
-      ctx.fill();
+      ctx.moveTo(a._x, a._y);
+      ctx.lineTo(b._x, b._y);
+      ctx.strokeStyle = '#706CF0';
+      ctx.globalAlpha = 0.03;
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
 
-      // Packet core
+    // === 5. Center hub glow ===
+    const hubPulse = reducedMotion ? 1 : (0.7 + Math.sin(time * 0.001) * 0.3);
+    for (let ring = 3; ring >= 1; ring--) {
+      const r = 20 + ring * 20;
+      const grad = ctx.createRadialGradient(cx + mx, cy + my, 0, cx + mx, cy + my, r);
+      grad.addColorStop(0, 'rgba(112,108,240,0.08)');
+      grad.addColorStop(1, 'rgba(112,108,240,0)');
+      ctx.globalAlpha = hubPulse * (0.3 + (3 - ring) * 0.1);
+      ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(px, py, 2.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#fff';
-      ctx.globalAlpha = alpha * 0.9;
+      ctx.arc(cx + mx, cy + my, r, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // === Spawn timer ===
+    // === 6. Data streams ===
     if (!reducedMotion) {
-      spawnTimer += 16;
-      if (spawnTimer > 6000 && nodes.length < NODE_COUNT) {
-        spawnNode();
-        spawnTimer = 0;
+      // Emit new streams randomly
+      for (const node of nodes) {
+        if (node._x && Math.random() < 0.002) {
+          const toCenter = Math.random() > 0.4;
+          emitStream(
+            toCenter ? node._x : cx + mx, toCenter ? node._y : cy + my,
+            toCenter ? cx + mx : node._x, toCenter ? cy + my : node._y,
+            node.color, node.glowColor
+          );
+        }
       }
+    }
+
+    for (let i = streams.length - 1; i >= 0; i--) {
+      const s = streams[i];
+      s.progress += s.speed;
+      if (s.progress >= 1) { streams.splice(i, 1); continue; }
+
+      const t = s.progress;
+      const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+      const sx = s.fromX + (s.toX - s.fromX) * ease;
+      const sy = s.fromY + (s.toY - s.fromY) * ease;
+      const alpha = t < 0.1 ? t / 0.1 : t > 0.85 ? (1 - t) / 0.15 : 1;
+
+      // Stream glow
+      const sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, s.size * 6);
+      sg.addColorStop(0, s.glowColor + '0.15)');
+      sg.addColorStop(1, s.glowColor + '0)');
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = sg;
+      ctx.beginPath();
+      ctx.arc(sx, sy, s.size * 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Stream core
+      ctx.beginPath();
+      ctx.arc(sx, sy, s.size, 0, Math.PI * 2);
+      ctx.fillStyle = s.color;
+      ctx.globalAlpha = alpha * 0.8;
+      ctx.fill();
+
+      // Bright center
+      ctx.beginPath();
+      ctx.arc(sx, sy, s.size * 0.4, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.globalAlpha = alpha * 0.6;
+      ctx.fill();
+    }
+
+    // === 7. Tool logo nodes ===
+    for (const node of nodes) {
+      const nx = node._x, ny = node._y;
+      if (!nx) continue;
+      const pulse = reducedMotion ? 1 : (0.85 + Math.sin(time * 0.002 + node.phase) * 0.15);
+
+      // Outer glow
+      const glow = ctx.createRadialGradient(nx, ny, 0, nx, ny, node.size * 3);
+      glow.addColorStop(0, node.glowColor + '0.2)');
+      glow.addColorStop(0.4, node.glowColor + '0.08)');
+      glow.addColorStop(1, node.glowColor + '0)');
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(nx, ny, node.size * 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Glass circle background
+      ctx.globalAlpha = 0.9 * pulse;
+      ctx.beginPath();
+      ctx.arc(nx, ny, node.size, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(8,9,14,0.85)';
+      ctx.fill();
+
+      // Border ring
+      ctx.beginPath();
+      ctx.arc(nx, ny, node.size, 0, Math.PI * 2);
+      ctx.strokeStyle = node.color;
+      ctx.globalAlpha = 0.5 * pulse;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Logo image
+      const logo = logos[node.name];
+      if (logo && logo.complete && logo.naturalWidth > 0) {
+        const imgSize = node.size * 1.3;
+        ctx.globalAlpha = 0.9 * pulse;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(nx, ny, node.size - 2, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(logo, nx - imgSize / 2, ny - imgSize / 2, imgSize, imgSize);
+        ctx.restore();
+      } else {
+        // Fallback: draw name initial
+        ctx.globalAlpha = 0.9 * pulse;
+        ctx.font = `bold ${isMobile ? 10 : 12}px 'JetBrains Mono', monospace`;
+        ctx.fillStyle = node.color;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(node.name[0], nx, ny);
+      }
+
+      // Name label below
+      ctx.globalAlpha = 0.4 * pulse;
+      ctx.font = `500 ${isMobile ? 8 : 9}px 'Instrument Sans', sans-serif`;
+      ctx.fillStyle = node.color;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(node.name, nx, ny + node.size + 6);
     }
 
     ctx.globalAlpha = 1;
     animId = requestAnimationFrame(draw);
   }
 
-  // Intersection observer — only animate when visible
+  // Intersection observer
   const observer = new IntersectionObserver(([entry]) => {
-    if (entry.isIntersecting) {
-      if (!animId) draw();
-    } else {
-      if (animId) { cancelAnimationFrame(animId); animId = null; }
-    }
+    if (entry.isIntersecting) { if (!animId) draw(); }
+    else { if (animId) { cancelAnimationFrame(animId); animId = null; } }
   }, { threshold: 0 });
 
   resize();
 
   if (reducedMotion) {
-    // Static: create all nodes at final positions, no animation
     initNodes();
-    nodes.forEach(n => { n.spawnProgress = 1; });
     draw();
     cancelAnimationFrame(animId);
     animId = null;
   } else {
-    // Animated: start with 0 nodes, spawn them in
-    nodes = [];
-    for (let i = 0; i < NODE_COUNT; i++) {
-      setTimeout(() => spawnNode(), 400 + i * 300);
-    }
     observer.observe(canvas);
   }
 
-  // Mouse parallax
+  // Mouse tracking
   if (!isMobile) {
     canvas.parentElement.addEventListener('mousemove', (e) => {
       const rect = canvas.parentElement.getBoundingClientRect();
       mouseX = e.clientX - rect.left;
       mouseY = e.clientY - rect.top;
     });
-    canvas.parentElement.addEventListener('mouseleave', () => {
-      mouseX = -1; mouseY = -1;
-    });
+    canvas.parentElement.addEventListener('mouseleave', () => { mouseX = -1; mouseY = -1; });
   }
 
   let resizeTimer;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => { resize(); initNodes(); }, 200);
+    resizeTimer = setTimeout(resize, 200);
   });
 }
 
