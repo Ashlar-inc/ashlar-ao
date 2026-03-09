@@ -89,9 +89,9 @@
   width: 140%;
   height: 700px;
   background:
-    radial-gradient(ellipse at 50% 0%, rgba(112, 108, 240, 0.12) 0%, transparent 55%),
-    radial-gradient(ellipse at 30% 20%, rgba(139, 135, 245, 0.06) 0%, transparent 40%),
-    radial-gradient(ellipse at 70% 20%, rgba(88, 84, 199, 0.06) 0%, transparent 40%);
+    radial-gradient(ellipse at 50% 0%, rgba(112, 108, 240, 0.18) 0%, transparent 55%),
+    radial-gradient(ellipse at 30% 20%, rgba(139, 135, 245, 0.09) 0%, transparent 40%),
+    radial-gradient(ellipse at 70% 20%, rgba(88, 84, 199, 0.09) 0%, transparent 40%);
   pointer-events: none;
   z-index: 1;
 }
@@ -112,8 +112,8 @@
 /* ===== AO Hero Mark ===== */
 .hero-ao-mark {
   position: relative;
-  width: 120px;
-  height: 120px;
+  width: 140px;
+  height: 140px;
   margin-bottom: var(--space-xl);
   display: flex;
   align-items: center;
@@ -121,10 +121,26 @@
   animation: aoFadeIn 1.2s ease-out 0.1s both;
 }
 
+/* Radial glow behind the mark */
+.hero-ao-mark::before {
+  content: '';
+  position: absolute;
+  inset: -30px;
+  background: radial-gradient(circle, rgba(112, 108, 240, 0.2) 0%, rgba(112, 108, 240, 0.05) 50%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: aoGlowPulse 4s ease-in-out infinite;
+}
+
+@keyframes aoGlowPulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
 .ao-letter {
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: 3.5rem;
+  font-size: 4rem;
   letter-spacing: -0.08em;
   line-height: 1;
   position: relative;
@@ -133,47 +149,49 @@
 
 .ao-a {
   color: var(--text-primary);
-  text-shadow: 0 0 40px rgba(255, 255, 255, 0.1);
+  text-shadow: 0 0 40px rgba(255, 255, 255, 0.15);
 }
 
 .ao-o {
-  background: linear-gradient(135deg, #8B87F5, #706CF0, #5854c7);
+  background: linear-gradient(135deg, #a5a1ff, #8B87F5, #706CF0, #5854c7);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  filter: drop-shadow(0 0 20px rgba(112, 108, 240, 0.5));
+  filter: drop-shadow(0 0 25px rgba(112, 108, 240, 0.6)) drop-shadow(0 0 50px rgba(112, 108, 240, 0.3));
 }
 
 .ao-ring {
   position: absolute;
   inset: -8px;
   border-radius: 50%;
-  border: 1px solid rgba(112, 108, 240, 0.15);
+  border: 1.5px solid rgba(112, 108, 240, 0.2);
   animation: aoRingSpin 20s linear infinite;
 }
 
 .ao-ring::before {
   content: '';
   position: absolute;
-  top: -2px;
+  top: -3px;
   left: 50%;
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 0 12px var(--accent), 0 0 30px var(--accent-glow);
 }
 
 .ao-ring-2 {
-  inset: -20px;
-  border-color: rgba(112, 108, 240, 0.07);
+  inset: -24px;
+  border-color: rgba(112, 108, 240, 0.1);
   animation-duration: 30s;
   animation-direction: reverse;
 }
 
 .ao-ring-2::before {
-  background: rgba(112, 108, 240, 0.4);
-  box-shadow: 0 0 8px rgba(112, 108, 240, 0.3);
+  width: 4px;
+  height: 4px;
+  background: rgba(112, 108, 240, 0.5);
+  box-shadow: 0 0 10px rgba(112, 108, 240, 0.4);
 }
 
 @keyframes aoFadeIn {
@@ -186,8 +204,11 @@
 }
 
 [data-theme="light"] .ao-a { text-shadow: none; }
-[data-theme="light"] .ao-ring { border-color: rgba(112, 108, 240, 0.2); }
-[data-theme="light"] .ao-ring-2 { border-color: rgba(112, 108, 240, 0.1); }
+[data-theme="light"] .ao-ring { border-color: rgba(112, 108, 240, 0.25); }
+[data-theme="light"] .ao-ring-2 { border-color: rgba(112, 108, 240, 0.12); }
+[data-theme="light"] .hero-ao-mark::before { opacity: 0.4; }
+[data-theme="light"] .feature-card:hover { box-shadow: 0 0 30px rgba(112, 108, 240, 0.06), 0 8px 24px rgba(0, 0, 0, 0.08); }
+[data-theme="light"] .demo-frame::after { background: none; }
 
 .hero-badge {
   display: inline-flex;
@@ -253,7 +274,7 @@
 /* ===== Dashboard Demo ===== */
 .dashboard-demo {
   margin-top: var(--space-3xl);
-  max-width: 880px;
+  max-width: 960px;
   width: 100%;
   position: relative;
   z-index: 2;
@@ -262,9 +283,9 @@
 
 .demo-glow {
   position: absolute;
-  inset: -40px;
-  background: radial-gradient(ellipse at 50% 60%, rgba(112, 108, 240, 0.14) 0%, transparent 65%);
-  filter: blur(50px);
+  inset: -60px;
+  background: radial-gradient(ellipse at 50% 60%, rgba(112, 108, 240, 0.18) 0%, transparent 65%);
+  filter: blur(60px);
   pointer-events: none;
   animation: glowPulse 4s ease-in-out infinite;
 }
@@ -284,15 +305,31 @@
   overflow: hidden;
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.03) inset,
-    0 20px 60px rgba(0, 0, 0, 0.5),
-    0 0 100px rgba(112, 108, 240, 0.06);
-  transform: perspective(1200px) rotateX(2deg);
+    0 24px 80px rgba(0, 0, 0, 0.6),
+    0 0 120px rgba(112, 108, 240, 0.1);
+  transform: perspective(1000px) rotateX(3deg);
   transform-origin: center bottom;
   transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .dashboard-demo:hover .demo-frame {
-  transform: perspective(1200px) rotateX(0deg);
+  transform: perspective(1000px) rotateX(0deg);
+}
+
+/* Scanline overlay for mission control feel */
+.demo-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  pointer-events: none;
+  z-index: 10;
 }
 
 .demo-titlebar {
@@ -368,14 +405,29 @@
   border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: var(--radius-md);
   padding: 14px;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.5s ease-out, transform 0.5s ease-out, box-shadow 0.3s;
+}
+
+/* Animation class added by JS */
+.demo-card.animate-in {
+  animation: demoCardIn 0.5s ease-out forwards;
+}
+
+/* Pre-animation state — set by JS before triggering */
+.demo-card.pre-animate {
   opacity: 0;
   transform: translateY(12px);
-  animation: demoCardIn 0.5s ease-out forwards;
-  animation-delay: calc(0.8s + var(--i, 0) * 0.15s);
 }
 
 @keyframes demoCardIn {
+  from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+.demo-card:hover {
+  box-shadow: 0 0 20px rgba(112, 108, 240, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .demo-card-top {
@@ -561,6 +613,10 @@
 
 .feature-card:hover::before {
   opacity: 1;
+}
+
+.feature-card:hover {
+  box-shadow: 0 0 30px rgba(112, 108, 240, 0.08), 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
 .feature-card .feature-icon {
@@ -1041,8 +1097,8 @@
   .hero { min-height: auto; padding-top: calc(var(--nav-height) + var(--space-2xl)); }
   .hero h1 { font-size: 2.25rem; }
   .hero::after { display: none; }
-  .hero-ao-mark { width: 80px; height: 80px; }
-  .ao-letter { font-size: 2.5rem; }
+  .hero-ao-mark { width: 100px; height: 100px; }
+  .ao-letter { font-size: 3rem; }
   .features-grid,
   .steps,
   .shortcuts-showcase { grid-template-columns: 1fr; }

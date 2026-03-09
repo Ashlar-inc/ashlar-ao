@@ -5,9 +5,9 @@
       <stop offset="100%" stop-color="#706CF0"/>
     </linearGradient>
   </defs>
-  <!-- A letterform — moved right so it touches O -->
-  <path d="M10 54L30 10h6l20 44h-8l-4.5-10H22.5L18 54H10zm15.5-17h15L33 19.5 25.5 37z" fill="#F0F0F2"/>
-  <!-- O letterform — positioned to touch/overlap A -->
-  <circle cx="72" cy="32" r="22" fill="url(#accent)"/>
-  <circle cx="72" cy="32" r="14" fill="#08090E"/>
+  <!-- A letterform — right edge overlaps with O -->
+  <path d="M14 54L34 10h6l20 44h-8l-4.5-10H26.5L22 54H14zm15.5-17h15L37 19.5 29.5 37z" fill="#F0F0F2"/>
+  <!-- O ring — overlapping A's right stroke -->
+  <circle cx="68" cy="32" r="22" fill="url(#accent)"/>
+  <circle cx="68" cy="32" r="14" fill="#08090E"/>
 </svg>

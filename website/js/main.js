@@ -124,6 +124,24 @@ function initCountUp() {
 
 // Dashboard demo animation
 function initDashboardDemo() {
+  // Animate cards in via JS (fallback-safe: cards are visible by default in CSS)
+  const demoCards = document.querySelectorAll('.demo-card');
+  if (demoCards.length) {
+    demoCards.forEach(card => card.classList.add('pre-animate'));
+    const cardObserver = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      cardObserver.disconnect();
+      demoCards.forEach((card, i) => {
+        setTimeout(() => {
+          card.classList.remove('pre-animate');
+          card.classList.add('animate-in');
+        }, i * 150);
+      });
+    }, { threshold: 0.1 });
+    const demoEl = document.querySelector('.dashboard-demo');
+    if (demoEl) cardObserver.observe(demoEl);
+  }
+
   const demos = [
     { el: 'demoOut0', lines: ['Writing src/auth/Login.tsx...', '+47 lines in 3 files', 'Running prettier...', 'Committing changes...'], loop: true },
     { el: 'demoOut1', lines: ['Implementing token validation...', 'Reading auth/middleware.py', 'Added JWT refresh logic', 'Writing tests...'], loop: true },
@@ -161,6 +179,7 @@ function initHeroCanvas() {
   if (!canvas) return;
 
   const ctx = canvas.getContext('2d');
+  if (!ctx) return;
   let w, h, particles, animId;
   const COLORS = ['#706CF0', '#8B87F5', '#5854c7', '#3B82F6', '#8B5CF6', '#22C55E', '#F59E0B', '#EF4444'];
   const MAX_DIST = 180;
