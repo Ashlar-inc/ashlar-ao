@@ -3,7 +3,7 @@
 ## Development Setup
 
 ```bash
-git clone https://github.com/Ashlar-inc/ashlar-ao.git
+git clone https://github.com/ashlrai/ashlar-ao.git
 cd ashlar-ao
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
@@ -59,7 +59,7 @@ chore: bump CI coverage threshold to 65%
 
 ## Reporting Issues
 
-Open an issue at [github.com/Ashlar-inc/ashlar-ao/issues](https://github.com/Ashlar-inc/ashlar-ao/issues). Include:
+Open an issue at [github.com/ashlrai/ashlar-ao/issues](https://github.com/ashlrai/ashlar-ao/issues). Include:
 
 - Python version and OS
 - Steps to reproduce
